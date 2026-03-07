@@ -274,9 +274,22 @@ Route::prefix("user")->name("api.user.")->group(function () {
 
             // create customer
             Route::post('create-customer', [PayscribeCustomerController::class, 'createCustomer']);
+
+            // Card Configuration (public - no card required)
+            Route::get('card-config', [\App\Http\Controllers\Api\VirtualCardSettingApiController::class, 'config']);
             
             // CARDS
             Route::post('create-card', [PayscribeCreateCardController::class, 'createCard']);
+            Route::post('topup-card', [\App\Http\Controllers\Api\PayscribeTopupCardController::class, 'topupCard']);
+            Route::post('withdraw-card', [\App\Http\Controllers\Api\PayscribeWithdrawFromCardController::class, 'withdraw']);
+            Route::post('freeze-card', [\App\Http\Controllers\Api\PayscribeFreezeCardController::class, 'freeze']);
+            Route::post('unfreeze-card', [\App\Http\Controllers\Api\PayscribeUnfreezeCardController::class, 'unfreeze']);
+            Route::post('terminate-card', [\App\Http\Controllers\Api\PayscribeTerminateCardController::class, 'terminateCard']);
+            Route::get('card-details', [\App\Http\Controllers\Api\PayscribeCardDetailsController::class, 'customerCardDetails']);
+            Route::get('card-transactions', [\App\Http\Controllers\Api\PayscribeCardTransactionController::class, 'customerTransactions']);
+            Route::get('cards', [\App\Http\Controllers\Api\PayscribeCardDetailsController::class, 'getUserCards']);
+            Route::get('cards/{cardId}', [\App\Http\Controllers\Api\PayscribeCardDetailsController::class, 'getCardDetails']);
+            Route::get('cards/{cardId}/transactions', [\App\Http\Controllers\Api\PayscribeCardTransactionController::class, 'customerTransactions']);
             
             Route::controller(PayscribeSavingsController::class)->group(function () {
                 Route::post('create-savings', 'createSavings');

@@ -598,7 +598,14 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('/settings', [App\Http\Controllers\Admin\UsdtEasyearnController::class, 'settingsPage'])->name('settings');
         Route::put('/settings', [App\Http\Controllers\Admin\UsdtEasyearnController::class, 'updateSettings'])->name('settings.update');
     });
+
+    // Virtual Card Settings
+    Route::prefix('virtual-card')->name('virtual.card.')->group(function () {
+        Route::get('/settings', [App\Http\Controllers\Admin\VirtualCardSettingController::class, 'index'])->name('settings');
+        Route::put('/settings', [App\Http\Controllers\Admin\VirtualCardSettingController::class, 'update'])->name('settings.update');
+    });
 });
+
 
 Route::get('admin/pusher/beams-auth', function (Request $request) {
     if(Auth::check() == false) {
