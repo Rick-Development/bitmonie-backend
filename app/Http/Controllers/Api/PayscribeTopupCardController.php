@@ -9,6 +9,7 @@ use App\Models\BasicControl;
 use App\Models\PayscribeVirtualCardDetails;
 use App\Models\PayscribeVirtualCardTransaction;
 use App\Models\Transaction;
+use App\Http\Helpers\Response;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -23,15 +24,22 @@ class PayscribeTopupCardController extends Controller
         $request->validate(
             [
                 'amount' => 'required | numeric | min:0.1',
+                'card_id' => 'required | string',
             ]
         );
 
-        $cardDepositRate = (int) BasicControl::first()->card_deposit_rate;
-        $depositAmount = $request['amount'] * $cardDepositRate;
-        $validateBalance = $this->payscribeBalanceHelper->validateBalance($depositAmount);
+        $usdtToDeduct = $request['amount'];
+        $user = auth()->user();
 
-        if(!!$validateBalance){
-            return $validateBalance;
+        $quidaxService = new \App\Services\QuidaxService();
+        $quidaxWalletResponse = $quidaxService->fetchUserWallet($user->quidax_id, 'usdt');
+        $quidaxBalance = 0;
+        if (isset($quidaxWalletResponse['status']) && $quidaxWalletResponse['status'] === 'success') {
+            $quidaxBalance = $quidaxWalletResponse['data']['balance'];
+        }
+
+        if ($quidaxBalance < $usdtToDeduct) {
+            return Response::errorResponse('Insufficient USDT balance to perform this topup. Required: ' . round($usdtToDeduct, 2) . ' USDT');
         }
 
         $referenceId = Str::uuid();
@@ -40,20 +48,29 @@ class PayscribeTopupCardController extends Controller
             'amount' => $request['amount'],
             'ref' => $referenceIdString,
         ];
-        $cardId = PayscribeVirtualCardDetails::where('user_id', auth()->user()['id'])->value('card_id');
+        $cardId = $request['card_id'];
 
 
         $response = json_decode($this->cardTopupHelper->topupCard($data, $cardId), true);
 
         if($response['status'] === true){
+            // Debit from Quidax USDT and transfer to Escrow
+            $quidaxTransfer = $quidaxService->transferToEscrow($user->quidax_id, $usdtToDeduct, 'usdt');
+            if (!isset($quidaxTransfer['status']) || $quidaxTransfer['status'] !== 'success') {
+                return Response::errorResponse('Failed to deduct USDT from your Quidax wallet');
+            }
+
             // Create a transaction record for the card issuing
-            $this->createTransaction($data, $response, $depositAmount);
+            $this->createTransaction($data, $response, $usdtToDeduct);
 
             $this->cardDepositTransaction($data, $response);
             $this->sendCardDepositEmail($request['amount'], $response['message']['details']['card'], $response['message']['details']['trans_id']);
         }
 
-        return $response;
+        if (isset($response['status']) && $response['status'] === true) {
+            return Response::successResponse('Card topped up successfully', $response);
+        }
+        return Response::errorResponse($response['description'] ?? 'Failed to topup card', $response);
     }
 
 
@@ -64,7 +81,7 @@ class PayscribeTopupCardController extends Controller
             'transactional_type' => 'Card Topup',
             'user_id' => auth()->user()->id,
             'amount' => $depositAmount,
-            'currency' => 'NGN',
+            'currency' => 'USDT',
             'trx_type' => '-',
             'remarks' => 'You have successfully funded your card with ' . $request['amount'] . ' USD',
             'trx_id' => $transId,

@@ -8,7 +8,7 @@ use Illuminate\Http\JsonResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Helpers\Payscribe\PayscribeCustomersHelper;
 use App\Http\Helpers\Payscribe\CardIssusing\CardDetailsHelper;
-use Response;
+use App\Http\Helpers\Response;
 
 class PayscribeCardDetailsController extends Controller
 {
@@ -26,11 +26,7 @@ class PayscribeCardDetailsController extends Controller
         ]);
 
         if ($validator->fails()) {
-            return response()->json([
-                'status' => 'failed',
-                'message' => 'Validation failed',
-                'data' => $validator->errors(),
-            ], 422);
+            return Response::errorResponse('Validation failed', $validator->errors(), 422);
         }
 
         $data = $request->only([
@@ -64,19 +60,47 @@ class PayscribeCardDetailsController extends Controller
             // do something
         }
 
-        return response()->json($response, $response['status_code']);
+        if (isset($response['status']) && $response['status'] === true) {
+            return Response::successResponse('Card created successfully', $response);
+        }
+        return Response::errorResponse($response['description'] ?? 'Failed to create card', $response, $response['status_code'] ?? 400);
     }
-    public function getCardDetails(Request $request)
+    /**
+     * GET /card-details/{card_id}
+     * Fetch a single card's full details from Payscribe.
+     */
+    public function getCardDetails(Request $request, string $cardId)
     {
-        $data = $request->validate(
-            [
-                'ref' => 'required | string'
-            ]
-        );
-        $response = json_decode($this->cardDetailsHelper->getCardDetails($data), true);
-        return $response;
-        // $cardDetails = new CardDetails();
-        // $response = $cardDetails->getCardDetails($data['card_id']);
+        $response = json_decode($this->cardDetailsHelper->getCardDetails($cardId), true);
+        if (isset($response['status']) && $response['status'] === true) {
+            return Response::successResponse('Card Details', $response);
+        }
+        return Response::errorResponse($response['description'] ?? 'Failed to fetch card details', $response);
+    }
+
+    /**
+     * GET /cards
+     * List all cards for the authenticated user from local DB.
+     * Also returns the live Payscribe card list for the customer.
+     */
+    public function getUserCards(Request $request)
+    {
+        $user = auth()->user();
+
+        // Local records
+        $localCards = \App\Models\PayscribeVirtualCardDetails::where('user_id', $user->id)->get();
+
+        // Live fetch from Payscribe
+        $liveCards = [];
+        if ($user->payscribe_customer_id) {
+            $liveResponse = json_decode($this->cardDetailsHelper->getUserCards($user->payscribe_customer_id), true);
+            $liveCards = $liveResponse ?? [];
+        }
+
+        return Response::successResponse('User Cards', [
+            'local_cards' => $localCards,
+            'payscribe_cards' => $liveCards,
+        ]);
     }
 
     public function createCustomer($phone): JsonResponse
@@ -101,18 +125,14 @@ class PayscribeCardDetailsController extends Controller
 
             $user->save();
 
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Customer created successfully',
-                'data' => [
-                    'customer_id' => $user->payscribe_customer_id,
-                    'tier' => $user->payscribe_tier,
-                    'phone' => $user->payscribe_customer_phone,
-                ],
+            return Response::successResponse('Customer created successfully', [
+                'customer_id' => $user->payscribe_customer_id,
+                'tier' => $user->payscribe_tier,
+                'phone' => $user->payscribe_customer_phone,
                 'payscribe_response' => $response,
             ], 201);
         }
 
-        return response()->json($response, $response['status_code'] ?? 200);
+        return Response::errorResponse($response['description'] ?? 'Failed to create customer', $response, $response['status_code'] ?? 400);
     }
 }

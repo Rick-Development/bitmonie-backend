@@ -10,6 +10,7 @@ use App\Models\PayscribeVirtualCardDetails;
 use App\Models\PayscribeVirtualCardTransaction;
 use App\Models\Transaction;
 use App\Traits\Notify;
+use App\Http\Helpers\Response;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -34,11 +35,7 @@ class PayscribeCreateCardController extends Controller
         ]);
 
         if ($validator->fails()) {
-            return response()->json([
-                'status' => 'failed',
-                'message' => 'Validation failed',
-                'data' => $validator->errors(),
-            ], 422);
+            return Response::errorResponse('Validation failed', $validator->errors(), 422);
         }
 
         $data = $request->only(
@@ -54,22 +51,26 @@ class PayscribeCreateCardController extends Controller
         $user = auth()->user();
         $user_as_card = PayscribeVirtualCardDetails::where('user_id', $user['id'])->value('card_id');
         if (!!$user_as_card) {
-            return response()->json([
-                "message" => "Customer card Exist"
-            ]);
+            return Response::errorResponse("Customer card Exist");
         }
 
-        // Validate the user's balance before proceeding
+        // Validate the user's Quidax USDT balance before proceeding
         $cardIssuingRate = (int) BasicControl::first()->card_issuing_rate;
         $cardDepositRate = (int) BasicControl::first()->card_deposit_rate;
-        $depositAmount = $data['amount'] * $cardDepositRate;
+        $depositAmountNgn = $data['amount'] * $cardDepositRate;
 
-        $totalCharged = $depositAmount + $cardIssuingRate;
+        // Total equivalent in USDT = requested USD amount + (issuing rate converted to USD)
+        $usdtToDeduct = $data['amount'] + ($cardIssuingRate / ($cardDepositRate > 0 ? $cardDepositRate : 1));
 
-        $validateBalance = $this->payscribeBalanceHelper->validateBalance($totalCharged);
+        $quidaxService = new \App\Services\QuidaxService();
+        $quidaxWalletResponse = $quidaxService->fetchUserWallet($user->quidax_id, 'usdt');
+        $quidaxBalance = 0;
+        if (isset($quidaxWalletResponse['status']) && $quidaxWalletResponse['status'] === 'success') {
+            $quidaxBalance = $quidaxWalletResponse['data']['balance'];
+        }
 
-        if (!!$validateBalance) {
-            return $validateBalance;
+        if ($quidaxBalance < $usdtToDeduct) {
+            return Response::errorResponse('Insufficient USDT balance to perform this action. Required: ' . round($usdtToDeduct, 2) . ' USDT');
         }
 
         $data['customer_id'] = auth()->user()->payscribe_customer_id;
@@ -81,8 +82,14 @@ class PayscribeCreateCardController extends Controller
         $response = json_decode($this->createCardHelper->createCard($data), true);
 
         if ($response['status'] === true) {
+            // Debit from Quidax USDT
+            $quidaxTransfer = $quidaxService->transferToEscrow($user->quidax_id, $usdtToDeduct, 'usdt');
+            if (!isset($quidaxTransfer['status']) || $quidaxTransfer['status'] !== 'success') {
+                return Response::errorResponse('Failed to deduct USDT from your Quidax wallet');
+            }
+
             // Create a transaction record for the card issuing
-            $this->cardIssuingTransaction($data, $response, $totalCharged);
+            $this->cardIssuingTransaction($data, $response, $usdtToDeduct);
             $this->virtualCardDetails($response, $data);
             $params = [
                 'amount' => $data['amount'],
@@ -92,7 +99,10 @@ class PayscribeCreateCardController extends Controller
             $this->mail($user, 'VIRTUAL_CARD_APPLY', $params);
         }
 
-        return $response;
+        if (isset($response['status']) && $response['status'] === true) {
+            return Response::successResponse('Card created successfully', $response);
+        }
+        return Response::errorResponse($response['description'] ?? $response['message'] ?? 'Failed to create card', $response['errors'] ?? []);
     }
 
 
@@ -137,15 +147,13 @@ class PayscribeCreateCardController extends Controller
             'transactional_type' => 'Card Issuing',
             'user_id' => auth()->user()->id,
             'amount' => $totalamount,
-            'currency' => 'NGN',
+            'currency' => 'USDT',
             'trx_type' => '+',
-            'remarks' => 'Card Issuing at ' . $totalamount . ' NGN',
+            'remarks' => 'Card Issuing at ' . $totalamount . ' USDT',
             'trx_id' => $transId,
             'ref_id' => $request['ref'],
             'transaction_status' => 'processing',
         ]);
-
-        // $this->payscribeBalanceHelper->updateUserBalance($balance);
     }
 
 
@@ -153,31 +161,19 @@ class PayscribeCreateCardController extends Controller
     public function cardIssuingRate()
     {
         $cardIssuingRate = BasicControl::first()->card_issuing_rate;
-        return response()->json([
-            'status' => true,
-            'message' => 'Card Issuing Rate',
-            'data' => $cardIssuingRate,
-        ], 200);
+        return Response::successResponse('Card Issuing Rate', $cardIssuingRate);
     }
 
     public function cardDepositRate()
     {
         $cardDepositRate = BasicControl::first()->card_deposit_rate;
-        return response()->json([
-            'status' => true,
-            'message' => 'Card Issuing Rate',
-            'data' => $cardDepositRate,
-        ], 200);
+        return Response::successResponse('Card Issuing Rate', $cardDepositRate);
     }
 
     public function cardWithdrawalRate()
     {
         $cardWithdarwalRate = BasicControl::first()->card_withdrawal_rate;
-        return response()->json([
-            'status' => true,
-            'message' => 'Card Issuing Rate',
-            'data' => $cardWithdarwalRate,
-        ], 200);
+        return Response::successResponse('Card Issuing Rate', $cardWithdarwalRate);
     }
 
 
@@ -186,15 +182,13 @@ class PayscribeCreateCardController extends Controller
     {
 
         $transactions = PayscribeVirtualCardTransaction::where('card_id', $cardId)->paginate(10);
-        return response()->json(['transactions' => $transactions]);
-        // return response()->json(['transactions' => auth()->id()]);
+        return Response::successResponse('Card Transactions', $transactions);
     }
 
     public function customerCardDetails()
     {
 
         $transactions = PayscribeVirtualCardDetails::where('user_id', auth()->id())->paginate(10);
-        return response()->json(['transactions' => $transactions]);
-        // return response()->json(['transactions' => auth()->id()]);
+        return Response::successResponse('Card Details', $transactions);
     }
 }

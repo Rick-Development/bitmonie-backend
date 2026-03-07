@@ -9,6 +9,7 @@ use App\Models\BasicControl;
 use App\Models\PayscribeVirtualCardDetails;
 use App\Models\PayscribeVirtualCardTransaction;
 use App\Models\Transaction;
+use App\Http\Helpers\Response;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -19,12 +20,12 @@ class PayscribeWithdrawFromCardController extends Controller
         $request->validate(
             [
                 'amount' => 'required | numeric | min:0.1',
+                'card_id' => 'required | string',
             ]
         );
-        $cardId = PayscribeVirtualCardDetails::where('user_id', auth()->user()['id'])->value('card_id');
+        $cardId = $request['card_id'];
 
-        $cardWithdarawlRate = (int) BasicControl::first()->card_withdrawal_rate;
-        $withdrawalAmount = $request['amount'] * $cardWithdarawlRate;
+        $usdtToAdd = $request['amount'];
 
         $referenceId = Str::uuid();
         $referenceIdString = (string) $referenceId . '-cardwithdrawal';
@@ -35,23 +36,35 @@ class PayscribeWithdrawFromCardController extends Controller
         $response = json_decode($this->withdrawFromCardHelper->withdrawFromCard($data, $cardId), true);
 
         if($response['status'] === true){
-            $this->createTransaction($data, $response, $withdrawalAmount);
+            $user = auth()->user();
+            $quidaxService = new \App\Services\QuidaxService();
+            // Move USDT from Escrow back to user's Quidax Wallet
+            $quidaxTransfer = $quidaxService->fundSubAccount($user->quidax_id, $usdtToAdd, 'usdt');
+            
+            if (!isset($quidaxTransfer['status']) || $quidaxTransfer['status'] !== 'success') {
+                return Response::errorResponse('Failed to credit USDT to your Quidax wallet');
+            }
+
+            $this->createTransaction($data, $response, $usdtToAdd);
 
             $this->cardWithdrawalTransaction($data, $response);
             $this->sendCardWithdrawalEmail($request['amount'], $response['message']['details']['card'], $response['message']['details']['trans_id']);
         }
-        return $response;
+        if (isset($response['status']) && $response['status'] === true) {
+            return Response::successResponse('Card withdrawal successfully', $response);
+        }
+        return Response::errorResponse($response['description'] ?? 'Failed to withdraw from card', $response);
     }
 
-    private function createTransaction($request, $response, $withdrawalAmount) {
+    private function createTransaction($request, $response, $usdtToAdd) {
         $transId = $response['message']['details']['trans_id'];
         Transaction::create([
             'transactional_type' => 'Card Withdrawal',
             'user_id' => auth()->user()->id,
-            'amount' => $withdrawalAmount,
-            'currency' => 'NGN',
+            'amount' => $usdtToAdd,
+            'currency' => 'USDT',
             'trx_type' => '+',
-            'remarks' => 'You have successfully cedited your allet with ' . $request['amount'] . ' USD',
+            'remarks' => 'You have successfully credited your wallet with ' . $usdtToAdd . ' USDT',
             'trx_id' => $transId,
             'ref_id' => $request['ref'],
             'transaction_status' => 'processing',

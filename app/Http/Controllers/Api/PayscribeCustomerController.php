@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Storage;
 use App\Http\Controllers\Api\SafeHeavenIdentityCheckController;
+use App\Http\Helpers\Response;
 
 class PayscribeCustomerController extends Controller
 {
@@ -41,11 +42,7 @@ class PayscribeCustomerController extends Controller
         ]);
 
         if ($validator->fails()) {
-            return response()->json([
-                'status' => 'failed',
-                'message' => 'Validation failed',
-                'data' => $validator->errors(),
-            ], 422);
+            return Response::errorResponse('Validation failed', $validator->errors(), 422);
         }
 
         $user = auth()->user();
@@ -67,14 +64,10 @@ class PayscribeCustomerController extends Controller
 
             $user->save();
 
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Customer created successfully',
-                'data' => [
-                    'customer_id' => $user->payscribe_customer_id,
-                    'tier' => $user->payscribe_tier,
-                    'phone' => $user->payscribe_customer_phone,
-                ],
+            return Response::successResponse('Customer created successfully', [
+                'customer_id' => $user->payscribe_customer_id,
+                'tier' => $user->payscribe_tier,
+                'phone' => $user->payscribe_customer_phone,
                 'payscribe_response' => $response,
             ], 201);
         }
@@ -91,18 +84,14 @@ class PayscribeCustomerController extends Controller
 
         $response = $this->identityCheckController->initiateVerification($data);
         if ($response['statusCode'] === 200) {
-            return response()->json([
-                "message" => $response['message'],
-                "data" => [
-                    "_id" => $response['data']["_id"],
-                    "type" => $response['data']["type"],
-                    "status" => $response['data']["status"],
-                    "debitAccountNumber" => $response['data']["debitAccountNumber"],
-                ]
-
-            ], $response['statusCode']);
+            return Response::successResponse($response['message'], [
+                "_id" => $response['data']["_id"],
+                "type" => $response['data']["type"],
+                "status" => $response['data']["status"],
+                "debitAccountNumber" => $response['data']["debitAccountNumber"],
+            ]);
         } else {
-            return response()->json($response, $response['statusCode']);
+            return Response::errorResponse($response['message'] ?? 'Identity check failed', $response, $response['statusCode'] ?? 400);
         }
     }
 
@@ -323,15 +312,14 @@ class PayscribeCustomerController extends Controller
             'customer_id' => 'required|string',
         ]);
         $customerBalance = User::where('payscribe_id', $data['customer_id'])->first()->account_balance;
-        return response()->json(['balance' => $customerBalance]);
+        return Response::successResponse('Customer Balance', ['balance' => $customerBalance]);
     }
 
     public function customerTransactions(): JsonResponse
     {
 
         $transactions = Transaction::where('user_id', auth()->id())->paginate(10);
-        return response()->json(['transactions' => $transactions]);
-        // return response()->json(['transactions' => auth()->id()]);
+        return Response::successResponse('Customer Transactions', $transactions);
     }
 
     public function resetPin(Request $request): JsonResponse
@@ -340,8 +328,7 @@ class PayscribeCustomerController extends Controller
             'pin' => 'required|string',
         ]);
         User::where('id', auth()->id())->update(['user_pin' => $data['pin']]);
-        return response()->json(['message' => 'Pin reset successful']);
-
+        return Response::successResponse('Pin reset successful');
     }
     /**
      * Handle the response from the Payscribe API.

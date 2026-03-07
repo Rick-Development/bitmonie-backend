@@ -1,0 +1,18 @@
+{
+  "default_branch": "main",
+  "branches": [
+    "main",
+    "rick",
+    "sandbox"
+  ],
+  "parent": {
+    "main": null,
+    "rick": "main",
+    "sandbox": "main"
+  },
+  "order": [
+    "main",
+    "rick",
+    "sandbox"
+  ]
+}
