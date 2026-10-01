@@ -1,0 +1,32 @@
+Merchant Security Deposit Deployment Notes
+Date: 2026-04-24
+
+1. Upload the updated files from the zip into the Laravel project root.
+
+2. Run the migration:
+   - Browser runner file: run_laravel_migrate_browser.php
+   - Open:
+     /run_laravel_migrate_browser.php
+   - Then click:
+     Run Migration
+   - Or directly use:
+     /run_laravel_migrate_browser.php?run=1
+
+3. Delete run_laravel_migrate_browser.php after the migration finishes.
+
+4. New mobile/API endpoint:
+   POST /api/user/p2p/merchant/deactivate
+
+5. Existing mobile endpoints now return more merchant deposit data:
+   - POST /api/user/p2p/merchant/check-eligibility
+   - POST /api/user/p2p/merchant/apply
+   - GET  /api/user/p2p/merchant/status
+
+6. Important behavior:
+   - Applying as a merchant now locks the refundable USDT security deposit.
+   - Rejecting or deactivating the merchant releases that deposit.
+   - Deactivation is blocked if the user still has active P2P orders or disputes.
+   - Live ads are forced offline during deactivation.
+
+7. Legacy note:
+   Older pending merchant applications created before this change and without a locked deposit should be rejected and re-submitted under the new flow.

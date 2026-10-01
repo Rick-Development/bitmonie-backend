@@ -1,0 +1,1 @@
+@include('admin.components.data-table.add-money-table',compact("logs"))

@@ -1,0 +1,31 @@
+<?php
+
+use Illuminate\Support\Facades\Broadcast;
+
+/*
+|--------------------------------------------------------------------------
+| Broadcast Channels
+|--------------------------------------------------------------------------
+|
+| Here you may register all of the event broadcasting channels that your
+| application supports. The given channel authorization callbacks are
+| used to check if an authenticated user can listen to the channel.
+|
+*/
+
+Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
+    return (int) $user->id === (int) $id;
+});
+
+Broadcast::channel('support.conversation',function(){
+    return true;
+});
+
+Broadcast::channel('p2p-order.{id}', function ($user, $id) {
+    if (!$user) return false;
+    
+    $order = \App\Models\P2POrder::find($id);
+    if (!$order) return false;
+
+    return $user->id === $order->maker_id || $user->id === $order->taker_id || $user->can('admin.p2p.manage'); // Assuming admin permission or just allow admins generally
+});

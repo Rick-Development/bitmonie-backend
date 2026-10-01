@@ -1,0 +1,84 @@
+// home banner
+.banner-section{
+    padding-top: 250px;
+    padding-bottom: 250px;
+    overflow: hidden;
+    @media only screen and (max-width: 1600px) {
+      padding-top: 80px;
+      padding-bottom: 140px;
+    }
+    @media only screen and (max-width: 991px) {
+      padding-top: 110px;
+      padding-bottom: 150px;
+    }
+    @media only screen and (max-width: 575px) {
+      padding-top: 80px;
+      padding-bottom: 100px;
+    }
+    .banner-content{
+        padding-right: 20px;
+        @media only screen and (max-width: 768px) {
+          padding-right: 0px;
+        }
+    }
+}
+.banner-content{
+  .title{
+    padding-bottom: 20px
+  }
+  p{
+    padding-bottom: 30px;
+  }
+}
+.banner-overlay{
+  position: relative;
+  z-index: 2;
+}
+.banner-overlay:after {
+  @media only screen and (max-width: 1199px) {
+    content: "";
+    position: absolute;
+    background-color: #ffffffd3;
+    opacity: 0.6;
+    width: 100%;
+    height: 100%;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    z-index: -1;
+  }
+}
+ 
+  
+// login banner
+.login-section{
+  width: 100%;
+  .user-login-area{
+    padding-top: 100px;
+    padding-bottom: 100px;
+    @media only screen and (max-width: 991px) {
+      padding-top: 60px;
+      padding-bottom: 60px;
+    }
+    @media only screen and (max-width: 520px) {
+      padding-top: 30px;
+      padding-bottom: 60px;
+    }
+    .banner-content{
+      p{
+        font-size: 17px;
+        font-weight: 400;
+      }
+    }
+  }
+  .account-form-area{
+    background-color: $section--bg;
+    padding: 40px;
+    border-radius: 10px;
+    box-shadow: $shadow--color;
+    @media only screen and (max-width: 375px) {
+       padding: 20px;
+    }
+  }
+}

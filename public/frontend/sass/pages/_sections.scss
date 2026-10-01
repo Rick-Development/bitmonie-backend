@@ -1,0 +1,1203 @@
+.la-chevron-right{
+  animation: scroll-ver 1s linear infinite;
+}
+// features Section
+.key-features{
+   .featuare-content-area{
+    display: flex;
+    background-color: #ffffff;
+    border: 1px solid $border--base;
+    box-shadow: $shadow--color;
+    border-radius: 10px;
+    padding: 30px;
+    @media only screen and (max-width: 991px) {
+      display: block;
+    }
+    .feature-list{
+      width: 35%;
+      @media only screen and (max-width: 991px) {
+        width: 100%;
+        display: flex;
+        flex-wrap: wrap;
+        li{
+          margin: 15px;
+          margin-left: 0px;
+          
+        }
+      }
+      li{
+        display: flex;
+        align-items: center;
+        font-weight: 500;
+        i{
+          font-size: 20px;
+          padding: 4px;
+          background-color: $base--color;
+          color: $white;
+          border-radius: 5px;
+          margin-right: 10px;
+        }
+        margin-top: 10px;
+      }
+    }
+    .key-deatils{
+      width: 65%;
+      @media only screen and (max-width: 991px) {
+        width: 100%;
+        padding-top: 40px;
+      }
+    }
+   }
+}
+
+// How It's Work section
+
+tri-right.border.left-top:before {
+  content: " ";
+  position: absolute;
+  width: 0;
+  height: 0;
+  left: -40px;
+  right: auto;
+  top: -8px;
+  bottom: auto;
+  border: 32px solid;
+  border-color: $section--bg transparent transparent transparent;
+}
+.tri-right.left-top:after {
+  content: " ";
+  position: absolute;
+  width: 0;
+  height: 0;
+  left: -20px;
+  right: auto;
+  top: 0px;
+  bottom: auto;
+  border: 22px solid;
+  border-color: $base--color transparent transparent transparent;
+}
+.work-content {
+  margin-left: 30px;
+  padding: 20px;
+  display: -webkit-box;
+  display: -ms-flexbox;
+  display: flex;
+  position: relative;
+  background-color: $base--color;
+  color: $white;
+}
+.working-list {
+  display: -webkit-box;
+  display: -ms-flexbox;
+  display: flex;
+}
+.how-it-work {
+  overflow: hidden;
+}
+
+// Security  section
+
+.security-item {
+  position: relative;
+  padding: 20px;
+  border-radius: 20px;
+  box-shadow: $shadow--color;
+  overflow: hidden;
+  display: flex;
+  z-index: 1;
+  transition: all 0.3s;
+  height: 100%;
+}
+@media only screen and (max-width: 991px) {
+  .security-item {
+    padding: 10px;
+  }
+}
+.security-item:hover {
+    transform: translateY(-5px);
+}
+.security-item:hover .security-bg {
+  bottom: 0;
+}
+.security-item .icon {
+  margin-right: 20px;
+}
+.security-item .icon i {
+  font-size: 58px;
+  color: $base--color;
+}
+
+
+// Overview section
+
+.overview-section{
+  .overview-area{
+    display: flex;
+    @media only screen and (max-width: 991px) {
+       display: block;
+    }
+    .overview-img{
+      width: 100%;
+      height: 400px;
+      img{
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        border-radius: 10px;
+      }
+    }
+    .statistics-area{
+      .counter{
+        .odo-area{
+          width: 100px;
+          height: 100px;
+          background: $white;
+          border: 3px solid $base--color;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-direction: column;
+          text-align: center;
+          margin: 15px 0px 20px -50px;
+          @media only screen and (max-width: 991px) {
+            margin: 20px 0px 20px 0px;
+         }
+          .odo-title{
+            margin: 0px;
+          }
+          .odometer-digit-spacer{
+            margin: .2px;
+          }
+        }
+      }
+      .overview-details-area{
+        display: flex;
+        align-items: center;
+        @media only screen and (max-width: 375px) {
+            display: block;
+        }
+
+        .overview-details{
+          margin-left: 10px;
+          width: 400px;
+          border-left: 3px solid $border--base;
+          border-radius: 10px;
+          padding-left: 10px;
+          @media only screen and (max-width: 420px) {
+            width: auto;
+        }
+        }
+      }
+    }
+  }
+  @media only screen and (max-width: 375px) {
+    
+    .odo-area{
+     width: 140px !important;
+     height: 140px !important;
+    }
+    .odo-title,.title{
+     font-size: 17px;
+    }
+}
+}
+
+
+
+// why choice us
+
+.choice-item-area {
+  position: relative;
+  padding: 20px;
+  border-radius: 20px;
+  box-shadow: $shadow--color;
+  overflow: hidden;
+  text-align: center;
+  z-index: 1;
+  transition: all 0.3s;
+  height: 100%;
+}
+@media only screen and (max-width: 991px) {
+  .choice-item-area {
+    padding: 10px;
+  }
+}
+.choice-item-area:hover {
+    transform: translateY(-7px);
+}
+.choice-item-area:hover .choice-item-area {
+  bottom: 0;
+}
+.choice-item-area .icon {
+  margin-right: 20px;
+}
+.choice-item-area .icon i {
+  font-size: 58px;
+  color: $base--color;
+}
+
+// app section
+.app-section {
+  position: relative;
+  z-index: 2;
+}
+.app-section::after {
+    position: absolute;
+    content: "";
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    clip-path: polygon(90% 5%, 100% 0, 100% 100%, 60% 100%);
+    background-color: $base--color;
+    z-index: -1;
+    border-radius: 0px 0px 50px 0px;
+    @media only screen and (max-width: 991px) {
+      clip-path: polygon(75% 52%, 100% 48%, 100% 100%, 34% 99%);
+    }
+    @media only screen and (max-width: 768px) {
+      clip-path: polygon(75% 63%, 100% 58%, 100% 100%, 34% 99%);
+    }
+    @media only screen and (max-width: 768px) {
+      clip-path: polygon(75% 54%, 100% 50%, 100% 100%, 34% 99%);
+    }
+    @media only screen and (max-width: 499px) {
+      clip-path: polygon(75% 60%, 100% 58%, 100% 100%, 34% 99%);
+    }
+    @media only screen and (max-width: 375px) {
+      clip-path: polygon(75% 67%, 100% 63%, 100% 100%, 30% 100%);
+    }
+}
+
+.app-btn .app-icon {
+  padding-right: 10px;
+}
+
+.app-btn-wrapper {
+  margin: -8px;
+  margin-top: 40px;
+  display: flex;
+  flex-wrap: wrap;
+}
+@media only screen and (max-width: 1199px) {
+  .app-btn-wrapper {
+    margin-top: 0px;
+  }
+}
+
+.app-btn-wrapper .app-btn {
+  position: relative;
+  background-color: $base--color;
+  box-shadow: $shadow--color;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 18px;
+  width: 230px;
+  margin: 8px;
+}
+
+.app-btn-wrapper .app-btn span {
+  font-size: 13px;
+  color: #ffffff;
+  font-weight: 500;
+}
+
+.app-btn-wrapper .app-btn .title {
+  margin-bottom: 0;
+  color: #ffffff;
+}
+
+.app-btn-wrapper .app-btn .icon {
+  width: 35px;
+  height: 35px;
+  margin-left: auto;
+}
+
+.app-btn-wrapper .app-btn .app-qr {
+  position: absolute;
+  top: 65px;
+  left: 0;
+  background-color: $base--color;
+  box-shadow: $shadow--color;
+  border-radius: 5px;
+  width: 100%;
+  overflow: hidden;
+  transform-origin: top left;
+  transform: scaleY(0);
+  transition: all 0.5s;
+
+}
+@media only screen and (max-width: 575px) {
+  .app-btn-wrapper .app-btn .app-qr {
+    display: none;
+  }
+}
+.app-btn-wrapper .app-btn:hover .app-qr {
+  transform: scaleY(1);
+}
+
+.app-btn-wrapper .app-qr {
+  z-index: 9;
+}
+.app-section{
+   .app-img{
+      width: 65%;
+      margin-left: 60px;
+      margin-top: -50px;
+      @media only screen and (max-width: 1399px) {
+        margin-top: 0px;
+      }
+      @media only screen and (max-width: 1199px) {
+        width: 85%;
+      }
+      @media only screen and (max-width: 991px) {
+        width: 70%;
+        margin-top: 50px;
+        margin-left: 50px;
+      }
+      @media only screen and (max-width: 499px) {
+        width: 75%;
+      }
+      @media only screen and (max-width: 420px) {
+        width: 80%;
+      }
+      @media only screen and (max-width: 375px) {
+        width: 100%;
+        margin-left: 0px;
+      }
+   }
+}
+
+// about section
+.about-section{
+  .about-img{
+    img{
+      width: 100%;
+      border-radius: 10px;
+    }
+  }
+}
+
+
+// faq section
+
+.faq-section {
+  overflow: hidden;
+}
+
+.faq-section .faq-img img {
+  border-radius: 10px;
+}
+
+.faq-wrapper {
+  margin-bottom: -20px;
+}
+
+.faq-wrapper .faq-header {
+  margin-bottom: 30px;
+}
+
+.faq-wrapper .faq-item {
+  background-color: #ffffff;
+  box-shadow: $shadow--color;
+  border: 1px solid #007bff2d;
+  border-radius: 15px;
+  margin-bottom: 20px;
+  -webkit-transition: all 0.3s;
+  transition: all 0.3s;
+}
+
+.faq-wrapper .faq-item .faq-title {
+  padding: 12px 20px;
+  font-size: 16px;
+  -webkit-box-align: center;
+  -ms-flex-align: center;
+  align-items: center;
+  cursor: pointer;
+  display: -webkit-box;
+  display: -ms-flexbox;
+  display: flex;
+  -ms-flex-wrap: wrap;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 0;
+}
+
+@media only screen and (max-width: 575px) {
+  .faq-wrapper .faq-item .faq-title {
+    font-size: 16px;
+  }
+}
+.faq-wrapper .faq-item .faq-title .title {
+  width: calc(100% - 40px);
+  display: inline-block;
+  margin-bottom: 0;
+}
+
+.faq-wrapper .faq-item .faq-content {
+  padding: 20px;
+  border-top: 1px solid $border--base;
+  display: none;
+}
+
+@media only screen and (max-width: 575px) {
+  .faq-wrapper .faq-item .faq-content {
+    margin-top: 15px;
+  }
+}
+.faq-wrapper .faq-item .faq-content p {
+  font-size: 14px;
+}
+
+.faq-wrapper .faq-item .right-icon {
+  display: block;
+  width: 30px;
+  height: 30px;
+  background-color: $base--color;
+  border-radius: 50%;
+  position: relative;
+}
+
+.faq-wrapper .faq-item .right-icon::before, .faq-wrapper .faq-item .right-icon::after {
+  position: absolute;
+  content: "";
+  background: #ffffff;
+  -webkit-transition: all ease 0.3s;
+  transition: all ease 0.3s;
+  -webkit-transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%);
+}
+
+.faq-wrapper .faq-item .right-icon::before {
+  width: 2px;
+  height: 12px;
+  top: 50%;
+  left: 50%;
+}
+
+.faq-wrapper .faq-item .right-icon::after {
+  width: 12px;
+  height: 2px;
+  top: 50%;
+  left: 50%;
+}
+
+.faq-wrapper .faq-item.active .faq-content {
+  display: block;
+}
+
+.faq-wrapper .faq-item.active.open .right-icon::before {
+  -webkit-transform: translate(-50%, -50%) rotate(90deg);
+  transform: translate(-50%, -50%) rotate(90deg);
+}
+
+.faq-wrapper .faq-item.open .right-icon::before {
+  -webkit-transform: translate(-50%, -50%) rotate(90deg);
+  transform: translate(-50%, -50%) rotate(90deg);
+}
+
+// service section
+.service-section{
+  .service-item{
+    background-color: #ffffff;
+    box-shadow: $shadow--color;
+    border-radius: 10px;
+    padding: 30px;
+    transition: all 0.6s;
+    height: 100%;
+    .icon{
+      width: 80px;
+      height: 80px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: rgba(0, 123, 255, 0.2);
+      color: $base--color;
+      font-size: 40px;
+      border-radius: 50%;
+      margin-bottom: 10px;
+    }
+  }
+  .service-item:hover {
+    transform: translateY(-7px);
+  }
+}
+
+// contact
+.contact-item-list li {
+  border: 1px solid $border--base;
+  padding: 10px;
+  border-radius: 10px;
+  box-shadow: $shadow--color;
+}
+
+.contact-item-list li{
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 20px;
+}
+
+.contact-item-list li .contact-item-icon {
+  width: 40px;
+  height: 40px;
+  img{
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+}
+
+.contact-item-list li .contact-item-content {
+  width: calc(100% - 120px);
+  padding-left: 15px;
+  border-left: 2px solid $base--color;
+  border-radius: 8px;
+  margin-left: 15px;
+}
+.contact-form-area{
+  background-color: $section--bg;
+  border: 1px solid $base--color;
+  padding: 40px 30px;
+  border-radius: 10px;
+  box-shadow: $shadow--color;
+}
+
+// forget btn
+.show_hide_password{
+  input{
+    padding-right: 45px;
+  }
+}
+.show_hide_password-2{
+  input{
+    padding-right: 45px;
+  }
+}
+.show_hide_password-3{
+  input{
+    padding-right: 45px;
+  }
+}
+
+
+// Dashboard 
+.dashboard-card-area{
+   .dasboard-card-item{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: $shadow--color;
+      border-radius: 10px;
+      padding: 15px;
+      height: 100%;
+      .card-title{
+        span{
+          font-size: 16px;
+          font-weight: 600;
+          padding-bottom: 5px;
+        }
+      }
+      .card-icon{
+        width: 60px;
+        height: 60px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background-color: rgba(0, 123, 255, 0.719);
+        color: $white;
+        border-radius: 15px;
+        font-size: 30px;
+        overflow: hidden;
+      }
+   }
+}
+.dashboard-chart{
+  padding-top: 40px;
+  .chart-container{
+     background-color: $section--bg;
+     border-radius: 10px;
+     box-shadow: $shadow--color;
+     padding: 40px 30px;
+     @media only screen and (max-width: 520px) {
+      padding: 20px;
+    }
+    @media only screen and (max-width: 420px) {
+      padding: 0px;
+    }
+  }
+}
+.dashboard-trx-area{
+  padding-top: 40px 20px;
+  .dashboard-trx-table{
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: $shadow--color;
+  }
+}
+
+// Cards & Account
+.account-area{
+   .bank-card{
+      background-color: $section--bg;
+      border: 1px solid $base--color;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: $shadow--color;
+      @media only screen and (max-width: 520px) {
+         padding: 20px 8px;
+      }
+      .account-holder-details{
+        padding-top: 60px;
+        @media only screen and (max-width: 580px) {
+          padding-top: 20px;
+       }
+         .item-name{
+          display: flex;
+          justify-content: space-between;
+          background-color: #73b4fa43;
+          padding: 8px 15px;
+          border-radius: 10px;
+            @media only screen and (max-width: 520px) {
+              .title{
+                 font-size: 15px;
+              }
+              p{
+                font-size: 14px;
+              }
+           }
+         }
+      }
+      .card-custom-area{
+        display: flex;
+        justify-content: center;
+      }
+    .card-custom {
+      width: 380px;
+      height: 260px;
+      cursor: pointer;
+      .bg_img{
+        border: 2px solid $base--color;
+      }
+  }
+  @media only screen and (max-width: 991px) {
+      .card-custom {
+          width: 430px;
+          height: 270px;
+      }
+      .card-custom-area{
+          padding-bottom: 30px;
+      }
+  }
+  @media only screen and (max-width: 576px) {
+      .dashboard-area .title {
+          font-weight: 600;
+          font-size: 25px;
+          padding-bottom: 10px;
+      }
+      .card-custom {
+          width: 100%;
+          height: 250px;
+      }
+  }
+  .card-header-title{
+    .icon{
+       background-color: $base--color;
+       color: $white;
+       font-size: 25px;
+       line-height: 36px;
+       width: 40px;
+       height: 40px;
+       text-align: center;
+       border-radius: 50%;
+       margin-right: 10px;
+    }
+  }
+
+  .flip {
+  width: inherit;
+  height: inherit;
+  transition: 0.7s;
+  transform-style: preserve-3d;
+  }
+  .front,
+  .back {
+  position: absolute;
+  width: inherit;
+  height: inherit;
+  border-radius: 15px;
+  color: $color--heading;
+  text-shadow: 0 1px 1px rgba(0,0,0,0.3);
+  backface-visibility: hidden;
+  background-image: linear-gradient(to right, #ffffff, #ffffff);
+  overflow: hidden;
+  }
+  .front {
+  transform: translateZ(0);
+  }
+  .logo {
+      position: absolute;
+      top: 20px;
+      right: 25px;
+      width: 35px;
+      height: 35px;
+  }
+  .investor {
+  position: relative;
+  top: 30px;
+  left: 25px;
+  text-align: left;
+  text-transform: uppercase;
+  color: $base--color;
+  }
+  .chip {
+  position: relative;
+  top: 60px;
+  left: 25px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 50px;
+  height: 40px;
+  border-radius: 5px;
+  background-image: linear-gradient(to bottom left, #ffecc7, #d0b978);
+  overflow: hidden;
+  }
+  .chip .chip-line {
+  position: absolute;
+  width: 100%;
+  height: 1px;
+  background-color: #333;
+  }
+  .chip .chip-line:nth-child(1) {
+  top: 13px;
+  }
+  .chip .chip-line:nth-child(2) {
+  top: 20px;
+  }
+  .chip .chip-line:nth-child(3) {
+  top: 28px;
+  }
+  .chip .chip-line:nth-child(4) {
+  left: 25px;
+  width: 1px;
+  height: 50px;
+  }
+  .chip .chip-main {
+  width: 20px;
+  height: 25px;
+  border: 1px solid #333;
+  border-radius: 3px;
+  background-image: linear-gradient(to bottom left, #efdbab, #e1cb94);
+  z-index: 1;
+  }
+  .wave {
+  position: relative;
+  top: 20px;
+  left: 100px;
+  fill: #000;
+  }
+  .card-number {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 40px 25px 10px;
+  font-size: 23px;
+  font-family: 'cc font', monospace;
+  }
+  @media only screen and (max-width: 375px) {
+    .card-number{
+      font-size: 18px;
+    }
+  }
+  .end {
+  margin-left: 25px;
+  text-transform: uppercase;
+  text-align: left;
+  font-family: 'cc font', monospace;
+  }
+  @media only screen and (max-width: 375px) {
+    .end{
+      font-size: 18px;
+    }
+  }
+  .end .end-text {
+  font-size: 9px;
+  color: rgba(255,255,255,0.8);
+  }
+  .card-holder {
+  margin: 10px 25px;
+  text-transform: uppercase;
+  text-align: left;
+  font-family: 'cc font', monospace;
+  }
+  .master {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  display: flex;
+  }
+  .master .circle {
+  width: 25px;
+  height: 25px;
+  border-radius: 50%;
+  }
+  .master .master-red {
+  background-color: #eb001b;
+  }
+  .master .master-yellow {
+  margin-left: -10px;
+  background-color: rgba(255,209,0,0.7);
+  }
+  .card-custom.active .flip {
+  transform: rotateY(180deg);
+  }
+  .back {
+  transform: rotateY(180deg) translateZ(0);
+  background: #e7e7e7;
+  }
+  .back .strip-black {
+  position: absolute;
+  top: 30px;
+  left: 0;
+  width: 100%;
+  height: 50px;
+  background: #000;
+  }
+  .back .ccv {
+  position: absolute;
+  top: 110px;
+  left: 0;
+  right: 0;
+  height: 36px;
+  width: 90%;
+  padding: 10px;
+  margin: 0 auto;
+  border-radius: 5px;
+  text-align: right;
+  letter-spacing: 1px;
+  color: #000;
+  background: #fff;
+  }
+  .back .ccv label {
+  display: block;
+  margin: -40px 0 15px;
+  font-size: 10px;
+  text-transform: uppercase;
+  color: #000000;
+  }
+  .back .terms {
+  position: absolute;
+  top: 150px;
+  padding: 20px;
+  font-size: 10px;
+  text-align: justify;
+  color: #000000;
+  }
+  @-moz-keyframes flip {
+  0%, 100% {
+      transform: rotateY(0deg);
+  }
+  50% {
+      transform: rotateY(180deg);
+  }
+  }
+  @-webkit-keyframes flip {
+  0%, 100% {
+      transform: rotateY(0deg);
+  }
+  50% {
+      transform: rotateY(180deg);
+  }
+  }
+  @-o-keyframes flip {
+  0%, 100% {
+      transform: rotateY(0deg);
+  }
+  50% {
+      transform: rotateY(180deg);
+  }
+  }
+  @keyframes flip {
+  0%, 100% {
+      transform: rotateY(0deg);
+  }
+  50% {
+      transform: rotateY(180deg);
+  }
+  }
+   }
+}
+.account-area{
+   .dashboard-trx-table{
+    padding-top: 60px;
+    .table-responsive{
+      background-color: $section--bg;
+      border: 1px solid $border--base;
+      padding: 20px;
+      border-radius: 10px;
+    }
+   }
+}
+
+// KYC
+.custom-card{
+   .kyc-area{
+      background-color: $section--bg;
+      border: 1px solid $border--base;
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: $shadow--color;
+   }
+}
+
+// 2FA
+.tow-fa-security{
+   .card-body{
+      background-color: $section--bg;
+      border: 1px solid $border--base;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: $shadow--color;
+   }
+}
+
+// support-tickets
+.support-tickets{
+  background-color: $section--bg;
+  box-shadow: $shadow--color;
+  border-radius: 10px;
+}
+
+// add tickets
+.add-tickets{
+   .card-form{
+    background-color: $section--bg;
+    box-shadow: $shadow--color;
+    padding: 20px;
+    border-radius: 10px;
+   }
+}
+
+// statement
+.banking-statement{
+  margin-top: 20px;
+   background-color: $section--bg;
+   box-shadow: $shadow--color;
+   padding: 40px;
+   border-radius: 10px;
+   @media only screen and (max-width: 480px) {
+       padding: 30px 15px;
+    }
+   .filtaring-area{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 40px;
+      .dawonload-statement{
+             @media only screen and (max-width: 480px) {
+                  display: grid;
+            }
+          .dawonload-btn{
+              padding: 6px 20px;
+              @media only screen and (max-width: 480px) {
+                margin-bottom: 3px;
+             }
+          }
+      }
+   }
+}
+
+// Beneficiary
+.beneficiary-area{
+   .add-beneficiay-area{
+    text-align: end;
+    margin-top: 20px;
+   }
+   .beneficiary-list{
+    margin-top: 40px;
+   }
+   .dashboard-list-right-btn{
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    margin: -2px;
+    margin-left: 20px;
+        
+      .edit-btn{
+         padding: 6px 15px;
+         margin: 2px;
+      }
+      .delate-btn{
+        padding: 6px 15px;
+        background-color: #eb001b;
+        margin: 2px;
+      }
+   }
+}
+.add-beneficiary-area{
+    .card-body{
+      background-color: $section--bg;
+      box-shadow: $shadow--color;
+      border: 1px solid $border--base;
+    }
+}
+
+// money transfer
+.dashboard-list-item-wrapper.selected {
+  background-color: #3e8afb42;
+}
+
+.transfer-money-area{
+   .card-form,.preview-list-wrapper{
+      background-color: $section--bg;
+      box-shadow: $shadow--color;
+      border-radius: 10px;
+      padding: 30px;
+      @media only screen and (max-width: 420px) {
+        padding: 10px;
+      }
+   }
+   .sending-form-logo{
+    width: 140px;
+    margin: 0 auto;
+    padding-bottom: 20px;
+   }
+}
+
+.transfer-preview{
+  background-color: $section--bg;
+  box-shadow: $shadow--color;
+  padding: 30px;
+  border: 1px solid $border--base;
+  border-radius: 10px;
+}
+
+.transfer-money-btn{
+   padding-top: 40px;
+}
+
+// payment conformation
+.payment-conformation{
+   background-color: $section--bg;
+   box-shadow: $shadow--color;
+   padding: 40px;
+   border-radius: 10px;
+}
+.payment-loader-wrapper {
+  text-align: center;
+}
+.payment-loader-wrapper .title {
+  margin-top: 20px;
+  margin-bottom: 20px;
+}
+
+.checkmark {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: block;
+  stroke-width: 2;
+  stroke: $base--color;
+  stroke-miterlimit: 10;
+  box-shadow: inset 0px 0px 0px var(--primary-color);
+  animation: fill 0.4s ease-in-out 0.4s forwards, scale 0.3s ease-in-out 0.9s both;
+  margin: 0 auto;
+}
+
+.checkmark__circle {
+  stroke-dasharray: 166;
+  stroke-dashoffset: 166;
+  stroke-width: 2;
+  stroke-miterlimit: 10;
+  stroke: var(--primary-color);
+  fill: none;
+  animation: stroke 0.6s cubic-bezier(0.65, 0, 0.45, 1) forwards;
+}
+
+.checkmark__check {
+  transform-origin: 50% 50%;
+  stroke-dasharray: 48;
+  stroke-dashoffset: 48;
+  animation: stroke 0.3s cubic-bezier(0.65, 0, 0.45, 1) 0.8s forwards;
+}
+
+@-webkit-keyframes stroke {
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes stroke {
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes scale {
+  0%, 100% {
+            transform: none;
+  }
+  50% {
+            transform: scale3d(1.1, 1.1, 1);
+  }
+}
+@-webkit-keyframes fill {
+  100% {
+            box-shadow: inset 0px 0px 0px 30px var(--primary-color);
+  }
+}
+@keyframes fill {
+  100% {
+            box-shadow: inset 0px 0px 0px 30px var(--primary-color);
+  }
+}
+
+.recive-dwonload-btn{
+   .recive-btn{
+      background-color: rgb(41, 73, 216);
+      color: $white;
+      padding: 5px 8px;
+      border-radius: 6px;
+      width: 85px;
+      text-align: center;
+   }
+}
+
+
+// scrollbar
+.select-scrollbar{
+  .list{
+    height: auto;
+  }
+}
+
+// exchange-rate
+.amount-form-header{
+   background-color: $base--color;
+   padding: 20px 10px;
+   border-radius: 10px;
+   text-align: center;
+   margin-bottom: 20px;
+   .title,.rate{
+    color: $white;
+   }
+}
+.currency-type{
+  position: relative;
+  input{
+    border-radius: 5px !important;
+    padding-right: 72px;
+  }
+  .currency{
+    position: absolute;
+    right: 0;
+    background-color: $base--color;
+    color: $white;
+    border-radius: 0px 5px 5px 0px;
+    padding: 11px 13px;
+  }
+}
