@@ -22,8 +22,6 @@ RewriteRule ^(.*)$ public/$1 [L]
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteRule ^ index.php [L]
 
-    # cors
-    Header set Access-Control-Allow-Origin "*"
 </IfModule>
 
 # Hide a specific file

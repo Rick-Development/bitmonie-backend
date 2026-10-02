@@ -1,0 +1,368 @@
+{
+	"info": {
+		"_postman_id": "9e82cc5b-b98c-499e-8747-2de2ae8821a2",
+		"name": "Cryptomart Mobile API",
+		"description": "API Documentation for Cryptomart Mobile App features including Biometrics, KYC, and Piggyvest-style Savings.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Auth",
+			"item": [
+				{
+					"name": "Register User",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Accept", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"firstname\": \"John\",\n    \"lastname\": \"Doe\",\n    \"email\": \"john@example.com\",\n    \"mobile\": \"1234567890\",\n    \"country\": \"United States\",\n    \"password\": \"password123\",\n    \"password_confirmation\": \"password123\",\n    \"agree\": \"on\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{base_url}}/api/register",
+							"host": ["{{base_url}}"],
+							"path": ["api", "register"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Login User",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Accept", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"username\": \"john@example.com\",\n    \"password\": \"password123\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{base_url}}/api/login",
+							"host": ["{{base_url}}"],
+							"path": ["api", "login"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Password Forgot - Find User",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Accept", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"credentials\": \"john@example.com\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{base_url}}/api/password/forgot/find/user",
+							"host": ["{{base_url}}"],
+							"path": ["api", "password", "forgot", "find", "user"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Biometric Register",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Accept", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{token}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"credential_id\": \"cred_12345\",\n    \"public_key\": \"ssh-rsa AAAA...\",\n    \"device_name\": \"iPhone 13\",\n    \"device_id\": \"uuid-1234-5678\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{base_url}}/api/auth/biometric/register",
+							"host": ["{{base_url}}"],
+							"path": ["api", "auth", "biometric", "register"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Biometric Login",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Accept", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"credential_id\": \"cred_12345\",\n    \"signature\": \"base64_sig...\",\n    \"payload\": \"random_nonce_timestamp\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{base_url}}/api/auth/biometric/login",
+							"host": ["{{base_url}}"],
+							"path": ["api", "auth", "biometric", "login"]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "KYC",
+			"item": [
+				{
+					"name": "Initiate Verification",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Accept", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{token}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"first_name\": \"John\",\n    \"last_name\": \"Doe\",\n    \"email\": \"john@example.com\",\n    \"dob\": \"1990-01-01\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{base_url}}/api/kyc/initiate",
+							"host": ["{{base_url}}"],
+							"path": ["api", "kyc", "initiate"]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Savings",
+			"item": [
+				{
+					"name": "Flex - Get Details",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Accept", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{token}}" }
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/savings/flex",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "savings", "flex"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Flex - Deposit",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Accept", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{token}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"amount\": 5000\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/savings/flex/deposit",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "savings", "flex", "deposit"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Flex - Withdraw",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Accept", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{token}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"amount\": 2000\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/savings/flex/withdraw",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "savings", "flex", "withdraw"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "SafeLock - List Plans",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Accept", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{token}}" }
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/savings/safelock/plans",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "savings", "safelock", "plans"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "SafeLock - Create",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Accept", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{token}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"title\": \"My Vacation\",\n    \"amount\": 10000,\n    \"plan_id\": 1\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/savings/safelock/create",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "savings", "safelock", "create"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "SafeLock - List Active",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Accept", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{token}}" }
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/savings/safelock",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "savings", "safelock"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "SafeLock - Break",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Accept", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{token}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"lock_id\": 1\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/savings/safelock/break",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "savings", "safelock", "break"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Target - List Active",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Accept", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{token}}" }
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/savings/target",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "savings", "target"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Target - Create",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Accept", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{token}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"title\": \"Wedding Fund\",\n    \"target_amount\": 500000,\n    \"target_date\": \"2024-12-31\",\n    \"frequency\": \"monthly\",\n    \"auto_save_amount\": 5000\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/savings/target/create",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "savings", "target", "create"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Target - Quick Save",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Accept", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{token}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"target_id\": 1,\n    \"amount\": 2000\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/savings/target/quick-save",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "savings", "target", "quick-save"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Target - Break",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Accept", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{token}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"target_id\": 1\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/savings/target/break",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "savings", "target", "break"]
+						}
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "https://cryptomart.billway.ng"
+		},
+		{
+			"key": "token",
+			"value": "YOUR_BEARER_TOKEN_HERE"
+		}
+	]
+}

@@ -17,6 +17,7 @@ class AuthGuard
      */
     public function handle(Request $request, Closure $next)
     {
+    
         if(auth()->guard("api")->check()) return Response::error(['You are already authenticated user']);
         return $next($request);
     }

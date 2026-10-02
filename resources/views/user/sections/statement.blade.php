@@ -68,8 +68,7 @@
                         <th>{{__('Transaction ID')}}</th>
                         <th>{{__('Transaction Type')}}</th>
                         <th>{{ __('Amount') }}</th>
-                        <th>{{ __('Charge') }}</th>
-                        <th>{{ __('Payable Amount') }}</th>
+                        <th>{{ __('Fees') }}</th>
                         <th>{{ __('Balance') }}</th>
                         <th>{{ __('Type') }}</th>
                         <th>{{ __('Status') }}</th>
@@ -79,29 +78,16 @@
                 <tbody>
                     @forelse ($transactions  as $key => $item)
                     <tr>
-                        <td>{{ $item->trx_id }}</td>
-                        <td>{{ $item->type }}</td>
-                        <td>{{ get_amount($item->request_amount, $item->request_currency) }}</td>
+                        <td>{{ $item['transaction_id_reference'] }}</td>
+                        <td>{{ $item['transaction_type'] }}</td>
+                        <td>{{ get_amount($item['amount'], $item['currency']) }}</td>
+                        <td>{{ get_amount($item['fees'], $item['currency']) }}</td>
+                        <td>{{ $item['balance_after'] !== null ? get_amount($item['balance_after'], $item['currency']) : 'N/A' }}</td>
+                        <td>{{ $item['direction'] }}</td>
                         <td>
-                            @if ($item->userTrxType == payment_gateway_const()::SEND)
-                                {{ get_amount($item->total_charge, $item->request_currency) }}
-                            @else
-                            N/A
-                            @endif
+                            <span>{{ __($item['status']) }}</span>
                         </td>
-                        <td>
-                            @if ($item->userTrxType == payment_gateway_const()::SEND)
-                                {{ get_amount($item->total_payable, $item->request_currency) }}
-                            @else
-                                N/A
-                            @endif
-                        </td>
-                        <td>{{ get_amount($item->available_balance, $item->request_currency) }}</td>
-                        <td>{{ $item->userTrxType }}</td>
-                        <td>
-                            <span>{{ __($item->string_status->value) }}</span>
-                        </td>
-                        <td>{{ $item->created_at->format('d-m-y h:i:s A') }}</td>
+                        <td>{{ $item['transaction_date_time'] }}</td>
                     </tr>
                     @empty
                         @include('admin.components.alerts.empty',['colspan' => 11])

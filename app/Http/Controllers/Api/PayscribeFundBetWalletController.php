@@ -9,9 +9,11 @@ use App\Http\Helpers\Payscribe\BillsPayments\BillPaymentHelper;
 use App\Models\Transaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use App\Traits\Notify;
 
 class PayscribeFundBetWalletController extends Controller
 {
+    use Notify;
 
     private $billType = 'Bet Wallet';
 
@@ -53,13 +55,31 @@ class PayscribeFundBetWalletController extends Controller
 
         $response = json_decode($this->fundBetWalletHelper->fundWallet($data), true);
 
-        if($response['status'] === true){
+        if(isset($response['status']) && $response['status'] === true){
             $this->payscribeBalanceHelper->createTransaction($data, $response, $this->billType);
-            $this->sendBillPaymentEmail($data['amount'], $this->billType);
+            
+            $user = auth()->user();
+            
+            // Notify User using the Notify trait instead of the missing sendBillPaymentEmail method
+            $this->sendNotification(
+                user: $user,
+                templateKey: 'BET_WALLET_FUND_SUCCESS',
+                params: [
+                    'user' => $user->firstname,
+                    'amount' => number_format($data['amount']),
+                    'customer_name' => $data['customer_name'],
+                    'customer_id' => $data['customer_id'],
+                    'reference' => $response['message']['details']['ref'] ?? $referenceIdString,
+                    'status' => 'Successful',
+                ],
+                channels: ['mail', 'inapp'],
+                options: [
+                    'referenceId' => $response['message']['details']['ref'] ?? $referenceIdString,
+                ]
+            );
         }
         return $response;
 
     }
-
 
 }

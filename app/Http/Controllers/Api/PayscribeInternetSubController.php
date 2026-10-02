@@ -10,21 +10,24 @@ use App\Http\Helpers\Payscribe\BillsPayments\BillPaymentHelper;
 use App\Models\Transaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use App\Traits\Notify;
 
 class PayscribeInternetSubController extends Controller
 {
+    use Notify;
+
     private $billType = 'Internet Subscription';
 
     //
     public function __construct(private InternetSubscriptionHelper $internetSubHelper, private PayscribeBalanceHelper $payscribeBalanceHelper, private BillPaymentHelper $billPaymentHelper ){}
 
     public function internetServices() {
-        $response =  $response = json_decode($this->internetSubHelper->listInternetServices(), true);
+        $response = json_decode($this->internetSubHelper->listInternetServices(), true);
         return $response;
     }
 
     public function spectranetPinPlans() {
-        $response =  $response = json_decode($this->internetSubHelper->spectranetPinPlans(), true);
+        $response = json_decode($this->internetSubHelper->spectranetPinPlans(), true);
         return $response;
 
     }
@@ -46,11 +49,30 @@ class PayscribeInternetSubController extends Controller
         $referenceIdString = (string) $referenceId . '-auto_bill';
         $data = array_merge($data, ['ref' => $referenceIdString]);
 
-        $response =  $response = json_decode($this->internetSubHelper->purchaseSpectranetPins($data), true);
+        $response = json_decode($this->internetSubHelper->purchaseSpectranetPins($data), true);
 
-        if($response['status'] === true){
+        if(isset($response['status']) && $response['status'] === true){
             $this->payscribeBalanceHelper->createTransaction($data, $response, $this->billType);
-            $this->sendBillPaymentEmail($data['amount'], $this->billType);
+            
+            $user = auth()->user();
+
+            // Notify User using the Notify trait instead of the missing sendBillPaymentEmail method
+            $this->sendNotification(
+                user: $user,
+                templateKey: 'INTERNET_SUB_SUCCESS',
+                params: [
+                    'user' => $user->firstname,
+                    'amount' => number_format($data['amount']),
+                    'plan_id' => $data['plan_id'],
+                    'qty' => $data['qty'],
+                    'reference' => $response['message']['details']['ref'] ?? $referenceIdString,
+                    'status' => 'Successful',
+                ],
+                channels: ['mail', 'inapp'],
+                options: [
+                    'referenceId' => $response['message']['details']['ref'] ?? $referenceIdString,
+                ]
+            );
         }
 
         return $response;
@@ -83,14 +105,14 @@ class PayscribeInternetSubController extends Controller
 
         //TODO : confirm form docs..
         $data = $request->validate([
-            "service"=> "smile",
-            "vend_type"=> "subscription",
-            "code"=>"Z0RzQWovR3Y5RndoY2hRUHJMWkkyVG0zRklVcWxjVEFqZllvYjk3eW1RaXdGRTFmTnBqZEpEa1cyc2Fxd29vNw==",
-            "phone"=> "07038067493",
-            "productCode"=> "CE91947F8855E210DE4DFCC2DF76E5411B3EF657|eyJzZXJ2aWNlIjoic21pbGUiLCJjaGFubmVsIjoiQjJCIiwidHlwZSI6ImFjY291bnQiLCJhY2NvdW50IjoiMTkwNDAwMzI5MyIsImF1dGgiOnsiaXNzIjoiaXRleHZhcyIsInN1YiI6IjkxNjE4NjM1Iiwid2FsbGV0IjoiOTE2MTg2MzUiLCJ0ZXJtaW5hbCI6IjkxNjE4NjM1IiwidXNlcm5hbWUiOiJwaGlsbzR1MmNAZ21haWwuY29tIiwiaWRlbnRpZmllciI6Inplcm9uZXMiLCJrZXkiOiJhZTQ3YWI5NGMwZTIwNjUwYjMyODk2YjRhMzcxZDU2NiIsInZlbmRUeXB9tZXIgVmFsaWRhdGlvbiBTdWNjZXNzZnVsIn0%3D",
-            "ref"=> "my-system-transaction-id"
-
+            "service"=> "required|string",
+            "vend_type"=> "required|string",
+            "code"=>"required|string",
+            "phone"=> "required|string",
+            "productCode"=> "required|string",
+            "ref"=> "sometimes|string"
         ]);
+        
         $reposne = $this->internetSubHelper->payInternetSubscription($data);
         return $reposne;
 

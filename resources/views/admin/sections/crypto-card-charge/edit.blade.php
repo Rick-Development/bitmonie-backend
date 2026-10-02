@@ -1,0 +1,210 @@
+@extends('admin.layouts.master')
+
+@section('page-title')
+
+
+@include('admin.components.page-title', [
+    'title' => __($page_title)
+])
+
+
+@endsection
+
+@section('breadcrumb')
+
+
+@include('admin.components.breadcrumb', [
+    'breadcrumbs' => [
+        [
+            'name' => __("Dashboard"),
+            'url' => setRoute("admin.dashboard"),
+        ],
+        [
+            'name' => __("Crypto Card Charges"),
+            'url' => setRoute("admin.crypto-card-charge.index"),
+        ],
+    ],
+    'active' => __("Edit Charges")
+])
+
+
+@endsection
+
+@section('content')
+
+
+<div class="row mb-30-none">
+
+    <div class="col-xl-12 col-lg-12 mb-30">
+
+        <div class="card">
+
+            <div class="card-header bg--primary">
+
+                <h5 class="card-title text-white">
+                    {{ __("Crypto Card Charges") }}
+                </h5>
+
+            </div>
+
+            <div class="card-body">
+
+                <form
+                    action="{{ setRoute('admin.crypto-card-charge.update') }}"
+                    method="POST"
+                >
+
+                    @csrf
+                    @method('PUT')
+
+                    <div class="row">
+
+                        <div class="col-xl-6 col-lg-6 form-group">
+
+                            <label>
+                                {{ __("Physical Card Fee") }}
+                                <span class="text--danger">*</span>
+                            </label>
+
+                            <div class="input-group">
+
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    class="form-control"
+                                    name="physical_card_fee"
+                                    value="{{ old('physical_card_fee', $setup?->physical_card_fee ?? 0) }}"
+                                    required
+                                >
+
+                                <span class="input-group-text">
+                                    {{ __("USDT") }}
+                                </span>
+
+                            </div>
+
+                            <small class="text--muted">
+                                {{ __("The fee charged for issuing or obtaining a physical crypto card.") }}
+                            </small>
+
+                        </div>
+
+                        <div class="col-xl-6 col-lg-6 form-group">
+
+                            <label>
+                                {{ __("Card Issuance Fee") }}
+                                <span class="text--danger">*</span>
+                            </label>
+
+                            <div class="input-group">
+
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    class="form-control"
+                                    name="card_issuance_fee"
+                                    value="{{ old('card_issuance_fee', $setup?->card_issuance_fee ?? 0) }}"
+                                    required
+                                >
+
+                                <span class="input-group-text">
+                                    {{ __("USDT") }}
+                                </span>
+
+                            </div>
+
+                            <small class="text--muted">
+                                {{ __("The fee charged when a crypto card is issued.") }}
+                            </small>
+
+                        </div>
+
+                        <div class="col-xl-6 col-lg-6 form-group">
+
+                            <label>
+                                {{ __("Card Funding Fee") }}
+                                <span class="text--danger">*</span>
+                            </label>
+
+                            <div class="input-group">
+
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    class="form-control"
+                                    name="card_funding_fee"
+                                    value="{{ old('card_funding_fee', $setup?->card_funding_fee ?? 0) }}"
+                                    required
+                                >
+
+                                <span class="input-group-text">
+                                    {{ __("USDT") }}
+                                </span>
+
+                            </div>
+
+                            <small class="text--muted">
+                                {{ __("The fee charged when funds are added to a crypto card.") }}
+                            </small>
+
+                        </div>
+
+                        <div class="col-xl-6 col-lg-6 form-group">
+
+                            <label>
+                                {{ __("Monthly Card Maintenance Fee") }}
+                                <span class="text--danger">*</span>
+                            </label>
+
+                            <div class="input-group">
+
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    class="form-control"
+                                    name="monthly_card_maintenance_fee"
+                                    value="{{ old('monthly_card_maintenance_fee', $setup?->monthly_card_maintenance_fee ?? 0) }}"
+                                    required
+                                >
+
+                                <span class="input-group-text">
+                                    {{ __("USDT") }}
+                                </span>
+
+                            </div>
+
+                            <small class="text--muted">
+                                {{ __("The recurring monthly fee charged for maintaining an active crypto card.") }}
+                            </small>
+
+                        </div>
+
+                    </div>
+
+                    <div class="col-xl-12 col-lg-12 form-group">
+
+                        <button
+                            type="submit"
+                            class="btn btn--primary w-100"
+                        >
+                            {{ __("Update Charges") }}
+                        </button>
+
+                    </div>
+
+                </form>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+@endsection

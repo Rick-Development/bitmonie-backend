@@ -55,6 +55,7 @@ class LoginController extends Controller
             'password'      => 'required|string',
         ]);
 
+
         // if user exists with banner
         if(User::where($this->username(),$request->credentials)->where('status',GlobalConst::BANNED)->exists()) {
             throw ValidationException::withMessages([

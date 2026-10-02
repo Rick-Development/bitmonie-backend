@@ -82,6 +82,7 @@ class PushNotificationController extends Controller
 
         $methodDristribute = [
             'pusher'        => "sendNotificationWithPusher",
+            'firebase'      => "sendNotificationWithFirebase",
         ];
 
         if(!array_key_exists($saved_method,$methodDristribute)) {
@@ -232,4 +233,87 @@ class PushNotificationController extends Controller
         return back()->with(['success' => ['Push notification configuration updated successfully!']]);
     }
 
+    /**
+     * Function for send push notification via Firebase
+     * @param array $data
+     * @return back URL
+     */
+    public function sendNotificationWithFirebase($data) {
+        $basic_settings = \App\Providers\Admin\BasicSettingsProvider::get();
+        if(!$basic_settings) {
+            return back()->with(['error' => ['Opps! Basic settings not found!']]);
+        }
+
+        $notification_config = $basic_settings->push_notification_config;
+        if(!$notification_config) {
+            return back()->with(['error' => ['Sorry! You have to configure first to send push notification.']]);
+        }
+
+        $serverKey = $notification_config->server_key ?? null;
+        if($serverKey == null) {
+            return back()->with(['error' => ['Sorry! You have to configure first to send push notification.']]);
+        }
+
+        // Notification Data
+        $notification_data = [
+            'title'     => $data['title'] ?? "",
+            'body'      => $data['body'] ?? "",
+            'icon'      => get_fav($basic_settings),
+        ];
+
+        // Get all users tokens
+        $userTokens = \App\Models\FireBaseToken::where('tokenable_type', \App\Models\User::class)->get();
+        $adminTokens = \App\Models\FireBaseToken::where('tokenable_type', \App\Models\Admin\Admin::class)->get();
+        $allTokens = array_merge($userTokens->pluck('token')->toArray(), $adminTokens->pluck('token')->toArray());
+        
+    
+        $allTokens = array_unique($allTokens);
+
+        if(empty($allTokens)) {
+            return back()->with(['error' => ['No users found with active push tokens.']]);
+        }
+
+        // Chunk tokens to avoid 1000 limit of FCM
+        $tokenChunks = array_chunk($allTokens, 1000);
+
+        $response = null;
+
+        try {
+            foreach($tokenChunks as $chunk) {
+                $payload = [
+                    "registration_ids" => $chunk,
+                    "notification" => $notification_data,
+                    "data" => [
+                        "foreground" => 1,
+                        "background" => 1,
+                        "click_action" => null
+                    ],
+                    "priority" => "high"
+                ];
+
+                $response = \Illuminate\Support\Facades\Http::withHeaders([
+                    'Authorization' => 'key=' . $serverKey,
+                    'Content-Type'  => 'application/json',
+                ])->post('https://fcm.googleapis.com/fcm/send', $payload);
+            }
+
+        } catch(Exception $e) {
+             return back()->with(['error' => ['Something went wrong! Please try again.']]);
+        }
+
+        // Insert notification record to database
+        try{
+            $push_notification_record = [
+                'method'        => "firebase",
+                'response'      => $response ? $response->body() : 'No tokens',
+                'message'       => $notification_data,
+                'send_by'       => \Illuminate\Support\Facades\Auth::user()->id,
+            ];
+            PushNotificationRecord::create($push_notification_record);
+        }catch(Exception $e) {
+            return back()->with(['error' => ['Opps! Faild to store information.']]);
+        }
+
+        return back()->with(['success' => ['Notification sent successfully!']]);
+    }
 }

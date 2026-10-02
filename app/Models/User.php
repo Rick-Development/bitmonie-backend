@@ -8,6 +8,9 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Passport\HasApiTokens;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Models\KycVerification;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class User extends Authenticatable
 {
@@ -29,6 +32,7 @@ class User extends Authenticatable
     protected $hidden = [
         'password',
         'remember_token',
+        'login_pin',
     ];
 
     /**
@@ -45,6 +49,7 @@ class User extends Authenticatable
         'mobile'              => 'string',
         'full_mobile'         => 'string',
         'account_no'          => 'string',
+        'login_pin'           => 'string',
         'pin_status'          => 'integer',
         'pin_code'            => 'string',
         'password'            => 'string',
@@ -73,6 +78,7 @@ class User extends Authenticatable
         'payscribe_tier' => 'string',
         'payscribe_customer_phone' => 'string',
         'payscribe_customer_country' => 'string',
+        'busha_recipient_id' => 'string',
     ];
 
     public function scopeEmailUnverified($query)
@@ -111,6 +117,28 @@ class User extends Authenticatable
     public function getFullnameAttribute()
     {
         return $this->firstname . ' ' . $this->lastname;
+    }
+
+    public function getFullMobileAttribute($value)
+    {
+        $mobile = $value;
+        if (empty($mobile) && !empty($this->mobile_code) && !empty($this->mobile)) {
+            $mobile = $this->mobile_code . $this->mobile;
+        }
+        if (empty($mobile)) {
+            $mobile = $this->mobile;
+        }
+
+        if ($mobile) {
+            if (preg_match('/^234[789]\d{9}$/', $mobile)) {
+                return '+' . $mobile;
+            }
+            if (preg_match('/^[789]\d{9}$/', $mobile)) {
+                return '0' . $mobile;
+            }
+        }
+
+        return $mobile;
     }
 
     public function wallet()
@@ -212,8 +240,107 @@ class User extends Authenticatable
     }
 
     public function wallets()
+    {
+        return $this->hasMany(UserWallet::class, 'user_id');
+    }
+
+    public function biometricDevices()
+    {
+        return $this->hasMany(UserBiometricDevice::class);
+    }
+
+    public function virtualAccounts()
+    {
+        return $this->hasMany(VirtualAccounts::class, 'user_id');
+    }
+
+    public function p2pUserStat()
+    {
+        return $this->hasOne(P2PUserStat::class, 'user_id');
+    }
+
+    public function p2pAds()
+    {
+        return $this->hasMany(P2PAd::class, 'user_id');
+    }
+
+    public function p2pOrders()
+    {
+        return $this->hasMany(P2POrder::class, 'maker_id');
+    }
+
+    public function p2pOrdersAsTaker()
+    {
+        return $this->hasMany(P2POrder::class, 'taker_id');
+    }
+
+    public function p2pPaymentMethods()
+    {
+        return $this->hasMany(P2PPaymentMethod::class, 'user_id');
+    }
+
+    public function easyearnWallet()
+    {
+        return $this->hasOne(UsdtEasyearnWallet::class, 'user_id');
+    }
+
+    public function easyEarnPlans()
+    {
+        return $this->hasMany(EasyEarnPlan::class, 'user_id');
+    }
+
+    public function easyEarnTransactions()
+    {
+        return $this->hasMany(EasyEarnTransaction::class, 'user_id');
+    }
+
+    public function walletLedger()
+    {
+        return $this->hasMany(WalletLedger::class, 'user_id');
+    }
+
+    public function walletWithdrawalRequests()
+    {
+        return $this->hasMany(WalletWithdrawalRequest::class, 'user_id');
+    }
+
+    public function commissionWallets()
+    {
+        return $this->hasMany(CommissionWallet::class, 'user_id');
+    }
+
+    public function sharedReferralCommissions()
+    {
+        return $this->hasMany(ReferralCommission::class, 'referrer_user_id');
+    }
+
+    public function merchantApplications()
+    {
+        return $this->hasMany(MerchantApplication::class, 'user_id');
+    }
+    public function inAppNotifications()
 {
-    return $this->hasMany(UserWallet::class, 'user_id');
+    return $this->hasMany(
+        InAppNotification::class,
+        'user_id'
+    );
+}
+/**
+ * Get the user's multi-currency wallets.
+ */
+public function multicurrencyWallets(): HasMany
+{
+    return $this->hasMany(
+        MultiCurrencyWallet::class,
+        'user_id'
+    );
+}
+public function user_kyc(){
+     return $this->hasOne(
+        KycVerification::class,
+        'user_id',
+        'id'
+    );
 }
 
 }

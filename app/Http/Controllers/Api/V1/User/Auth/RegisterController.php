@@ -16,6 +16,7 @@ use App\Http\Controllers\Controller;
 use App\Traits\User\RegisteredUsers;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Auth\Events\Registered;
 use App\Http\Resources\User\UserResource;
 use Illuminate\Support\Facades\Validator;
@@ -66,7 +67,11 @@ class RegisterController extends Controller
         $validated['sms_verified'] = ($basic_settings->sms_verification == true) ? false : true;
         $validated['kyc_verified'] = ($basic_settings->kyc_verification == true) ? false : true;
         $validated['password'] = Hash::make($validated['password']);
-        $validated['username'] = make_username($validated['firstname'], $validated['lastname']);
+
+        // Use provided username or auto-generate one
+        if (empty($validated['username'])) {
+            $validated['username'] = make_username($validated['firstname'], $validated['lastname']);
+        }
 
         if (User::where("username", $validated['username'])->exists())
             return Response::error([__('User already exists!')], [], 400);
@@ -79,35 +84,61 @@ class RegisterController extends Controller
 
         $validated['account_type'] = $validated['account_type'] ?? "";
         $validated['company_name'] = $validated['company_name'] ?? "";
-        try {
-            // Call Quidax API
-            $quidax_response = $this->quidax->createSubAccount([
-                'email' => $validated['email'],
-                'first_name' => $validated['firstname'],
-                'last_name' => $validated['lastname'],
-            ]);
+        $providerWarnings = [];
 
-            if (!isset($quidax_response['data'])) {
-                throw new \Exception("Invalid Quidax response");
+        try {
+            try {
+                $quidax_response = $this->quidax->createSubAccount([
+                    'email' => $validated['email'],
+                    'first_name' => $validated['firstname'],
+                    'last_name' => $validated['lastname'],
+                ]);
+
+                if (!isset($quidax_response['data'])) {
+                    throw new \Exception("Invalid Quidax response");
+                }
+
+                $quidax_data = $quidax_response['data'];
+                $validated['quidax_id'] = $quidax_data['id'] ?? null;
+                $validated['quidax_sn'] = $quidax_data['sn'] ?? null;
+                $validated['quidax_display_name'] = $quidax_data['display_name'] ?? null;
+                $validated['quidax_reference'] = $quidax_data['reference'] ?? null;
+            } catch (\Exception $e) {
+                $providerWarnings['quidax'] = $e->getMessage();
+                Log::warning('Registration continued without Quidax provisioning', [
+                    'email' => $validated['email'],
+                    'error' => $e->getMessage(),
+                ]);
             }
 
-            $quidax_data = $quidax_response['data'];
-
-            // Merge Quidax details into user payload
-            $validated['quidax_id'] = $quidax_data['id'] ?? null;
-            $validated['quidax_sn'] = $quidax_data['sn'] ?? null;
-            $validated['quidax_display_name'] = $quidax_data['display_name'] ?? null;
-            $validated['quidax_reference'] = $quidax_data['reference'] ?? null;
-
+            unset($validated['referral_code']);
             event(new Registered($user = $this->create($validated)));
+
+            if (!empty($request->referral_code)) {
+                try {
+                    app(\App\Services\ReferralService::class)->trackReferral($user, $request->referral_code);
+                } catch (\Exception $e) {
+                    \Illuminate\Support\Facades\Log::error("Failed to track referral API: " . $e->getMessage());
+                }
+            }
 
             $data = [
                 'first_name' => $validated['firstname'],
                 'last_name' => $validated['lastname'],
                 'email' => $validated['email'],
                 'phone' => $validated['mobile'],
+                'country' => $validated['country'] ?? null,
             ];
-            $this->createCustomer($data);
+            try {
+                $this->createCustomer($data);
+            } catch (\Exception $e) {
+                $providerWarnings['payscribe'] = $e->getMessage();
+                Log::warning('Registration continued without Payscribe customer provisioning', [
+                    'user_id' => $user->id,
+                    'email' => $validated['email'],
+                    'error' => $e->getMessage(),
+                ]);
+            }
 
             // $new_user = User::where('email', $validated['email'])->first();
             // $ngnAccountData = [
@@ -117,12 +148,6 @@ class RegisterController extends Controller
             //     "bank" => "9psb",
             // ];
             // $this->create_parmenent_virtual_account($ngnAccountData);
-
-            return response()->json([
-                'status'  => 'success',
-                'message' => 'User registered successfully',
-                'user'    => $user,
-            ]);
 
         } catch (\Exception $e) {
             return response()->json([
@@ -141,7 +166,6 @@ class RegisterController extends Controller
         }
 
         try {
-            $this->createUserWallets($user);
             $token = $user->createToken("auth_token")->accessToken;
         } catch (Exception $e) {
             return Response::error([__('Failed to generate user token! Please try again')], [], 500);
@@ -187,6 +211,7 @@ class RegisterController extends Controller
             'image_path' => get_files_public_path('user-profile'),
             'default_image' => get_files_public_path('default'),
             'user_info' => new UserResource($user),
+            'provider_warnings' => $providerWarnings,
             'authorization' => [
                 'status' => $status,
                 'token' => $auth_token,
@@ -215,12 +240,14 @@ class RegisterController extends Controller
             // 'account_type'      => 'required|in:personal,business',
             'firstname' => 'required|string|max:60',
             'lastname' => 'required|string|max:60',
+            'username' => 'nullable|string|min:3|max:30|alpha_dash|unique:users,username',
             'email' => 'required|string|email|max:150|unique:users,email',
             'country' => 'required|string|max:50',
             // 'company_name'      => "required_if:account_type," . GlobalConst::BUSINESS_ACCOUNT,
             'password' => $password_rule,
             'agree' => $agree_policy,
-            'mobile' => 'required|unique:users,mobile'
+            'mobile' => 'required|unique:users,mobile',
+            'referral_code' => 'nullable|string|max:20'
         ]);
     }
 
@@ -257,11 +284,13 @@ class RegisterController extends Controller
 
         $response = $this->payscribeCustomersHelper->createUser($data);
         // dd($response);
-        if ($response && $response['status'] == true) {
-            $user->payscribe_customer_id = $response['message']['details']['customer_id'];
-            $user->payscribe_tier = $response['message']['details']['tier'];
-            $user->payscribe_customer_phone = $response['message']['details']['phone'];
-            $user->payscribe_customer_country = $response['message']['details']['country'];
+        if ($response && ($response['status'] ?? false) == true) {
+            $details = $response['message']['details'] ?? [];
+
+            $user->payscribe_customer_id = $details['customer_id'] ?? $user->payscribe_customer_id;
+            $user->payscribe_tier = $details['tier'] ?? $user->payscribe_tier ?? 'tier_0';
+            $user->payscribe_customer_phone = $details['phone'] ?? $newUser['phone'] ?? $user->payscribe_customer_phone;
+            $user->payscribe_customer_country = $details['country'] ?? $newUser['country'] ?? $user->payscribe_customer_country;
 
             $user->save();
 
@@ -312,14 +341,17 @@ class RegisterController extends Controller
 
     public function create_user_wallet($new_user_data)
     {
-        \App\Models\UserWallet::create([
-            'uuid' => Str::uuid(),
-            'user_id' => $new_user_data['id'],
-            'balance' => '0.00000000',
-            'status' => true,
-            'currency_id' => '1',
-            'currency_code' => 'NGN'
-        ]);
+        \App\Models\UserWallet::firstOrCreate(
+            [
+                'user_id' => $new_user_data['id'],
+                'currency_code' => 'NGN',
+            ],
+            [
+                'balance' => '0.00000000',
+                'status' => true,
+                'currency_id' => '1',
+            ]
+        );
     }
 
 }

@@ -10,9 +10,12 @@ use App\Http\Helpers\Payscribe\BillsPayments\BillPaymentHelper;
 use App\Models\Transaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use App\Traits\Notify;
 
 class PayscribeEpinsController extends Controller
 {
+    use Notify;
+
     private $billType = 'Epins';
     public function __construct(private EpinsHelper $epinsHelper, private PayscribeBalanceHelper $payscribeBalanceHelper, private BillPaymentHelper $billPaymentHelper){}
 
@@ -47,14 +50,29 @@ class PayscribeEpinsController extends Controller
             }
 
             $response = json_decode($this->epinsHelper->purchaseEpins($data), true);
-            if($response['status'] === true){
+            if(isset($response['status']) && $response['status'] === true){
                 $this->payscribeBalanceHelper->createTransaction($data, $response, $this->billType);
                 $user = auth()->user();
-                $params = [
-                   'amount' => $data['amount'],
-                   'token' =>  $response['message']['details']['epins']['pin'],
-               ];
-               $this->mail($user, 'TOKEN_PURCHSED', $params);
+                
+                $pinDetails = $response['message']['details']['epins']['pin'] ?? ($response['message']['details']['pin'] ?? 'N/A');
+
+                // Notify User using the Notify trait
+                $this->sendNotification(
+                    user: $user,
+                    templateKey: 'EPIN_PURCHASE_SUCCESS',
+                    params: [
+                        'user' => $user->firstname,
+                        'amount' => number_format($data['amount']),
+                        'qty' => $data['qty'],
+                        'token' => is_array($pinDetails) ? json_encode($pinDetails) : $pinDetails,
+                        'reference' => $response['message']['details']['ref'] ?? $referenceIdString,
+                        'status' => 'Successful',
+                    ],
+                    channels: ['mail', 'inapp'],
+                    options: [
+                        'referenceId' => $response['message']['details']['ref'] ?? $referenceIdString,
+                    ]
+                );
             }
             return $response;
         }
@@ -78,7 +96,7 @@ class PayscribeEpinsController extends Controller
         $validateBalance = $this->payscribeBalanceHelper->validateBalance($data['amount']);
 
         if(!!$validateBalance){
-                return $validateBalance; // form safe heaven balance
+                return $validateBalance; // from safe heaven balance
         }
 
         // Transfer to safe heaven
@@ -119,7 +137,4 @@ class PayscribeEpinsController extends Controller
             ]);
         }
     }
-
-
-
 }

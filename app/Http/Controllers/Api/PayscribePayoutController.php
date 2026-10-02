@@ -9,9 +9,12 @@ use App\Http\Helpers\Payscribe\PayscribePayoutHelper;
 use App\Models\Transaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use App\Traits\Notify;
 
 class PayscribePayoutController extends Controller
 {
+    use Notify;
+
     private $modelPath = 'PayscribePayout';
 
     public function __construct(private PayscribePayoutHelper $payscribePayoutHelper, private PayscribeBalanceHelper $payscribeBalanceHelper){}
@@ -23,9 +26,7 @@ class PayscribePayoutController extends Controller
         ]);
         
         try {
-            $response = json_decode($this->payscribePayoutHelper->validateAccountBeforeInitiatingTransfer($data), 
-            true);
-
+            $response = json_decode($this->payscribePayoutHelper->validateAccountBeforeInitiatingTransfer($data), true);
             return $response;
         } 
         catch(\Exception $e){
@@ -41,22 +42,30 @@ class PayscribePayoutController extends Controller
             'amount' => 'required | string',
         ]);
         try {
-            $response = json_decode($this->payscribePayoutHelper->getPayoutsFee($data['amount']), 
-            true);
-            $fee = $response['message']['details']['fee'] + 10;
+            $response = json_decode($this->payscribePayoutHelper->getPayoutsFee($data['amount']), true);
+            
+            if (!isset($response['message']['details']['fee'])) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Unable to fetch payout fee at the moment.'
+                ], 422);
+            }
+
+            $baseFee = $response['message']['details']['fee'];
+            $fee = $baseFee + 10;
+
             return [
                 "status" => true,
                 "description" => "Transfer fee lookup successful.",
                 "message" => [
                     "details" => [
-                        "amount" => $response['message']['details']['amount'],
-                        "currency" => $response['message']['details']['currency'],
+                        "amount" => $response['message']['details']['amount'] ?? $data['amount'],
+                        "currency" => $response['message']['details']['currency'] ?? 'NGN',
                         "fee" => $fee,
                     ]
                 ],
-                "status_code" => $response['status_code'],
+                "status_code" => $response['status_code'] ?? 200,
             ];
-            // return $response;
         } 
         catch(\Exception $e){
             return response()->json([
@@ -66,33 +75,19 @@ class PayscribePayoutController extends Controller
         }
     }
     
-    
-    
     public function getpayoutFee($amount){
         try {
-            $response = json_decode($this->payscribePayoutHelper->getPayoutsFee($amount), 
-            true);
+            $response = json_decode($this->payscribePayoutHelper->getPayoutsFee($amount), true);
+            
+            if (!isset($response['message']['details']['fee'])) {
+                return 10; // Fallback fee
+            }
+
             $fee = $response['message']['details']['fee'] + 10;
-            return (double)$fee;
-            return [
-                "status" => true,
-                "description" => "Transfer fee lookup successful.",
-                "message" => [
-                    "details" => [
-                        "amount" => $response['message']['details']['amount'],
-                        "currency" => $response['message']['details']['currency'],
-                        "fee" => $fee,
-                    ]
-                ],
-                "status_code" => $response['status_code'],
-            ];
-            // return $response;
+            return (double) $fee;
         } 
         catch(\Exception $e){
-            return response()->json([
-                'status' => 'error',
-                'message' => $e->getMessage()
-            ]);
+            return 10.00;
         }
     }
 
@@ -105,26 +100,45 @@ class PayscribePayoutController extends Controller
             'currency' => 'required | string',
             'narration' => 'required | string',
         ]);
+
         $payoutFee = $this->getpayoutFee($data['amount']);
+        $totalAmountNeeded = floatval($data['amount']) + $payoutFee;
+
         $referenceId = Str::uuid();
         $referenceIdString = (string) $referenceId;
         $data = array_merge($data, ['ref' => $referenceIdString]);
 
         try {
-            $validateBalance = $this->payscribeBalanceHelper->validateBalance($data['amount']);
+            // Validate balance against total amount (amount + fee)
+            $validateBalance = $this->payscribeBalanceHelper->validateBalance($totalAmountNeeded);
             
             if(!!$validateBalance){
                 return $validateBalance;
             }
 
-            $response = json_decode($this->payscribePayoutHelper->transfer($data), 
-            true);
+            $response = json_decode($this->payscribePayoutHelper->transfer($data), true);
 
-            if($response['status'] === true){
-                
-                // $userId = \auth()->id();
-                // $user = User::where('id', $userId)->first();
-                $this->createTransaction($data, $response, $this->modelPath,$payoutFee); 
+            if(isset($response['status']) && $response['status'] === true){
+                $this->createTransaction($data, $response, $this->modelPath, $payoutFee); 
+
+                $user = auth()->user();
+
+                // Notify user using the Notify trait
+                $this->sendNotification(
+                    user: $user,
+                    templateKey: 'TRANSFER_SUCCESS',
+                    params: [
+                        'user' => $user->firstname,
+                        'amount' => number_format($data['amount']),
+                        'recipient' => $data['account'] . ' (' . $data['bank'] . ')',
+                        'reference' => $response['message']['details']['ref'] ?? $referenceIdString,
+                        'status' => 'Successful',
+                    ],
+                    channels: ['mail', 'inapp'],
+                    options: [
+                        'referenceId' => $response['message']['details']['ref'] ?? $referenceIdString,
+                    ]
+                );
             }
             return $response;
         } 
@@ -142,10 +156,7 @@ class PayscribePayoutController extends Controller
         ]);
 
         try {
-            $response = json_decode($this->payscribePayoutHelper->verifyTransfer($data), 
-            true);
-
-
+            $response = json_decode($this->payscribePayoutHelper->verifyTransfer($data), true);
             return $response;
         } 
         catch(\Exception $e){
@@ -154,34 +165,32 @@ class PayscribePayoutController extends Controller
                 'message' => $e->getMessage()
             ]);
         }
-        
     }
 
     private function createTransaction($request, $response, $modelPath, $fee = 0) {
+        $amount = $response['message']['details']['amount'] ?? $request['amount'];
+        $totalCharge = floatval($amount) + $fee;
         
-        
-        $amount =  $response['message']['details']['amount'];
-        $totalCharge = $amount + $fee;
         $user = auth()->user();
         $balance = $user->account_balance;
+        
         $user->update([
             'account_balance' => $balance - $totalCharge
         ]);
-        // $totalCharge = $response['message']['details']['total'];
-        $charge = $fee; //$response['message']['details']['fee'];
-        
-        // $balance = auth()->user()->account_balance - $totalCharge;
-        $transId = $response['message']['details']['trans_id'];
+
+        $charge = $fee;
+        $transId = $response['message']['details']['trans_id'] ?? $request['ref'];
+
         Transaction::create([
             'transactional_type' => $modelPath,
-            'user_id' => auth()->user()->id,
+            'user_id' => $user->id,
             'amount' => $amount,
             'currency' => 'NGN',
             'charge' => $charge,
             'trx_type' => '-',
-            'remarks' => $response['description'],
+            'remarks' => $response['description'] ?? 'Payout transfer',
             'trx_id' => $transId,
-            'transaction_status' => 'proccessing',
+            'transaction_status' => 'processing',
         ]);
     } 
 }

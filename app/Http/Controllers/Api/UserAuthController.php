@@ -11,6 +11,7 @@ use App\Traits\Notify;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
@@ -18,6 +19,7 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
 use App\Http\Helpers\Payscribe\PayscribeCustomersHelper;
 use App\Http\Helpers\Payscribe\Collections\NGNVirtualAccountsHelper;
+use App\Notifications\User\LoginNotification;
 
 class UserAuthController extends Controller
 {
@@ -146,7 +148,7 @@ class UserAuthController extends Controller
             $user = User::where('email', $credentials['username'])
                 ->orWhere('username', $credentials['username'])
                 ->first();
-
+dd('hii');
 
             if (!$user || !Hash::check($credentials['password'], $user->password)) {
                 return response()->json($this->withError('credentials do not match'));
@@ -160,7 +162,9 @@ class UserAuthController extends Controller
             $data['user'] = $user;
 
 
-            // $this->loginNotify($user);
+            Log::info('Triggering LoginNotification for user: ' . $user->id);
+            $user->notify(new LoginNotification($request->ip()));
+            Log::info('LoginNotification dispatched.');
 
             //   return response()->json([
             //     'status' => 'success',
@@ -211,7 +215,9 @@ class UserAuthController extends Controller
             $data['user'] = $user;
 
             // Notify the user of the login
-            // $this->loginNotify($user);
+            Log::info('Triggering LoginNotification (PIN) for user: ' . $user->id);
+            $user->notify(new LoginNotification($request->ip()));
+            Log::info('LoginNotification (PIN) dispatched.');
 
             return response()->json($this->withSuccess($data));
         } catch (\Exception $e) {

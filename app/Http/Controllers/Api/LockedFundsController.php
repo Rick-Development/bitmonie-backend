@@ -4,19 +4,21 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Helpers\Response;
 use App\Models\LockedFund;
+use App\Models\OrderTransaction;
+use App\Services\SavingsAutosaveSetupService;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 
 class LockedFundsController extends Controller
 {
-    public function lock(Request $request)
+    public function lock(Request $request, SavingsAutosaveSetupService $autosaveSetup)
     {
-        $validator = \Validator::make($request->all(), [
+        $validator = \Validator::make($request->all(), array_merge([
             'amount' => 'required|integer|min:1',
             // 'pin' => 'required|min:4',
             'reason' => 'required|string',
             'locked_until' => 'required|date'
-        ]);
+        ], $autosaveSetup->rules()));
 
         if ($validator->fails()) {
             return response()->json([
@@ -47,9 +49,37 @@ class LockedFundsController extends Controller
                     $request->locked_until
                 );
 
+            OrderTransaction::create([
+                'user_wallet_id' => $wallet->id,
+                'type' => 'debit',
+                'amount' => $request->amount,
+                'balance_after' => $wallet->fresh()->balance,
+                'reference' => 'locked-funds:' . $lock->id,
+                'metadata' => [
+                    'source' => 'savings',
+                    'savings_type' => 'locked_funds',
+                    'savings_id' => $lock->id,
+                    'reason' => $lock->reason,
+                ],
+            ]);
+
+            try {
+                $autosavePlan = $autosaveSetup->createForTarget($user, $lock, 'locked_funds', $request->input('autosave'), [
+                    'name' => 'Locked Funds AutoSave',
+                    'title' => $lock->reason,
+                    'maturity_date' => $lock->locked_until,
+                ]);
+            } catch (\InvalidArgumentException $e) {
+                return response()->json([
+                    'status' => false,
+                    'message' => $e->getMessage(),
+                ], 422);
+            }
+
             return Response::success('Funds locked successfully', [
                 'locked' => $lock,
-                'user' => $user
+                'user' => $user,
+                'autosave_plan' => $autosavePlan,
             ], 201);
 
         } catch (\Exception $e) {

@@ -10,9 +10,12 @@ use App\Http\Helpers\Payscribe\BillsPayments\BillPaymentHelper;
 use App\Models\Transaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use App\Traits\Notify;
 
 class PayscribelIntAirtimeDataController extends Controller
 {
+    use Notify;
+
     private $billType = 'Int Airtime/Data';
     public function __construct(private IntAirtimeDataHelper $intAirtimeDataHelper, private PayscribeBalanceHelper $payscribeBalanceHelper, private BillPaymentHelper $billPaymentHelper){}
 
@@ -100,9 +103,28 @@ class PayscribelIntAirtimeDataController extends Controller
             }
 
             $response = json_decode($this->intAirtimeDataHelper->vendIntBills($data), true);
-            if($response['status'] === true){
+            if(isset($response['status']) && $response['status'] === true){
                 $this->payscribeBalanceHelper->createTransaction($data, $response, $this->billType);
-                $this->sendBillPaymentEmail($data['amount'], $this->billType);
+                
+                $user = auth()->user();
+
+                // Notify User using the Notify trait instead of the missing sendBillPaymentEmail method
+                $this->sendNotification(
+                    user: $user,
+                    templateKey: 'INT_AIRTIME_DATA_SUCCESS',
+                    params: [
+                        'user' => $user->firstname,
+                        'amount' => number_format($data['amount']),
+                        'iso' => $data['iso'],
+                        'account' => $data['account'],
+                        'reference' => $response['message']['details']['ref'] ?? $referenceIdString,
+                        'status' => 'Successful',
+                    ],
+                    channels: ['mail', 'inapp'],
+                    options: [
+                        'referenceId' => $response['message']['details']['ref'] ?? $referenceIdString,
+                    ]
+                );
             }
             return $response;
         }
@@ -113,6 +135,4 @@ class PayscribelIntAirtimeDataController extends Controller
             ]);
         }
     }
-
-
 }

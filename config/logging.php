@@ -121,7 +121,25 @@ return [
         'tony' => [
             'driver' => 'single',
             'path' => storage_path('logs/tony.log'),
-        ]
+        ],
+'easyearn_usdt' => [
+    'driver' => 'daily',
+    'path' => storage_path('logs/easyearn_usdt.log'),
+    'level' => 'info',
+    'days' => 60,
+],
+ 'ramp_sell' => [
+        'driver' => 'daily',
+        'path' => storage_path('logs/ramp-sell.log'),
+        'level' => 'info',
+        'days' => 30,
+    ],
+    'sudo_cards' => [
+    'driver' => 'daily',
+    'path' => storage_path('logs/sudo_cards.log'),
+    'level' => env('LOG_LEVEL', 'debug'),
+    'days' => 30,
+],
     ],
 
 ];

@@ -25,6 +25,7 @@ class LoginController extends Controller
      * @return view
      */
     public function showLoginForm() {
+    
         return view('admin.auth.login');
     }
     /**
@@ -62,6 +63,7 @@ class LoginController extends Controller
      */
     protected function authenticated(Request $request, $user)
     {
+    
         $this->createLoginLog($user);
         $this->updateInfo($user);
         return redirect()->intended(route('admin.dashboard'));

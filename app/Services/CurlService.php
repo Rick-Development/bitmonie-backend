@@ -6,20 +6,28 @@ class CurlService
 {
     protected $baseUrl;
     protected $rampUrl;
+    protected $p2pUrl;
     protected $headers;
+    private ?string $PrivateKey = null;
 
-    public function __construct($baseUrl, $token = null, $rampUrl)
+    public function __construct($baseUrl, $privateKey = null, $token = null, $rampUrl = null, $p2pUrl = null)
     {
         $this->baseUrl = rtrim($baseUrl, '/');
-        $this->rampUrl = rtrim($rampUrl, '/');
+        $this->rampUrl = rtrim($rampUrl ?: $baseUrl, '/');
+        $this->p2pUrl = $p2pUrl ? rtrim($p2pUrl, '/') : null;
+        $this->PrivateKey = config('services.quidax.private');
+        
+
         $this->headers = [
             "accept: application/json",
-            "x-private-key: J3Jz4fFfJgRe8xa1RDTCs06PhBbxzV3SGEN9g6SB",
+            "x-private-key: {$this->PrivateKey}",
         ];
 
         if ($token) {
             $this->headers[] = "Authorization: Bearer {$token}";
         }
+        
+        
     }
 
     // protected function buildUrl($endpoint)
@@ -39,7 +47,7 @@ class CurlService
     protected function request($method, $endpoint, $data = [])
     {
         $curl = curl_init();
-        \Log::info("{$this->baseUrl}/{$endpoint}");
+        //\Log::info("{$this->baseUrl}/{$endpoint}");
         $options = [
             CURLOPT_URL => (str_contains($endpoint, 'ramp')
                 ? $this->rampUrl
@@ -65,12 +73,38 @@ class CurlService
 
         curl_close($curl);
 
-        \Log::info($response);
         if ($err) {
-            return ["error" => $err];
+            return [
+                'status' => 'error',
+                'message' => 'Provider request failed: ' . $err,
+                'data' => null,
+                'error' => $err,
+                'retryable' => true,
+            ];
         }
 
-        return json_decode($response, true);
+        $responseBody = trim((string) $response);
+        if ($responseBody === '') {
+            return [
+                'status' => 'error',
+                'message' => 'Provider returned an empty response.',
+                'data' => null,
+                'retryable' => true,
+            ];
+        }
+
+        $decoded = json_decode($response, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            return [
+                'status' => 'error',
+                'message' => 'Provider returned an invalid response.',
+                'data' => null,
+                'error' => json_last_error_msg(),
+                'retryable' => true,
+            ];
+        }
+
+        return $decoded;
     }
 
     public function get($endpoint, $params = [])

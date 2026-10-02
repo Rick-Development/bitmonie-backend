@@ -10,16 +10,10 @@ use Illuminate\Support\Str;
 use Illuminate\Http\Request;
 use App\Models\SavingsTransaction;
 use App\Http\Controllers\Controller;
-use App\Http\Helpers\Payscribe\PayscribePayoutHelper;
-use App\Http\Helpers\Payscribe\PayscribeBalanceHelper;
-use App\Http\Helpers\Payscribe\PayscribeSavingsHelper;
+use App\Notifications\User\SavingsNotification;
 
 class PayscribeSavingsController extends Controller
 {
-    // public function __construct(private PayscribeSavingsHelper $payscribeSavingsHelper, private PayscribeBalanceHelper $payscribeBalanceHelper)
-    // {
-    // }
-
     public function createSavings(Request $request)
     {
         $validator = \Validator::make($request->all(), [
@@ -42,7 +36,7 @@ class PayscribeSavingsController extends Controller
             ['user_id' => $user->id],
         );
 
-        // 🧠 Check if a savings with same title already exists for this user
+        // Check if a savings with same title already exists for this user
         $existing = SavingsTargets::where('user_id', $user->id)
             ->whereRaw('LOWER(target_title) = ?', [strtolower($request->target_title)])
             ->first();
@@ -52,7 +46,7 @@ class PayscribeSavingsController extends Controller
                 'status' => 'failed',
                 'message' => 'You already have a savings account with this title.',
                 'data' => $existing,
-            ], 409); // 409 Conflict
+            ], 409);
         }
 
         $plan_id = Str::random(8);
@@ -65,6 +59,9 @@ class PayscribeSavingsController extends Controller
             'target_amount' => $request->target_amount,
             'status' => 'active',
         ]);
+
+        // Notify
+        $user->notify(new SavingsNotification('Payscribe Savings', 'Created', $request->target_amount));
 
         return Response::success('Savings account created successfully.', $savings, 201);
     }
@@ -118,6 +115,7 @@ class PayscribeSavingsController extends Controller
                 $user_savings->balance += $amount;
                 $user_savings->save();
 
+                // Ensure target balance column exists/updates properly
                 $savings->balance += $amount;
                 $savings->save();
 
@@ -136,6 +134,9 @@ class PayscribeSavingsController extends Controller
             $wallet = UserWallet::where('user_id', $user->id)->first();
             $savings = SavingsTargets::where('plan_id', $savingsId)->first();
             $user_savings = Savings::where('user_id', $user->id)->firstOrFail();
+
+            // Notify
+            $user->notify(new SavingsNotification('Payscribe Savings', 'Topup', $amount));
 
             return Response::success('Savings top-up successful', [
                 'wallet_balance' => $wallet->balance,
@@ -173,29 +174,31 @@ class PayscribeSavingsController extends Controller
         try {
             \DB::transaction(function () use ($user, $amount, $request) {
                 // Lock both wallet and savings row for consistency
-                $wallet = UserWallet::where('user_id', $user->id)->lockForUpdate()->first();
+                $wallet = UserWallet::where('user_id', $user->id)->lockForUpdate()->firstOrFail();
+                
                 $savings = SavingsTargets::where('plan_id', $request->plan_id)
                     ->where('user_id', $user->id)
                     ->lockForUpdate()
-                    ->first();
+                    ->firstOrFail();
 
                 $user_savings = Savings::where('user_id', $user->id)->firstOrFail();
-
-                if (!$savings) {
-                    throw new \Exception('Savings target was not found.');
-                }
 
                 // Check if savings is locked
                 if ($savings->locked_until && now()->lt($savings->locked_until)) {
                     throw new \Exception('This savings target is locked until ' . $savings->locked_until->format('Y-m-d H:i:s'));
                 }
 
-                // Check sufficient balance
-                if ($user_savings->balance < $amount) {
-                    throw new \Exception('Insufficient savings balance.');
+                // Check sufficient balance for the specific target
+                if ($savings->balance < $amount) {
+                    throw new \Exception('Insufficient balance in this savings target.');
                 }
 
-                // Deduct from savings
+                // Check sufficient total global savings balance as a safety check
+                if ($user_savings->balance < $amount) {
+                    throw new \Exception('Insufficient total savings balance.');
+                }
+
+                // Deduct from global savings and specific target
                 $user_savings->balance -= $amount;
                 $user_savings->save();
 
@@ -206,7 +209,7 @@ class PayscribeSavingsController extends Controller
                 $wallet->balance += $amount;
                 $wallet->save();
 
-                // (Optional) Record transaction log
+                // Record transaction log
                 SavingsTransaction::create([
                     'user_id' => $user->id,
                     'savings_id' => $savings->plan_id,
@@ -220,6 +223,10 @@ class PayscribeSavingsController extends Controller
 
             $savings = SavingsTargets::where('plan_id', $request->plan_id)->first();
             $user_savings = Savings::where('user_id', $user->id)->firstOrFail();
+            
+            // Notify
+            $user->notify(new SavingsNotification('Payscribe Savings', 'Withdrawn', $amount));
+
             return Response::success('Withdrawal successful', [
                 'details' => $savings,
                 'total_savings' => $user_savings->balance
@@ -240,9 +247,12 @@ class PayscribeSavingsController extends Controller
         $user_savings = Savings::where('user_id', $user->id)->first();
         if (!$user_savings) {
             return response()->json([
-                'message' => 'savings not found',
-            ]);
+                'status' => 'success',
+                'message' => 'No savings account found.',
+                'data' => [],
+            ], 200);
         }
+
         $savings = SavingsTargets::where('savings_id', $user_savings->id)
             ->orderBy('created_at', 'desc')
             ->get();
@@ -260,5 +270,4 @@ class PayscribeSavingsController extends Controller
             'total_savings' => $user_savings->balance
         ]);
     }
-
 }

@@ -66,6 +66,21 @@ class PayscribeAirtimeController extends Controller
             if ($response['status'] === true) {
                 $this->payscribeBalanceHelper->createTransaction($data, $response, $this->billType);
                 $this->deductAmount($data['amount']);
+
+
+              $this->sendNotification(
+    auth()->user(),
+    'AIRTIME',
+    [
+        'user'      => auth()->user()->firstname,
+        'network'   => $data['network'],
+        'amount'    => number_format($data['amount']),
+        'recipient' => $data['recipient'],
+        'reference' => $response['message']['details']['ref'] ?? $refIdString,
+        'status'    => 'Successful',
+    ],
+    ['mail', 'push', 'inapp']
+);
             }
             return $response;
         } catch (\Exception $e) {
@@ -73,16 +88,14 @@ class PayscribeAirtimeController extends Controller
                 'status' => 'error',
                 'message' => $e->getMessage()
             ], 500);
-        }
+         }
 
     }
 
     public function deductAmount($amount)
     {
-        // dd($amount);
         $user = auth()->user()->id;
         $userWallets = UserWallet::where('user_id', $user)->first();
-        // dd($userWallets);
         $userWallets->balance = bcsub($userWallets->balance, $amount, 8);
         $userWallets->save();
     }

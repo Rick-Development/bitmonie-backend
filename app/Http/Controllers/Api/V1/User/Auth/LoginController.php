@@ -19,6 +19,9 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Foundation\Auth\AuthenticatesUsers;
 use App\Notifications\User\Auth\SendAuthorizationCode;
 use App\Http\Controllers\Api\V1\User\Auth\AuthorizationController;
+use App\Services\QuidaxService;
+use App\Http\Helpers\Payscribe\PayscribeCustomersHelper;
+use App\Traits\Notify;
 
 class LoginController extends Controller
 {
@@ -34,9 +37,7 @@ class LoginController extends Controller
     */
 
     protected $request_data;
-
-    use AuthenticatesUsers, LoggedInUsers;
-
+ use AuthenticatesUsers, LoggedInUsers, Notify;
     /**
      * Handle a login request to the application.
      *
@@ -45,9 +46,91 @@ class LoginController extends Controller
      *
      * @throws \Illuminate\Validation\ValidationException
      */
+    /**
+     * Handle a PIN-based login request from the mobile app.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function loginWithPin(Request $request)
+    {
+        $this->request_data = $request;
+
+        $validator = Validator::make($request->all(), [
+            'username' => 'required|string',
+            'pin'      => 'required|string|digits:4',
+        ]);
+
+        if ($validator->fails()) {
+            return Response::error($validator->errors()->all(), []);
+        }
+
+        $validated = $validator->validate();
+
+        // Resolve user by email or username
+        $field = filter_var($validated['username'], FILTER_VALIDATE_EMAIL) ? 'email' : 'username';
+        $user  = User::where($field, $validated['username'])->first();
+
+        if (!$user) {
+            return Response::error([__("User doesn't exist!")], [], 404);
+        }
+
+        if ($user->status != GlobalConst::ACTIVE) {
+            return Response::error([__("Your account is temporarily banned. Please contact support.")]);
+        }
+
+        // Check if user has set up their PIN (transaction PIN = login PIN)
+        if (!$user->pin_status || empty($user->pin_code)) {
+            return Response::error([__('You have not set up a PIN yet. Please log in with your password and set up your PIN first.')], [], 400);
+        }
+
+        // Validate against pin_code (transaction PIN = login PIN)
+        if (!Hash::check($validated['pin'], $user->pin_code)) {
+            return Response::error([__('Invalid PIN. Please try again.')]);
+        }
+
+        // Ensure Quidax sub-account exists
+        if ($user->quidax_id == null || $user->quidax_sn == null) {
+            $quidax = new \App\Services\QuidaxService();
+            $quidax_response = $quidax->createSubAccount([
+                'email'      => preg_replace('/@.+$/', '@' . env('DOMAIN_EXT', 'bitmonie.com'), $user->email),
+                'first_name' => $user->firstname,
+                'last_name'  => $user->lastname,
+            ]);
+
+            if (!isset($quidax_response['data'])) {
+                return Response::error([__('Login Failed! Could not verify account. Please try again.')], [], 500);
+            }
+
+            $qd = $quidax_response['data'];
+            $user->update([
+                'quidax_id'           => $qd['id'],
+                'quidax_sn'           => $qd['sn'],
+                'quidax_display_name' => $qd['display_name'],
+                'quidax_reference'    => $qd['reference'],
+            ]);
+        }
+
+        // Ensure Payscribe customer exists
+        if ($user->payscribe_customer_id == null) {
+            $this->createCustomer([
+                'first_name' => $user->firstname,
+                'last_name'  => $user->lastname,
+                'email'      => $user->email,
+                'phone'      => $user->mobile,
+            ]);
+        }
+
+        // Generate token
+        $token = $user->createToken("auth_token")->accessToken;
+
+        return $this->authenticated($request, $user, $token);
+    }
+
     public function login(Request $request)
     {
-        \Log::info($request->all());
+      
+    //\Log::info($request->all());
         $this->request_data = $request;
 
         $validator = Validator::make($request->all(), [
@@ -65,21 +148,95 @@ class LoginController extends Controller
         }
 
         $user = User::where($this->username(), $validated['username'])->first();
+    
         if (!$user)
             return Response::error([__('User doesn\'t exists')]);
+    
 
         if (Hash::check($validated['password'], $user->password)) {
+        
             if ($user->status != GlobalConst::ACTIVE)
                 return Response::error([__("Your account is temporary banded. Please contact with system admin")]);
 
+            if($user->quidax_id == null || $user->quidax_sn == null){
+              // Call Quidax API
+            $quidax = new  QuidaxService();
+            $quidax_response = $quidax->createSubAccount([
+                'email' => preg_replace('/@.+$/', '@' . env('DOMAIN_EXT', 'bitmonie.com'), $user->email),
+                'first_name' => $user->firstname,
+                'last_name' => $user->lastname,
+            ]);
+
+            if (!isset($quidax_response['data'])) {
+                throw new \Exception("Invalid Quidax response");
+            }
+
+            $quidax_data = $quidax_response['data'];
+
+            $user->update([
+                'quidax_id' => $quidax_data['id'],
+                'quidax_sn' => $quidax_data['sn'],
+                'quidax_display_name' => $quidax_data['display_name'],
+                'quidax_reference' => $quidax_data['reference'],
+            ]);
+        }
+
+        if($user->payscribe_customer_id == null){
+            // Call Payscribe API
+            $data = [
+                'first_name' => $user->firstname,
+                'last_name' => $user->lastname,
+                'email' => $user->email,
+                'phone' => $user->mobile,
+            ];
+            $this->createCustomer($data);
+        }
+
             // User authenticated
             $token = $user->createToken("auth_token")->accessToken;
+            $basic = basicControl();
             return $this->authenticated($request, $user, $token);
         }
 
         return Response::error([__('username didn\'t match')]);
     }
 
+
+        public function createCustomer($newUser)
+    {
+        $user = User::where('email', $newUser['email'])->firstOrFail();
+        // dd($user->firstname);
+
+        $data = $newUser;
+        $payscribeCustomersHelper = new PayscribeCustomersHelper();
+
+        $response = $payscribeCustomersHelper->createUser($data);
+        \Log::info($response);
+        // dd($response);
+        if ($response && ($response['status'] ?? false) == true) {
+            $details = $response['message']['details'] ?? [];
+
+            $user->payscribe_customer_id = $details['customer_id'] ?? $user->payscribe_customer_id;
+            $user->payscribe_tier = $details['tier'] ?? $user->payscribe_tier ?? 'tier_0';
+            $user->payscribe_customer_phone = $details['phone'] ?? $newUser['phone'] ?? $user->payscribe_customer_phone;
+            $user->payscribe_customer_country = $details['country'] ?? $newUser['country'] ?? $user->payscribe_customer_country;
+
+            $user->save();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Customer created successfully',
+                'data' => [
+                    'customer_id' => $user->payscribe_customer_id,
+                    'tier' => $user->payscribe_tier,
+                    'phone' => $user->payscribe_customer_phone,
+                ],
+                'payscribe_response' => $response,
+            ], 201);
+        }
+
+        return response()->json($response, $response['status_code'] ?? 200);
+    }
 
     /**
      * Get the needed authorization credentials from the request.
@@ -171,6 +328,7 @@ class LoginController extends Controller
                 DB::table("user_authorizations")->insert($data);
 
                 // Try notifying user (fail silently but you may want to log it)
+            
                 try {
                     $user->notify(new SendAuthorizationCode((object) $data));
                 } catch (Exception $e) {
@@ -191,8 +349,31 @@ class LoginController extends Controller
             $status = true;
             $auth_token = '';
         }
+       $data= $this->sendNotification(
+    $user,
+    'USER_LOGIN',
+    [
+        'user' => $user->firstname,
+        'time' => now()->format('d M Y h:i A'),
+    ],
+    [
+        'mail',
+        'push',
+        'inapp'
+    ],
+    [
+        'action' => [
+            'link' => '#',
+            'icon' => 'fa fa-shield',
+        ],
+        'referenceId' => $this->generateReferenceId(
+            'USER_LOGIN',
+            $user->id
+        ),
+    ]
+);
 
-        // Return the login response
+       // Return the login response
         return Response::success(
             [__('User successfully logged in')],
             [

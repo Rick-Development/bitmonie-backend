@@ -11,15 +11,18 @@ use App\Http\Controllers\Controller;
 use App\Http\Helpers\Payscribe\PayscribeBalanceHelper;
 use App\Http\Helpers\Payscribe\BillsPayments\DataBundleHelper;
 use App\Http\Helpers\Payscribe\BillsPayments\BillPaymentHelper;
-
+use App\Traits\Notify;
 
 class PayscribeDataBundleController extends Controller
 {
+    use Notify;
+
     private $billType = 'Data Bundle';
 
     public function __construct(private DataBundleHelper $dataBundleHelper, private PayscribeBalanceHelper $payscribeBalanceHelper, private BillPaymentHelper $billPaymentHelper)
     {
     }
+
     public function dataLookup(Request $request)
     {
         $validator = \Validator::make($request->all(), [
@@ -55,38 +58,55 @@ class PayscribeDataBundleController extends Controller
         }
 
         $data = $request->only('plan', 'recipient', 'network');
-        // $validateBalance = $this->payscribeBalanceHelper->validateBalance($data['amount']);
-
-        // if (!!$validateBalance) {
-        //     return $validateBalance;
-        // }
 
         $referenceId = Str::uuid();
         $referenceIdString = (string) $referenceId . '-auto_bill';
         $data = array_merge($data, ['ref' => $referenceIdString]);
 
-        $response = json_decode($this->dataBundleHelper->dataVending($data), true);
+        try {
+            $response = json_decode($this->dataBundleHelper->dataVending($data), true);
 
-        if ($response['status'] === true) {
-            $user = auth()->user();
-            $user_balance = UserWallet::where('user_id', $user->id)
-                ->where('currency_code', 'NGN')
-                ->value('balance');
+            if (isset($response['status']) && $response['status'] === true) {
+                $user = auth()->user();
+                $user_balance = UserWallet::where('user_id', $user->id)
+                    ->where('currency_code', 'NGN')
+                    ->value('balance');
 
-            $amount = (int) $response['message']['details']['amount'];
-            if ($user_balance < $amount) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Insufficient balance'
-                ], 500);
+                $amount = (int) ($response['message']['details']['amount'] ?? 0);
+                if ($user_balance < $amount) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Insufficient balance'
+                    ], 500);
+                }
+
+                $this->payscribeBalanceHelper->createTransaction($data, $response, $this->billType);
+
+                // Notify User using your Notify trait
+                $this->sendNotification(
+                    user: $user,
+                    templateKey: 'DATA_BUNDLE_SUCCESS',
+                    params: [
+                        'user' => $user->firstname,
+                        'amount' => number_format($amount),
+                        'network' => $data['network'],
+                        'recipient' => $data['recipient'],
+                        'reference' => $response['message']['details']['ref'] ?? $referenceIdString,
+                        'status' => 'Successful',
+                    ],
+                    channels: ['mail', 'inapp'],
+                    options: [
+                        'referenceId' => $response['message']['details']['ref'] ?? $referenceIdString,
+                    ]
+                );
             }
 
-            $this->payscribeBalanceHelper->createTransaction($data, $response, $this->billType);
-            // $this->sendBillPaymentEmail($data['amount'], $this->billType);
+            return $response;
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ], 500);
         }
-
-        return $response;
     }
-
-
 }

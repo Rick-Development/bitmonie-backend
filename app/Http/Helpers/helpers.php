@@ -31,9 +31,9 @@ use App\Providers\Admin\CurrencyProvider;
 use App\Providers\Admin\BasicSettingsProvider;
 use Illuminate\Validation\ValidationException;
 use App\Notifications\User\Auth\SendAuthorizationCode;
-use Intervention\Image\ImageManager;
-
-
+use App\Models\BasicControl;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Schema;
 
 function setRoute($route_name, $param = null)
 {
@@ -183,267 +183,137 @@ function delete_files_from_fileholder(array $files_link)
     return true;
 }
 
-// use Illuminate\Http\UploadedFile;
-// use Illuminate\Support\Facades\File;
-// use Intervention\Image\ImageManager;
-// use Webp;
-
 function upload_files_from_path_dynamic($files_path, $destination_path, $old_files = null)
 {
     $output_files_name = [];
-
     foreach ($files_path as $path) {
-
         $file_name = File::name($path);
-        $file_extension = strtolower(File::extension($path));
+        $file_extension = File::extension($path);
         $file_base_name = $file_name . "." . $file_extension;
         $file_mime_type = File::mimeType($path);
         $file_size = File::size($path);
 
         $save_path = get_files_path($destination_path);
 
-        $mime_main = explode("/", $file_mime_type)[0];
+        $file_mime_type_array = explode('/', $file_mime_type);
+        if (array_shift($file_mime_type_array) == "image" && $file_extension != "svg") { // If Image
 
-        // ==========================
-        // 📌 PROCESS IMAGE FILES
-        // ==========================
-        if ($mime_main === "image" && $file_extension !== "svg") {
+            $file = Image::make($path)->orientate();
 
-            $manager = new ImageManager('gd');
-            $image = $manager->read($path);   // v3 syntax
-
-            $width = $image->width();
-            $height = $image->height();
+            $width = $file->width();
+            $height = $file->height();
 
             $resulation_break_point = [2048, 2340, 2730, 3276, 4096, 5460, 8192];
             $reduce_percentage = [12.5, 25, 37.5, 50, 62.5, 75];
 
-            // ----------- DYNAMIC RESIZING ----------
-            try {
-
-                if ($width > 0 && $width < 2048) {
-                    // keep original width
-                    $new_width = $width;
-                } elseif ($width > 5460 && $width <= 6140) {
-                    // compress to 2048
-                    $new_width = 2048;
-                } else {
-                    $new_width = $width;
-
-                    for ($i = 0; $i < count($resulation_break_point) - 1; $i++) {
+            // Dynamically Image Resizing & Move to Targeted folder
+            if ($width > 0 && $width < 2048) {
+                $new_width = $width;
+                try {
+                    $file->resize($new_width, null, function ($constraint) {
+                        $constraint->aspectRatio();
+                    })->save($path, 70);
+                } catch (\Exception $e) {
+                    return back()->with(['error' => ['Image Upload Faild!']]);
+                }
+            }
+            if ($width > 5460 && $width <= 6140) {
+                $new_width = 2048;
+                try {
+                    $file->resize($new_width, null, function ($constraint) {
+                        $constraint->aspectRatio();
+                    })->save($path, 70);
+                } catch (\Exception $e) {
+                    return back()->with(['error' => ['Image Upload Faild!']]);
+                }
+            } else {
+                for ($i = 0; $i < count($resulation_break_point); $i++) {
+                    if ($i != count($resulation_break_point) - 1) {
                         if ($width >= $resulation_break_point[$i] && $width <= $resulation_break_point[$i + 1]) {
                             $new_width = ceil($width - (($width * $reduce_percentage[$i]) / 100));
+                            try {
+                                $file->resize($new_width, null, function ($constraint) {
+                                    $constraint->aspectRatio();
+                                })->save($path, 70);
+                            } catch (\Exception $e) {
+                                return back()->with(['error' => ['Image Upload Faild!']]);
+                            }
                         }
                     }
-
-                    if ($width > 8192) {
-                        $new_width = 2048;
+                }
+                if ($width > 8192) {
+                    $new_width = 2048;
+                    try {
+                        $file->resize($new_width, null, function ($constraint) {
+                            $constraint->aspectRatio();
+                        })->save($path, 70);
+                    } catch (\Exception $e) {
+                        return back()->with(['error' => ['Image Upload Faild!']]);
                     }
                 }
-
-                if ($new_width !== $width) {
-                    $image->resize(width: $new_width, height: null)->save($path, quality: 70);
-                }
-
-            } catch (\Exception $e) {
-                return back()->with(['error' => ['Image Upload Failed!']]);
             }
 
-            // After resizing – recreate file instance
-            $file_instance = new UploadedFile($path, $file_base_name, $file_mime_type, null, true);
+            $file_instance = new UploadedFile(
+                $path,
+                $file_base_name,
+                $file_mime_type,
+                $file_size,
+            );
 
-            // -------------------------
-            // CONVERT TO WEBP
-            // -------------------------
             $store_file_name = $file_name . ".webp";
-
             try {
-                if ($file_extension !== "webp") {
-                    Webp::make($file_instance)->save($save_path . "/" . $store_file_name);
-                    $output_files_name[] = $store_file_name;
+                if ($file_extension != "webp") {
+                    $webp = Webp::make($file_instance)->save($save_path . "/" . $store_file_name);
+                    array_push($output_files_name, $store_file_name);
                 } else {
-                    File::move($path, $save_path . "/" . $file_base_name);
-                    $output_files_name[] = $file_base_name;
+                    File::move($file_instance, $save_path . "/" . $file_base_name);
+                    array_push($output_files_name, $file_base_name);
                 }
-            } catch (\Exception $e) {
-                return back()->with(['error' => ['Something went wrong! Failed to upload file.']]);
+            } catch (Exception $e) {
+                return back()->with(['error' => ['Something went wrong! Faild to upload file.']]);
             }
-
-        } else {
-
-            // ==============================
-            // 📌 PROCESS NON-IMAGE FILES
-            // ==============================
-            $file_instance = new UploadedFile($path, $file_base_name, $file_mime_type, null, true);
+        } else { // IF Other Files
+            $file_instance = new UploadedFile(
+                $path,
+                $file_base_name,
+                $file_mime_type,
+                $file_size,
+            );
 
             try {
-                File::move($path, $save_path . "/" . $file_base_name);
-                $output_files_name[] = $file_base_name;
-            } catch (\Exception $e) {
-                return back()->with(['error' => ['Something went wrong! Failed to upload file.']]);
+                File::move($file_instance, $save_path . "/" . $file_base_name);
+                array_push($output_files_name, $file_base_name);
+            } catch (Exception $e) {
+                return back()->with(['error' => ['Something went wrong! Faild to upload file.']]);
             }
         }
 
-        // ==================================
-        // 📌 DELETE OLD FILES (if provided)
-        // ==================================
+        // Delete Old Files if exists
         try {
             if ($old_files) {
                 if (is_array($old_files)) {
+                    // Delete Multiple File
                     foreach ($old_files as $item) {
+                        $file_link = $save_path . "/" . $item;
                         delete_file($item);
                     }
                 } else if (is_string($old_files)) {
-                    delete_file($old_files);
+                    // Delete Single File
+                    $file_link = $save_path . "/" . $old_files;
+                    delete_file($file_link);
                 }
             }
-        } catch (\Exception $e) {
-            return back()->with(['error' => ['Something went wrong! Failed to delete old file.']]);
+        } catch (Exception $e) {
+            return back()->with(['error' => ['Something went wrong! Faild to delete old file.']]);
         }
     }
 
-    // Return single or multiple files
-    return count($output_files_name) === 1
-        ? $output_files_name[0]
-        : $output_files_name;
+    if (count($output_files_name) == 1) {
+        return $output_files_name[0];
+    }
+    // delete_files_from_fileholder($output_files_name);
+    return $output_files_name;
 }
-
-
-// function upload_files_from_path_dynamic($files_path, $destination_path, $old_files = null)
-// {
-//     $output_files_name = [];
-//     foreach ($files_path as $path) {
-//         $file_name = File::name($path);
-//         $file_extension = File::extension($path);
-//         $file_base_name = $file_name . "." . $file_extension;
-//         $file_mime_type = File::mimeType($path);
-//         $file_size = File::size($path);
-
-//         $save_path = get_files_path($destination_path);
-
-//         $file_mime_type_array = explode('/', $file_mime_type);
-//         if (array_shift($file_mime_type_array) == "image" && $file_extension != "svg") { // If Image
-
-//             // $file = \Image::make($path)->orientate();
-
-
-//             $manager = new ImageManager();
-//             $image = $manager->read($file);
-
-//             $width = $file->width();
-//             $height = $file->height();
-
-//             $resulation_break_point = [2048, 2340, 2730, 3276, 4096, 5460, 8192];
-//             $reduce_percentage = [12.5, 25, 37.5, 50, 62.5, 75];
-
-//             // Dynamically Image Resizing & Move to Targeted folder
-//             if ($width > 0 && $width < 2048) {
-//                 $new_width = $width;
-//                 try {
-//                     $file->resize($new_width, null, function ($constraint) {
-//                         $constraint->aspectRatio();
-//                     })->save($path, 70);
-//                 } catch (\Exception $e) {
-//                     return back()->with(['error' => ['Image Upload Faild!']]);
-//                 }
-//             }
-//             if ($width > 5460 && $width <= 6140) {
-//                 $new_width = 2048;
-//                 try {
-//                     $file->resize($new_width, null, function ($constraint) {
-//                         $constraint->aspectRatio();
-//                     })->save($path, 70);
-//                 } catch (\Exception $e) {
-//                     return back()->with(['error' => ['Image Upload Faild!']]);
-//                 }
-//             } else {
-//                 for ($i = 0; $i < count($resulation_break_point); $i++) {
-//                     if ($i != count($resulation_break_point) - 1) {
-//                         if ($width >= $resulation_break_point[$i] && $width <= $resulation_break_point[$i + 1]) {
-//                             $new_width = ceil($width - (($width * $reduce_percentage[$i]) / 100));
-//                             try {
-//                                 $file->resize($new_width, null, function ($constraint) {
-//                                     $constraint->aspectRatio();
-//                                 })->save($path, 70);
-//                             } catch (\Exception $e) {
-//                                 return back()->with(['error' => ['Image Upload Faild!']]);
-//                             }
-//                         }
-//                     }
-//                 }
-//                 if ($width > 8192) {
-//                     $new_width = 2048;
-//                     try {
-//                         $file->resize($new_width, null, function ($constraint) {
-//                             $constraint->aspectRatio();
-//                         })->save($path, 70);
-//                     } catch (\Exception $e) {
-//                         return back()->with(['error' => ['Image Upload Faild!']]);
-//                     }
-//                 }
-//             }
-
-//             $file_instance = new UploadedFile(
-//                 $path,
-//                 $file_base_name,
-//                 $file_mime_type,
-//                 $file_size,
-//             );
-
-//             $store_file_name = $file_name . ".webp";
-//             try {
-//                 if ($file_extension != "webp") {
-//                     $webp = Webp::make($file_instance)->save($save_path . "/" . $store_file_name);
-//                     array_push($output_files_name, $store_file_name);
-//                 } else {
-//                     File::move($file_instance, $save_path . "/" . $file_base_name);
-//                     array_push($output_files_name, $file_base_name);
-//                 }
-//             } catch (Exception $e) {
-//                 return back()->with(['error' => ['Something went wrong! Faild to upload file.']]);
-//             }
-//         } else { // IF Other Files
-//             $file_instance = new UploadedFile(
-//                 $path,
-//                 $file_base_name,
-//                 $file_mime_type,
-//                 $file_size,
-//             );
-
-//             try {
-//                 File::move($file_instance, $save_path . "/" . $file_base_name);
-//                 array_push($output_files_name, $file_base_name);
-//             } catch (Exception $e) {
-//                 return back()->with(['error' => ['Something went wrong! Faild to upload file.']]);
-//             }
-//         }
-
-//         // Delete Old Files if exists
-//         try {
-//             if ($old_files) {
-//                 if (is_array($old_files)) {
-//                     // Delete Multiple File
-//                     foreach ($old_files as $item) {
-//                         $file_link = $save_path . "/" . $item;
-//                         delete_file($item);
-//                     }
-//                 } else if (is_string($old_files)) {
-//                     // Delete Single File
-//                     $file_link = $save_path . "/" . $old_files;
-//                     delete_file($file_link);
-//                 }
-//             }
-//         } catch (Exception $e) {
-//             return back()->with(['error' => ['Something went wrong! Faild to delete old file.']]);
-//         }
-//     }
-
-//     if (count($output_files_name) == 1) {
-//         return $output_files_name[0];
-//     }
-//     // delete_files_from_fileholder($output_files_name);
-//     return $output_files_name;
-// }
 
 function get_files_path($slug)
 {
@@ -721,7 +591,7 @@ function upload_files_from_path_static($files_path, $destination_path, $old_file
         $file_mime_type_array = explode('/', $file_mime_type);
         if (array_shift($file_mime_type_array) == "image" && $file_extension != "svg") { // If Image
 
-            $file = \Image::make($path)->orientate();
+            $file = Image::make($path)->orientate();
 
             $width = $file->width();
             $height = $file->height();
@@ -1978,4 +1848,24 @@ function mailVerificationTemplateApi($user)
     }
     return Response::error(['Email verification is required'], [], 400);
 
+}
+if (!function_exists('basicControl')) {
+    function basicControl(): ?BasicControl
+    {
+        if (!Schema::hasTable('basic_controls')) {
+            return null;
+        }
+
+        return Cache::rememberForever('basic_control', function () {
+            return BasicControl::first();
+        });
+    }
+    
+
+if (!function_exists('notificationIcon')) {
+    function notificationIcon(): string
+    {
+        return asset('images/notification-icon.png');
+    }
+}
 }

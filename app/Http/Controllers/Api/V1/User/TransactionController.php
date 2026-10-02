@@ -8,10 +8,19 @@ use App\Models\Transaction;
 use App\Http\Helpers\Response;
 use App\Http\Controllers\Controller;
 use App\Constants\PaymentGatewayConst;
+use App\Services\TransactionHistoryService;
 
 class TransactionController extends Controller
 {
-    public function log() {
+    public function log(TransactionHistoryService $historyService) {
+        $rows = $historyService->forUser(request()->user(), request()->query());
+        $transactions = $historyService->paginateRows($rows, request()->query(), (int) request()->query('per_page', 20));
+
+        return Response::successResponse('Transactions fetched successfully!', [
+            'transactions' => $transactions,
+            'summary' => $historyService->summary($rows),
+        ]);
+
         $transactions = Transaction::auth()->orderByDesc("id")->get()->map(function($data){
             if($data->type == PaymentGatewayConst::TYPEADDMONEY){
                 if(@$data->gateway_currency->gateway->isManual()){

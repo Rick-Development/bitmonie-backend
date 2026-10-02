@@ -30,16 +30,14 @@ trait Notify
 
         try {
             $basic = basicControl();
-            if (in_array($templateKey, $user->notifypermission->template_email_key) == false) {
-                return false;
-            }
+           
 
             if ($basic->email_notification != 1) {
                 return false;
             }
             $email_body = $basic->email_description;
 
-            $templateObj = NotificationTemplate::where('template_key', $templateKey)->where('language_id', $user->language_id)->where('notify_for', 0)->first();
+            $templateObj = NotificationTemplate::where('template_key', $templateKey)->where('notify_for', 0)->first();
             if (!$templateObj) {
                 $templateObj = NotificationTemplate::where('template_key', $templateKey)->where('notify_for', 0)->first();
             }
@@ -67,7 +65,7 @@ trait Notify
             $email_from = $basic->sender_email;
 
             Mail::to($user)->queue(new SendMail($email_from, $subject, $message));
-            Artisan::call('queue:work', ['--stop-when-empty' => true]);
+            //Artisan::call('queue:work', ['--stop-when-empty' => true]);
         } catch (\Exception $exception) {
             return true;
         }
@@ -326,7 +324,7 @@ trait Notify
                     "notification" => [
                         "title" => $templateObj->name . ' from ' . $basic->site_title,
                         "body" => $template,
-                        "icon" => getFile(config('filesystems.default'), basicControl()->favicon),
+                        "icon" => asset("icon" => asset(basicControl()->favicon),),, "icon" => asset(basicControl()->favicon),),
                     ],
                     "data" => [
                         "foreground" => (int)$notify['user_foreground'],
@@ -418,7 +416,7 @@ trait Notify
                     "notification" => [
                         "title" => $templateObj->name,
                         "body" => $template,
-                        "icon" => getFile(config('filesystems.default'), basicControl()->favicon),
+                        "icon" => asset("icon" => asset(basicControl()->favicon),),, "icon" => asset(basicControl()->favicon),),
                         "data" => [
                             "foreground" => (int)$notify['admin_foreground'],
                             "background" => (int)$notify['admin_background'],
@@ -524,9 +522,9 @@ trait Notify
             ];
             $firebaseAction = '#';
             $this->mail($user, 'USER_LOGIN', $params);
-            // $this->sendMailSms($user, 'USER_LOGIN', $params);
-            // $this->userPushNotification($user, 'USER_LOGIN', $params, $action);
-            // $this->userFirebasePushNotification($user, 'USER_LOGIN', $params, $firebaseAction);
+            $this->sendMailSms($user, 'USER_LOGIN', $params);
+            $this->userPushNotification($user, 'USER_LOGIN', $params, $action);
+            $this->userFirebasePushNotification($user, 'USER_LOGIN', $params, $firebaseAction);
         } catch (\Exception $e) {
 
         }

@@ -17,6 +17,9 @@ class Beneficiary extends Model
         'user_id'                   => 'integer',
         'slug'                      => "string",
         'info'                      => "object",
+        'details'                   => 'array',
+        'is_favorite'               => 'boolean',
+        'pinned_at'                 => 'datetime',
     ];
 
     public function method() {

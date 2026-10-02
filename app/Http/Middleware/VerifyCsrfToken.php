@@ -19,5 +19,11 @@ class VerifyCsrfToken extends Middleware
         'user/add-money/cancel/response/' . PaymentGatewayConst::SSLCOMMERZ,
         'user/add-money/success/response/' . PaymentGatewayConst::RAZORPAY,
         'user/add-money/cancel/response/' . PaymentGatewayConst::RAZORPAY,
+        'api/quidax/webhook',
+        'api/quidax/ramp/webhook',
+        'api/webhook',
+        'api/webhook/quidax',
+        'api/webhook/quidax-ramp',
+        'api/webhook/safehaven',
     ];
 }

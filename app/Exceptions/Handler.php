@@ -8,7 +8,10 @@ use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
+use Lcobucci\JWT\Token\InvalidTokenStructure;
+use League\OAuth2\Server\Exception\OAuthServerException;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\HttpKernel\Exception\UnauthorizedHttpException;
@@ -18,6 +21,11 @@ use Throwable;
 
 class Handler extends ExceptionHandler
 {
+    protected $dontReport = [
+        OAuthServerException::class,
+        InvalidTokenStructure::class,
+    ];
+
     protected $dontFlash = [
         'current_password',
         'password',
@@ -36,9 +44,12 @@ class Handler extends ExceptionHandler
      */
     public function render($request, Throwable $e)
     {
-        // ✅ FORCE JSON response by overriding Accept header
-        $request->headers->set('Accept', 'application/json');
-        return $this->handleApiException($request, $e);
+        // Only force JSON for API routes
+        if ($request->is('api/*') || $request->expectsJson()) {
+            return $this->handleApiException($request, $e);
+        }
+
+        return parent::render($request, $e);
     }
 
     /**
@@ -46,7 +57,7 @@ class Handler extends ExceptionHandler
      */
     protected function convertExceptionToResponse(Throwable $e)
     {
-        return $this->render(request(), $e);
+        return parent::convertExceptionToResponse($e);
     }
 
     private function handleApiException($request, Throwable $e)
@@ -73,6 +84,12 @@ class Handler extends ExceptionHandler
             return new JsonResponse($response, 404);
         }
 
+        if ($e instanceof OAuthServerException || $e instanceof InvalidTokenStructure) {
+            $response['message'] = 'Unauthorized. Token may be missing, invalid, or expired.';
+            $response['data'] = $e->getMessage();
+            return new JsonResponse($response, 401);
+        }
+
         if ($e instanceof AuthenticationException) {
             $response['message'] = 'Unauthenticated.';
             $response['data'] = $e->getMessage();
@@ -92,8 +109,16 @@ class Handler extends ExceptionHandler
         }
 
         if ($e instanceof MethodNotAllowedHttpException) {
+            Log::warning('API method not allowed.', [
+                'method' => $request instanceof Request ? $request->method() : null,
+                'path' => $request instanceof Request ? $request->path() : null,
+                'allowed_methods' => $e->getHeaders()['Allow'] ?? null,
+            ]);
+
             $response['message'] = 'Method not allowed.';
-            $response['data'] = $e->getMessage();
+            $response['data'] = [
+                'allowed_methods' => $e->getHeaders()['Allow'] ?? null,
+            ];
             return new JsonResponse($response, 405);
         }
 

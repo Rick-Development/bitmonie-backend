@@ -3,6 +3,7 @@ namespace App\Http\Helpers\SafeHeaven;
 
 use App\Http\Helpers\SafeHeaven\ApiConnectionHelper;   
 use App\Models\UserWallet;
+use Illuminate\Support\Facades\Log;
 
 
 class TransferHelper extends ApiConnectionHelper{
@@ -81,12 +82,21 @@ class TransferHelper extends ApiConnectionHelper{
 }
 
 
-    public function nameEnquiry($data){
-        $url = '/transfers/name-enquiry';
-        $response = $this->post($url, $data);
-        $decodedResponse = json_decode($response,true);
-        return $decodedResponse;
-    }  
+   public function nameEnquiry(array $data): array
+{
+    Log::info('SafeHaven Name Enquiry Request', [
+        'url' => '/transfers/name-enquiry',
+        'data' => $data,
+    ]);
+
+    $response = $this->post('/transfers/name-enquiry', $data);
+
+    Log::info('SafeHaven Name Enquiry Response', [
+        'response' => $response,
+    ]);
+
+    return json_decode($response, true) ?? [];
+} 
 
     public function transfer($data){
         $url = '/transfers';

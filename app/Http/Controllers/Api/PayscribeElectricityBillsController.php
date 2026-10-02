@@ -10,16 +10,13 @@ use App\Http\Helpers\Payscribe\BillsPayments\BillPaymentHelper;
 use App\Models\Transaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use App\Traits\Notify;
 
 
 class PayscribeElectricityBillsController extends Controller
 {
-    // private $giftcardHelper;
-    // public function __construct()
-    // {
-    //     $this->giftcardHelper  = new GiftcardHelper();
-    // }
-    // $userID =
+    use Notify;
+
     private $billType = 'Electricity Bill';
 
     public function __construct(private ElectricityBillsHelper $electricityBillsHelper, private PayscribeBalanceHelper $payscribeBalanceHelper, private BillPaymentHelper $billPaymentHelper) {}
@@ -47,14 +44,14 @@ class PayscribeElectricityBillsController extends Controller
             "amount",
             "service"
         ]);
-        /// No transqaction id for validate
+        /// No transaction id for validate
         try{
 
             $response = json_decode($this->electricityBillsHelper->validateElectricity($data), true);
             return $response;
         }
         catch(\Exception $e){
-            return $response = [
+            return [
                 'status' => 'error',
                 'message' => $e->getMessage()
             ];
@@ -104,11 +101,26 @@ class PayscribeElectricityBillsController extends Controller
             if($response['status'] === true){
                 $this->payscribeBalanceHelper->createTransaction($data, $response, $this->billType);
                 $user = auth()->user();
-                $params = [
-                   'amount' => $data['amount'],
-                   'token' =>  $response['message']['details']['token'],
-               ];
-            //    $this->mail($user, 'TOKEN_PURCHSED', $params);
+                $token = $response['message']['details']['token'] ?? 'N/A';
+                
+                // Notify User using the Notify trait
+                $this->sendNotification(
+                    user: $user,
+                    templateKey: 'ELECTRICITY_BILL_SUCCESS',
+                    params: [
+                        'user' => $user->firstname,
+                        'amount' => number_format($data['amount']),
+                        'service' => $data['service'],
+                        'token' => $token,
+                        'meter_number' => $data['meter_number'],
+                        'reference' => $response['message']['details']['trans_id'] ?? $referenceIdString,
+                        'status' => 'Successful',
+                    ],
+                    channels: ['mail', 'inapp'],
+                    options: [
+                        'referenceId' => $response['message']['details']['trans_id'] ?? $referenceIdString,
+                    ]
+                );
             }
 
             return $response;
@@ -129,7 +141,6 @@ class PayscribeElectricityBillsController extends Controller
 
             $response = json_decode($this->electricityBillsHelper->requeryTransaction($data['transaction_id']), true);
             return $response;
-            // return $data['transaction_id'];
         }
         catch(\Exception $e){
             return response()->json([
@@ -153,7 +164,7 @@ class PayscribeElectricityBillsController extends Controller
         $validateBalance = $this->payscribeBalanceHelper->validateBalance($data['amount']);
 
         if(!!$validateBalance){
-                return $validateBalance; // form safe heaven balance
+                return $validateBalance; // from safe heaven balance
         }
 
         // Transfer to safe heaven
@@ -168,11 +179,26 @@ class PayscribeElectricityBillsController extends Controller
         if($response['status'] === true){
             $this->createTransaction($data, $response, $this->billType);
             $user = auth()->user();
-            $params = [
-                'amount' => 200,
-                'token' =>  $response['message']['details']['token'],
-            ];
-            $this->mail($user, 'TOKEN_PURCHSED', $params);
+            $token = $response['message']['details']['token'] ?? 'N/A';
+
+            // Notify User using the Notify trait
+            $this->sendNotification(
+                user: $user,
+                templateKey: 'ELECTRICITY_BILL_SUCCESS',
+                params: [
+                    'user' => $user->firstname,
+                    'amount' => number_format($data['amount']),
+                    'service' => $data['service'] ?? 'Electricity',
+                    'token' => $token,
+                    'meter_number' => $data['meter_number'] ?? 'N/A',
+                    'reference' => $response['message']['details']['trans_id'] ?? 'N/A',
+                    'status' => 'Successful',
+                ],
+                channels: ['mail', 'inapp'],
+                options: [
+                    'referenceId' => $response['message']['details']['trans_id'] ?? 'N/A',
+                ]
+            );
         }
 
         return $response;
@@ -191,7 +217,7 @@ class PayscribeElectricityBillsController extends Controller
             'balance' => $balance,
             'charge' => $request['amount'],
             'trx_type' => '-',
-            'remarks' => $response['description'],
+            'remarks' => $response['description'] ?? 'Electricity Bill Payment',
             'trx_id' => $transId,
             'transaction_status' => 'proccessing',
         ]);

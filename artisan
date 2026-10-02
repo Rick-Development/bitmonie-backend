@@ -3,6 +3,10 @@
 
 define('LARAVEL_START', microtime(true));
 
+// Suppress deprecation notices (e.g. PHP 8.4 implicit nullable warnings)
+// so CLI commands (like `php artisan serve`) don't get flooded with them.
+error_reporting(E_ALL & ~E_DEPRECATED & ~E_USER_DEPRECATED);
+
 /*
 |--------------------------------------------------------------------------
 | Register The Auto Loader

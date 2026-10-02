@@ -34,6 +34,7 @@ use App\Http\Controllers\Admin\FundTransferController;
 use App\Http\Controllers\Admin\SetupSectionsController;
 use App\Http\Controllers\Admin\SupportTicketController;
 use App\Http\Controllers\Admin\ContactMessageController;
+use App\Http\Controllers\Admin\AccountDeletionRequestController;
 use App\Http\Controllers\Admin\PaymentGatewaysController;
 use App\Http\Controllers\Frontend\AnnouncementController;
 use App\Http\Controllers\Admin\PushNotificationController;
@@ -42,6 +43,10 @@ use App\Http\Controllers\Admin\SystemMaintenanceController;
 use App\Http\Controllers\Admin\SalaryDisbursementController;
 use App\Http\Controllers\Admin\PaymentGatewayCurrencyController;
 use App\Http\Controllers\Admin\SalaryDisbursementLogsController;
+use App\Http\Controllers\Admin\KycTierController;
+use App\Http\Controllers\Admin\GiftCardController;
+use App\Http\Controllers\Admin\PromoController;   
+use App\Http\Controllers\Admin\CryptoCardCharge;       // ← added
 
 // All Admin Route Is Here
 Route::prefix('admin')->name('admin.')->group(function () {
@@ -287,6 +292,13 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::put('status/update', 'statusUpdate')->name('status.update');
     });
 
+    // KYC Tiers
+    Route::controller(KycTierController::class)->prefix('kyc-tiers')->name('kyc.tiers.')->group(function () {
+        Route::get('/', 'index')->name('index');
+        Route::put('update', 'update')->name('update');
+        Route::put('status/update', 'statusUpdate')->name('status.update');
+    });
+
     // Setup Section
     Route::controller(SetupSectionsController::class)->prefix('setup-sections')->name('setup.sections.')->group(function () {
         Route::get('{slug}', 'sectionView')->name('section');
@@ -424,6 +436,11 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::post('delete-all', 'deleteAll')->name('delete.all');
     });
 
+    Route::controller(AccountDeletionRequestController::class)->prefix('account-deletion-requests')->name('account.deletion.requests.')->group(function () {
+        Route::get('/', 'index')->name('index');
+        Route::put('status/update', 'updateStatus')->name('status.update');
+    });
+
     Route::controller(CryptoAssetController::class)->prefix('crypto/assets')->name('crypto.assets.')->group(function() {
         Route::get('gateway/{alias}','gatewayAssets')->name('gateway.index');
         Route::get('gateway/{alias}/generate/wallet','generateWallet')->name('generate.wallet');
@@ -435,7 +452,273 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('wallet/transactions/{crypto_asset_id}/{wallet_id}','walletTransactions')->name('wallet.transactions');
         Route::post('wallet/transactions/search/{crypto_asset_id}/{wallet_id}','walletTransactionSearch')->name('wallet.transaction.search');
     });
+
+    // Savings
+    Route::controller(App\Http\Controllers\Admin\SavingsController::class)->prefix('savings')->name('savings.')->group(function () {
+        Route::get('/', 'index')->name('index');
+    });
+
+    Route::controller(App\Http\Controllers\Admin\SavingsPlanController::class)->prefix('savings-plans')->name('savings.plans.')->group(function () {
+        Route::get('/', 'index')->name('index');
+        Route::post('store', 'store')->name('store');
+        Route::put('update/{id}', 'update')->name('update');
+        Route::put('status/update', 'statusUpdate')->name('status.update');
+        Route::delete('delete/{id}', 'destroy')->name('delete');
+    });
+
+    Route::controller(App\Http\Controllers\Admin\SavedBeneficiaryController::class)->prefix('beneficiaries')->name('beneficiaries.')->group(function () {
+        Route::get('/', 'index')->name('index');
+        Route::get('export', 'export')->name('export');
+        Route::get('{id}', 'show')->name('show');
+        Route::put('{id}', 'update')->name('update');
+        Route::delete('{id}', 'destroy')->name('destroy');
+    });
+
+    Route::controller(App\Http\Controllers\Admin\AutosaveController::class)->prefix('autosave')->name('autosave.')->group(function () {
+        Route::get('/', 'index')->name('index');
+        Route::get('export/plans', 'exportPlans')->name('export.plans');
+        Route::get('export/transactions', 'exportTransactions')->name('export.transactions');
+        Route::get('{id}', 'show')->name('show');
+        Route::put('{id}', 'update')->name('update');
+        Route::delete('{id}', 'destroy')->name('destroy');
+    });
+
+    Route::controller(App\Http\Controllers\Admin\EasyEarnController::class)->prefix('easyearn')->name('easyearn.')->group(function () {
+        Route::get('/', 'index')->name('index');
+        Route::get('settings', 'settings')->name('settings');
+        Route::put('settings', 'updateSettings')->name('settings.update');
+        Route::get('export/plans', 'exportPlans')->name('export.plans');
+        Route::get('export/transactions', 'exportTransactions')->name('export.transactions');
+        Route::get('{id}', 'show')->name('show');
+        Route::put('{id}', 'update')->name('update');
+        Route::delete('{id}', 'destroy')->name('destroy');
+    });
+
+    // EduSave
+    Route::controller(App\Http\Controllers\Admin\EduSaveController::class)->prefix('edusave')->name('edusave.')->group(function () {
+        Route::get('/', 'index')->name('index');
+    });
+
+    // Crypto Loans
+    Route::controller(App\Http\Controllers\Admin\LoanAdminController::class)->prefix('loans')->name('loans.')->group(function () {
+        Route::get('/', 'index')->name('index');
+        Route::get('/offers', 'getLendingOffers')->name('offers');
+        Route::get('/requests', 'getBorrowRequests')->name('requests');
+        Route::get('/statistics', 'getStatistics')->name('statistics');
+        Route::get('/overdue', 'getOverdueLoans')->name('overdue');
+        Route::get('/{id}', 'show')->name('show');
+        Route::post('/{id}/liquidate', 'forceLiquidate')->name('liquidate');
+        Route::post('/{id}/mark-overdue', 'markOverdue')->name('mark.overdue');
+    });
+
+    // P2P Marketplace
+    Route::prefix('p2p')->name('p2p.')->group(function () {
+        // Ads
+        Route::controller(App\Http\Controllers\Admin\P2PAdController::class)->prefix('ads')->name('ads.')->group(function () {
+            Route::get('/', 'index')->name('index');
+            Route::get('/{id}', 'show')->name('show');
+            Route::put('/{id}', 'update')->name('update');
+            Route::delete('/{id}', 'destroy')->name('destroy');
+        });
+
+        // Disclaimers
+        Route::controller(App\Http\Controllers\Admin\P2PDisclaimerController::class)->prefix('disclaimers')->name('disclaimers.')->group(function () {
+            Route::get('/', 'index')->name('index');
+            Route::post('/', 'store')->name('store');
+            Route::put('/{id}', 'update')->name('update');
+            Route::delete('/{id}', 'destroy')->name('destroy');
+        });
+
+        // Disputes
+        Route::controller(App\Http\Controllers\Admin\P2PDisputeController::class)->prefix('disputes')->name('disputes.')->group(function () {
+            Route::get('/', 'index')->name('index');
+            Route::get('/{id}', 'show')->name('show');
+            Route::post('/{id}/resolve', 'resolve')->name('resolve');
+        });
+
+        // Risk Management
+        Route::controller(App\Http\Controllers\Admin\P2PRiskController::class)->prefix('risk')->name('risk.')->group(function () {
+            Route::get('/users', 'index')->name('users');
+            Route::post('/users/{id}/recalculate', 'recalculate')->name('recalculate');
+            Route::post('/users/{id}/flag', 'flagUser')->name('flag');
+        });
+
+        // Merchant Applications
+        Route::controller(App\Http\Controllers\Admin\MerchantApplicationController::class)->prefix('merchant-applications')->name('merchant.applications.')->group(function () {
+            Route::get('/', 'index')->name('index');
+            Route::get('/settings', 'settings')->name('settings');
+            Route::post('/settings', 'updateSettings')->name('settings.update');
+            Route::get('/{id}', 'show')->name('show');
+            Route::post('/{id}/approve', 'approve')->name('approve');
+            Route::post('/{id}/reject', 'reject')->name('reject');
+            Route::post('/{id}/deactivate', 'deactivate')->name('deactivate');
+        });
+
+    });
+    
+    // Bill Payment (VAS) Section
+    Route::prefix('bill-payment')->name('bill.payment.')->group(function () {
+        // Categories
+        Route::controller(App\Http\Controllers\Admin\VasServiceCategoryController::class)->prefix('categories')->name('category.')->group(function () {
+            Route::get('/', 'index')->name('index');
+            Route::post('store', 'store')->name('store');
+            Route::put('update/{id}', 'update')->name('update');
+            Route::put('status/{id}', 'status')->name('status');
+            Route::delete('delete/{id}', 'destroy')->name('delete');
+        });
+    });
+    
+    // Gift Card Section (Reloadly)
+    Route::controller(GiftCardController::class)->prefix('gift-card')->name('gift.card.')->group(function () {
+        Route::get('/', 'index')->name('index');
+        Route::get('/products', 'products')->name('products');
+        Route::post('/sync-metadata', 'syncMetadata')->name('sync.metadata');
+        Route::post('/toggle-status', 'toggleStatus')->name('status.toggle');
+    });
+
+    // Manual Gift Card Trading Section
+    Route::prefix('gift-card-trade')->name('gift.card.trade.')->group(function () {
+        // Categories
+        Route::controller(App\Http\Controllers\Admin\GiftCardCategoryController::class)->prefix('categories')->name('category.')->group(function () {
+            Route::get('/', 'index')->name('index');
+            Route::post('store', 'store')->name('store');
+            Route::put('update/{id}', 'update')->name('update');
+            Route::put('status/{id}', 'status')->name('status');
+            Route::delete('delete/{id}', 'destroy')->name('delete');
+        });
+
+        // Countries
+        Route::controller(App\Http\Controllers\Admin\GiftCardCountryController::class)->prefix('countries')->name('country.')->group(function () {
+            Route::get('/', 'index')->name('index');
+            Route::post('store', 'store')->name('store');
+            Route::put('update/{id}', 'update')->name('update');
+            Route::delete('delete/{id}', 'destroy')->name('delete');
+        });
+
+        // Rates
+        Route::controller(App\Http\Controllers\Admin\GiftCardRateController::class)->prefix('rates')->name('rate.')->group(function () {
+            Route::get('/', 'index')->name('index');
+            Route::post('store', 'store')->name('store');
+            Route::put('update/{id}', 'update')->name('update');
+            Route::delete('delete/{id}', 'destroy')->name('delete');
+        });
+
+        // Trades
+        Route::controller(App\Http\Controllers\Admin\GiftCardTradeController::class)->name('trade.')->group(function () {
+            Route::get('/', 'index')->name('index');
+            Route::get('pending', 'pending')->name('pending');
+            Route::get('approved', 'approved')->name('approved');
+            Route::get('rejected', 'rejected')->name('rejected');
+            Route::get('details/{id}', 'details')->name('details');
+            Route::post('approve/{id}', 'approve')->name('approve');
+            Route::post('reject/{id}', 'reject')->name('reject');
+        });
+    });
+
+    // Banner Section
+    Route::controller(\App\Http\Controllers\Admin\BannerController::class)->prefix('banner')->name('banner.')->group(function () {
+        Route::get('/', 'index')->name('index');
+        Route::post('store', 'store')->name('store');
+        Route::post('update', 'update')->name('update');
+        Route::delete('delete', 'delete')->name('delete');
+        Route::put('status/update', 'statusUpdate')->name('status.update');
+    });
+    
+    // Graph API Section
+    Route::controller(\App\Http\Controllers\Admin\GraphController::class)->prefix('graph')->name('graph.')->group(function () {
+        Route::get('wallets', 'wallets')->name('wallets');
+        Route::get('transactions', 'transactions')->name('transactions');
+        Route::get('transactions/{id}', 'transactionDetails')->name('transactions.details');
+    });
+
+    // Referral Wallet
+    Route::controller(\App\Http\Controllers\Admin\ReferralWalletController::class)
+        ->prefix('referral-wallet/withdrawals')
+        ->name('referral.wallet.withdrawals.')
+        ->group(function () {
+            Route::get('/', 'index')->name('index');
+            Route::get('pending', 'pending')->name('pending');
+            Route::get('completed', 'completed')->name('completed');
+            Route::get('rejected', 'rejected')->name('rejected');
+            Route::post('{id}/approve', 'approve')->name('approve');
+            Route::post('{id}/reject', 'reject')->name('reject');
+        });
+
+    Route::controller(\App\Http\Controllers\Admin\ReferralCommissionController::class)
+        ->prefix('referral')
+        ->name('referral.commissions.')
+        ->group(function () {
+            Route::get('commissions', 'index')->name('index');
+            Route::get('commissions/export', 'export')->name('export');
+            Route::get('commissions/{id}', 'show')->name('show');
+            Route::put('commissions/{id}', 'update')->name('update');
+            Route::get('users/{id}/tree', 'tree')->name('tree');
+            Route::get('settings', 'settings')->name('settings');
+            Route::put('settings', 'updateSettings')->name('settings.update');
+        });
+
+    // USDT EasyEarn Management
+    Route::prefix('usdt-easyearn')->name('usdt.easyearn.')->group(function () {
+        Route::get('/', [App\Http\Controllers\Admin\UsdtEasyearnController::class, 'index'])->name('index');
+        Route::get('/investments', [App\Http\Controllers\Admin\UsdtEasyearnController::class, 'investments'])->name('investments');
+        Route::get('/investment/{id}', [App\Http\Controllers\Admin\UsdtEasyearnController::class, 'details'])->name('details');
+        Route::post('/investment/{id}/credit', [App\Http\Controllers\Admin\UsdtEasyearnController::class, 'creditInterest'])->name('credit.interest');
+        Route::put('/investment/{id}/cancel', [App\Http\Controllers\Admin\UsdtEasyearnController::class, 'cancel'])->name('cancel');
+        Route::get('/bulk-credit', [App\Http\Controllers\Admin\UsdtEasyearnController::class, 'bulkCreditPage'])->name('bulk.credit.page');
+        Route::post('/bulk-credit', [App\Http\Controllers\Admin\UsdtEasyearnController::class, 'bulkCredit'])->name('bulk.credit');
+        Route::get('/settings', [App\Http\Controllers\Admin\UsdtEasyearnController::class, 'settingsPage'])->name('settings');
+        Route::put('/settings', [App\Http\Controllers\Admin\UsdtEasyearnController::class, 'updateSettings'])->name('settings.update');
+    });
+
+    // Virtual Card Settings
+    Route::prefix('virtual-card')->name('virtual.card.')->group(function () {
+        Route::get('/settings', [App\Http\Controllers\Admin\VirtualCardSettingController::class, 'index'])->name('settings');
+        Route::put('/settings', [App\Http\Controllers\Admin\VirtualCardSettingController::class, 'update'])->name('settings.update');
+    });
+
+
+
+    
+Route::controller(CryptoCardCharge::class)
+    ->prefix('crypto-card-charges')
+    ->name('crypto-card-charge.')
+    ->group(function () {
+
+        Route::get('/', 'index')->name('index');
+
+        Route::get('/create', 'create')->name('create');
+
+        Route::post('/store', 'store')->name('store');
+
+        Route::get('/details', 'show')->name('show');
+
+        Route::get('/edit', 'edit')->name('edit');
+
+        Route::put('/update', 'update')->name('update');
+
+    });
+    // ==================== PROMO SECTION ====================
+    Route::controller(PromoController::class)
+        ->prefix('promo')
+        ->name('promo.')
+        ->group(function () {
+            Route::get('/', 'index')->name('index');
+            Route::get('/create', 'create')->name('create');
+            Route::post('/store', 'store')->name('store');
+            Route::get('/search', 'search')->name('search');
+            Route::get('/statistics', 'statistics')->name('statistics');
+            Route::get('/features', 'features')->name('features');
+            Route::get('/{id}', 'show')->name('show');
+            Route::get('/{id}/edit', 'edit')->name('edit');
+            Route::put('/{id}', 'update')->name('update');
+            Route::patch('/{id}/status', 'statusUpdate')->name('status');
+            Route::delete('/{id}', 'destroy')->name('destroy');
+        });
+    // ==================== END PROMO ====================
+
 });
+
+
 
 Route::get('admin/pusher/beams-auth', function (Request $request) {
     if(Auth::check() == false) {
