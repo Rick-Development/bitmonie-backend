@@ -26,6 +26,8 @@ class UserEmail extends Mailable
 
     public function build()
     {
+        $siteName = function_exists('basicControl') ? (basicControl()?->site_title ?? config('app.name', 'Bitmonie')) : config('app.name', 'Bitmonie');
+
         return $this->subject($this->subjectLine)
             ->view('mail-templates.user._user_mail')
             ->with([
@@ -34,7 +36,7 @@ class UserEmail extends Mailable
                 'name'        => $this->first_name,
 
                 // Optional
-                'site_name'   => config('app.name'),
+                'site_name'   => $siteName,
                 'site_url'    => config('app.url'),
                 'logo'        => public_path('logo.png'), // change if necessary
             ]);

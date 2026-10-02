@@ -349,29 +349,31 @@ class LoginController extends Controller
             $status = true;
             $auth_token = '';
         }
-       $data= $this->sendNotification(
-    $user,
-    'USER_LOGIN',
-    [
-        'user' => $user->firstname,
-        'time' => now()->format('d M Y h:i A'),
-    ],
-    [
-        'mail',
-        'push',
-        'inapp'
-    ],
-    [
-        'action' => [
-            'link' => '#',
-            'icon' => 'fa fa-shield',
-        ],
-        'referenceId' => $this->generateReferenceId(
+        $data = $this->sendNotification(
+            $user,
             'USER_LOGIN',
-            $user->id
-        ),
-    ]
-);
+            [
+                'user'   => $user->firstname,
+                'time'   => now()->format('d M Y h:i A'),
+                'device' => $request->userAgent() ?? 'Mobile App',
+                'ip'     => $request->ip(),
+            ],
+            [
+                'mail',
+                'push',
+                'inapp'
+            ],
+            [
+                'action' => [
+                    'link' => '#',
+                    'icon' => 'fa fa-shield',
+                ],
+                'referenceId' => $this->generateReferenceId(
+                    'USER_LOGIN',
+                    $user->id
+                ),
+            ]
+        );
 
        // Return the login response
         return Response::success(

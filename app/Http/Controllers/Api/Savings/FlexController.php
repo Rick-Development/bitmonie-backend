@@ -201,6 +201,19 @@ class FlexController extends Controller
                 $flex->save();
 
                 /*
+                 * Synchronize UserWallet balance if user funded from internal wallet.
+                 */
+                $wallet = UserWallet::where('user_id', $user->id)
+                    ->where('currency_code', 'NGN')
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($wallet && bccomp((string) $wallet->balance, (string) $amount, 8) >= 0) {
+                    $wallet->balance = bcsub((string) $wallet->balance, (string) $amount, 8);
+                    $wallet->save();
+                }
+
+                /*
                  * Log savings transaction.
                  */
                 SavingsTransaction::create([
@@ -522,6 +535,19 @@ class FlexController extends Controller
                     - $totalDeduction;
 
                 $flex->save();
+
+                /*
+                 * Credit user's NGN wallet with the withdrawn amount.
+                 */
+                $wallet = UserWallet::where('user_id', $user->id)
+                    ->where('currency_code', 'NGN')
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($wallet) {
+                    $wallet->balance = bcadd((string) $wallet->balance, (string) $amount, 8);
+                    $wallet->save();
+                }
 
                 /*
                  * Log savings withdrawal.

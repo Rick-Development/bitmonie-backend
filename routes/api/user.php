@@ -836,6 +836,11 @@ Route::post('/{id}/fund', [CryptoCards::class, 'fund'])
     );
     
     Route::get(
+        '/charges',
+        [CryptoCards::class, 'charges']
+    );
+
+    Route::get(
         '/charges/{charge_parameter}',
         [CryptoCards::class, 'getCharge']
     );

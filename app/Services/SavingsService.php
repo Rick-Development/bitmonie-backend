@@ -393,4 +393,69 @@ class SavingsService
 
         return $formatted === '' || $formatted === '-0' ? '0' : $formatted;
     }
+
+    /**
+     * Format a savings amount with proper currency code, symbol, and precision.
+     */
+    public static function formatSavingsCurrency($amount, string $currency = 'NGN'): array
+    {
+        $curr = strtoupper(trim($currency));
+        $val = (float) ($amount ?? 0);
+
+        if ($curr === 'USDT' || $curr === 'USD') {
+            $formattedAmount = number_format($val, 8, '.', '');
+            $displayFormatted = rtrim(rtrim($formattedAmount, '0'), '.') . ' ' . $curr;
+            return [
+                'amount' => $formattedAmount,
+                'currency' => $curr,
+                'currency_symbol' => $curr,
+                'display' => $displayFormatted,
+            ];
+        }
+
+        $formattedAmount = number_format($val, 2, '.', ',');
+        return [
+            'amount' => number_format($val, 2, '.', ''),
+            'currency' => 'NGN',
+            'currency_symbol' => '₦',
+            'display' => '₦' . $formattedAmount,
+        ];
+    }
+
+    /**
+     * Aggregate user's entire multi-currency savings portfolio (NGN savings + USDT EasyEarn).
+     */
+    public function getUserSavingsPortfolio(int $userId): array
+    {
+        $flexBalance = FlexSavings::where('user_id', $userId)->where('status', true)->sum('balance') ?? 0;
+        $safeLockBalance = SafeLock::where('user_id', $userId)->where('status', 'active')->sum('amount') ?? 0;
+        $targetBalance = TargetSavings::where('user_id', $userId)->where('status', 'active')->sum('current_amount') ?? 0;
+
+        $totalNgn = bcadd(
+            bcadd((string) $flexBalance, (string) $safeLockBalance, 2),
+            (string) $targetBalance,
+            2
+        );
+
+        $usdtWallet = \App\Models\UsdtEasyearnWallet::where('user_id', $userId)->first();
+        $usdtActivePrincipal = $usdtWallet ? (string) $usdtWallet->active_investment : '0.00000000';
+        $usdtEarnedInterest = $usdtWallet ? (string) $usdtWallet->total_earned : '0.00000000';
+
+        return [
+            'ngn_savings' => [
+                'currency' => 'NGN',
+                'currency_symbol' => '₦',
+                'total_balance' => $totalNgn,
+                'flex_balance' => number_format((float) $flexBalance, 2, '.', ''),
+                'safelock_balance' => number_format((float) $safeLockBalance, 2, '.', ''),
+                'target_balance' => number_format((float) $targetBalance, 2, '.', ''),
+            ],
+            'usdt_savings' => [
+                'currency' => 'USDT',
+                'currency_symbol' => 'USDT',
+                'active_principal' => $usdtActivePrincipal,
+                'total_earned_interest' => $usdtEarnedInterest,
+            ],
+        ];
+    }
 }

@@ -45,7 +45,7 @@ class LoginNotification extends Notification implements ShouldQueue
     public function toMail($notifiable)
     {
         return (new MailMessage)
-                    ->subject("Login Notification")
+                    ->subject("Bitmonie - Login Notification")
                     ->greeting("Hello " . $notifiable->firstname)
                     ->line("There was a new login to your account.")
                     ->line("Time: " . $this->time)

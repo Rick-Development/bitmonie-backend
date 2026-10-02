@@ -9,6 +9,8 @@ use App\Models\UsdtEasyearnInterestCredit;
 use App\Models\UsdtEasyearnInvestment;
 use App\Models\UsdtEasyearnSetting;
 use App\Models\User;
+use App\Services\QuidaxService;
+use App\Services\QuidaxSpendableBalanceService;
 use App\Traits\Notify;
 use Carbon\Carbon;
 use Exception;
@@ -45,42 +47,17 @@ class UsdtEasyearnService
             );
         }
 
-        if (!$user->quidax_id) {
-            throw new Exception(
-                'Quidax account not found. Please complete your account setup.'
-            );
-        }
-
-        $quidaxService = new QuidaxService();
-
-        $walletResponse = $quidaxService->fetchUserWallet(
-            $user->quidax_id,
-            'usdt'
-        );
-
-        if (!isset($walletResponse['data'])) {
-            throw new Exception(
-                'Unable to fetch USDT wallet from Quidax.'
-            );
-        }
-
-        $quidaxBalance = $walletResponse['data']['balance'] ?? 0;
-
-        $easyearnWallet = $this->getOrCreateEasyearnWallet($user);
-
-        $lockedAmount = $easyearnWallet->locked_balance;
-
-        $availableBalance = bcsub(
-            (string) $quidaxBalance,
-            (string) $lockedAmount,
-            8
-        );
+        $availableBalance = $this->getAvailableUsdtBalance($user);
 
         if (bccomp($availableBalance, (string) $amount, 8) < 0) {
             throw new Exception(
                 "Insufficient USDT balance. Available: {$availableBalance} USDT"
             );
         }
+
+        $easyearnWallet = $this->getOrCreateEasyearnWallet($user);
+        $quidaxService = new QuidaxService();
+        $quidaxBalance = $availableBalance;
 
         $investment = DB::transaction(function () use (
             $user,
@@ -728,45 +705,16 @@ public function withdrawInterest(
             );
         }
 
-        if (!$user->quidax_id) {
-            throw new Exception(
-                'Quidax account not found. Please complete your account setup.'
-            );
-        }
-
-        $quidaxService = new QuidaxService();
-
-        $walletResponse = $quidaxService->fetchUserWallet(
-            $user->quidax_id,
-            'usdt'
-        );
-
-        if (!isset($walletResponse['data'])) {
-            throw new Exception(
-                'Unable to fetch USDT wallet from Quidax.'
-            );
-        }
-
-        $quidaxBalance =
-            $walletResponse['data']['balance'] ?? 0;
-
-        $easyearnWallet =
-            $this->getOrCreateEasyearnWallet($user);
-
-        $lockedAmount =
-            $easyearnWallet->locked_balance;
-
-        $availableBalance = bcsub(
-            (string) $quidaxBalance,
-            (string) $lockedAmount,
-            8
-        );
+        $availableBalance = $this->getAvailableUsdtBalance($user);
 
         if (bccomp($availableBalance, (string) $amount, 8) < 0) {
             throw new Exception(
                 "Insufficient USDT balance to top up. Available: {$availableBalance} USDT"
             );
         }
+
+        $easyearnWallet = $this->getOrCreateEasyearnWallet($user);
+        $quidaxService = new QuidaxService();
 
         $investment = DB::transaction(
             function () use (
@@ -1131,5 +1079,56 @@ $fundResponse = $quidaxService->fundSubAccount(
                 ]
             );
         }
+    }
+
+    /**
+     * Get user's available spendable USDT balance from Quidax.
+     *
+     * Validates and returns the user's available USDT balance after
+     * deducting any active outgoing reservations (pending withdrawals or
+     * active off-ramps). Ensures the returned balance is never negative.
+     */
+    public function getAvailableUsdtBalance(User $user): string
+    {
+        if (!$user->quidax_id) {
+            throw new Exception(
+                'Quidax account not found. Please complete your account setup.'
+            );
+        }
+
+        $quidaxService = new QuidaxService();
+        $walletResponse = $quidaxService->fetchUserWallet(
+            $user->quidax_id,
+            'usdt'
+        );
+
+        if (!isset($walletResponse['data']) || !is_array($walletResponse['data'])) {
+            throw new Exception(
+                'Unable to fetch USDT wallet from Quidax.'
+            );
+        }
+
+        $walletData = $walletResponse['data'];
+        if (isset($walletData[0]) && is_array($walletData[0])) {
+            $walletData = $walletData[0];
+        }
+
+        /** @var QuidaxSpendableBalanceService $spendableService */
+        $spendableService = app(QuidaxSpendableBalanceService::class);
+        $augmentedWallet = $spendableService->augmentWalletPayload(
+            $user,
+            $walletData,
+            'usdt'
+        );
+
+        $availableBalance = (string) ($augmentedWallet['available_balance'] ?? $augmentedWallet['balance'] ?? '0');
+
+        if (!is_numeric($availableBalance) || bccomp($availableBalance, '0', 8) < 0) {
+            $availableBalance = '0.00000000';
+        } else {
+            $availableBalance = bcadd($availableBalance, '0', 8);
+        }
+
+        return $availableBalance;
     }
 }

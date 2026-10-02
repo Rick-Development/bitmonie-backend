@@ -324,7 +324,7 @@ trait Notify
                 $data = [
                     "to" => $user->token,
                     "notification" => [
-                        "title" => $templateObj->name . ' from ' . $basic->site_title,
+                        "title" => $templateObj->name . ' from ' . ($basic?->site_title ?: config('app.name', 'Bitmonie')),
                         "body" => $template,
                         "icon" => asset("icon" => asset(basicControl()->favicon),),, "icon" => asset(basicControl()->favicon),),
                     ],

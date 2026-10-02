@@ -28,10 +28,20 @@ class UsdtEasyearnController extends Controller
      * Get product information
      * GET /api/v1/usdt-easyearn/info
      */
-    public function info()
+    public function info(Request $request)
     {
         try {
             $settings = UsdtEasyearnSetting::getSettings();
+            $user = auth('api')->user() ?? $request->user();
+
+            $availableBalance = '0.00000000';
+            if ($user && $user->quidax_id) {
+                try {
+                    $availableBalance = $this->usdtearnService->getAvailableUsdtBalance($user);
+                } catch (\Throwable $e) {
+                    $availableBalance = '0.00000000';
+                }
+            }
 
             return response()->json([
                 'success' => true,
@@ -40,6 +50,7 @@ class UsdtEasyearnController extends Controller
                     'current_monthly_rate' => $settings->current_monthly_rate,
                     'min_investment' => $settings->min_investment,
                     'max_investment' => $settings->max_investment,
+                    'available_balance' => $availableBalance,
                     'is_active' => $settings->is_active,
                     'payout_day' => $settings->payout_day,
                     'duration_months' => 12,

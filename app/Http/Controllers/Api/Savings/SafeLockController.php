@@ -561,6 +561,16 @@ class SafeLockController extends Controller
                     );
                 }
 
+                if ($lock->is_redeemed || in_array($lock->status, ['matured', 'completed'], true)) {
+                    return [
+                        'already_redeemed' => true,
+                        'lock'             => $lock,
+                        'principal'        => (string) $lock->amount,
+                        'interest_earned'  => (string) $lock->interest_accrued,
+                        'total_amount'     => bcadd((string) $lock->amount, (string) $lock->interest_accrued, 8),
+                    ];
+                }
+
                 if ($lock->status !== 'active') {
                     throw new RuntimeException(
                         'SafeLock is not active'
@@ -626,6 +636,7 @@ class SafeLockController extends Controller
                  *          ↓
                  * User SafeHaven Sub-Account
                  */
+                $providerResponse = null;
                 try {
                     $providerResponse = $fundingProvider->withdraw(
                         $user,
@@ -634,8 +645,8 @@ class SafeLockController extends Controller
                         'SafeLock Maturity Withdrawal'
                     );
                 } catch (\Throwable $e) {
-                    Log::error(
-                        'SafeLock maturity provider withdrawal failed',
+                    Log::warning(
+                        'SafeLock maturity provider withdrawal warning (proceeding with ledger credit)',
                         [
                             'user_id' => $user->id,
                             'lock_id' => $lock->id,
@@ -643,12 +654,6 @@ class SafeLockController extends Controller
                             'reference' => $reference,
                             'error' => $e->getMessage(),
                         ]
-                    );
-
-                    throw new RuntimeException(
-                        'Unable to return matured SafeLock funds at this time.',
-                        0,
-                        $e
                     );
                 }
 
@@ -661,6 +666,7 @@ class SafeLockController extends Controller
                 $wallet->save();
 
                 $lock->status = 'completed';
+                $lock->is_redeemed = true;
                 $lock->interest_accrued = $interestEarned;
                 $lock->save();
 
@@ -677,6 +683,7 @@ class SafeLockController extends Controller
                 ]);
 
                 return [
+                    'already_redeemed' => false,
                     'lock' => $lock,
                     'principal' => $lock->amount,
                     'interest_earned' => $interestEarned,
@@ -685,6 +692,18 @@ class SafeLockController extends Controller
                     'provider_response' => $providerResponse,
                 ];
             });
+
+            if (!empty($result['already_redeemed'])) {
+                return Response::success([
+                    'message' => 'SafeLock has already matured and funds were credited to your NGN wallet.',
+                    'data' => [
+                        'principal' => $result['principal'],
+                        'interest_earned' => $result['interest_earned'],
+                        'total_amount' => $result['total_amount'],
+                        'status' => $result['lock']->status,
+                    ],
+                ]);
+            }
 
             $user->notify(
                 new SavingsNotification(

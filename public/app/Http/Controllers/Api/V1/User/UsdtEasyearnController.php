@@ -6,27 +6,42 @@ use App\Http\Controllers\Controller;
 use App\Models\UsdtEasyearnInvestment;
 use App\Models\UsdtEasyearnSetting;
 use App\Services\UsdtEasyearnService;
+use App\Models\EasyEarnPlan;
 use Illuminate\Http\Request;
+use App\Http\Helpers\Response;
 use Illuminate\Support\Facades\Validator;
 use Exception;
+use Illuminate\Validation\ValidationException;
+use RuntimeException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 class UsdtEasyearnController extends Controller
 {
-    protected $easyearnService;
+    protected UsdtEasyearnService $usdtearnService;
 
-    public function __construct(UsdtEasyearnService $easyearnService)
+    public function __construct(UsdtEasyearnService $usdtearnService)
     {
-        $this->easyearnService = $easyearnService;
+        $this->usdtearnService = $usdtearnService;
     }
 
     /**
      * Get product information
      * GET /api/v1/usdt-easyearn/info
      */
-    public function info()
+    public function info(Request $request)
     {
         try {
             $settings = UsdtEasyearnSetting::getSettings();
+            $user = auth('api')->user() ?? $request->user();
+
+            $availableBalance = '0.00000000';
+            if ($user && $user->quidax_id) {
+                try {
+                    $availableBalance = $this->usdtearnService->getAvailableUsdtBalance($user);
+                } catch (\Throwable $e) {
+                    $availableBalance = '0.00000000';
+                }
+            }
 
             return response()->json([
                 'success' => true,
@@ -35,6 +50,7 @@ class UsdtEasyearnController extends Controller
                     'current_monthly_rate' => $settings->current_monthly_rate,
                     'min_investment' => $settings->min_investment,
                     'max_investment' => $settings->max_investment,
+                    'available_balance' => $availableBalance,
                     'is_active' => $settings->is_active,
                     'payout_day' => $settings->payout_day,
                     'duration_months' => 12,
@@ -63,7 +79,7 @@ class UsdtEasyearnController extends Controller
     {
         try {
             $user = $request->user();
-            $status = $request->query('status'); // active, completed, cancelled
+            $status = $request->query('status');
 
             $query = UsdtEasyearnInvestment::byUser($user->id)
                 ->with('interestCredits')
@@ -76,7 +92,7 @@ class UsdtEasyearnController extends Controller
             $investments = $query->paginate(20);
 
             $data = $investments->map(function ($investment) {
-                return $this->easyearnService->getInvestmentSummary($investment);
+                return $this->usdtearnService->getInvestmentSummary($investment);
             });
 
             return response()->json([
@@ -119,15 +135,19 @@ class UsdtEasyearnController extends Controller
 
         try {
             $user = $request->user();
-            $amount = (float)$request->amount;
+            $amount = (float) $request->amount;
             $autoCompound = $request->auto_compound ?? false;
 
-            $investment = $this->easyearnService->createInvestment($user, $amount, $autoCompound);
+            $investment = $this->usdtearnService->createInvestment(
+                $user,
+                $amount,
+                $autoCompound
+            );
 
             return response()->json([
                 'success' => true,
                 'message' => 'Savings created successfully',
-                'data' => $this->easyearnService->getInvestmentSummary($investment)
+                'data' => $this->usdtearnService->getInvestmentSummary($investment)
             ], 201);
         } catch (Exception $e) {
             return response()->json([
@@ -145,16 +165,18 @@ class UsdtEasyearnController extends Controller
     {
         try {
             $user = $request->user();
+
             $investment = UsdtEasyearnInvestment::byUser($user->id)
-                ->with(['interestCredits' => function($query) {
-                    $query->latest();
-                }])
+                ->with([
+                    'interestCredits' => function ($query) {
+                        $query->latest();
+                    }
+                ])
                 ->findOrFail($id);
 
-            $summary = $this->easyearnService->getInvestmentSummary($investment);
-            
-            // Add credit history
-            $summary['credit_history'] = $investment->interestCredits->map(function($credit) {
+            $summary = $this->usdtearnService->getInvestmentSummary($investment);
+
+            $summary['credit_history'] = $investment->interestCredits->map(function ($credit) {
                 return [
                     'amount' => $credit->amount,
                     'credit_date' => $credit->credit_date->format('Y-m-d'),
@@ -183,16 +205,19 @@ class UsdtEasyearnController extends Controller
     {
         try {
             $user = $request->user();
-            $investment = UsdtEasyearnInvestment::byUser($user->id)->findOrFail($id);
 
-            $amount = $this->easyearnService->withdrawInterest($investment);
+            $investment = UsdtEasyearnInvestment::byUser($user->id)
+                ->findOrFail($id);
+
+            $amount = $this->usdtearnService->withdrawInterest($investment);
 
             return response()->json([
                 'success' => true,
                 'message' => 'Interest withdrawn successfully',
                 'data' => [
                     'withdrawn_amount' => $amount,
-                    'investment' => $this->easyearnService->getInvestmentSummary($investment->fresh())
+                    'investment' => $this->usdtearnService
+                        ->getInvestmentSummary($investment->fresh())
                 ]
             ]);
         } catch (Exception $e) {
@@ -211,16 +236,19 @@ class UsdtEasyearnController extends Controller
     {
         try {
             $user = $request->user();
-            $investment = UsdtEasyearnInvestment::byUser($user->id)->findOrFail($id);
 
-            $amount = $this->easyearnService->withdrawPrincipal($investment);
+            $investment = UsdtEasyearnInvestment::byUser($user->id)
+                ->findOrFail($id);
+
+            $amount = $this->usdtearnService->withdrawPrincipal($investment);
 
             return response()->json([
                 'success' => true,
                 'message' => 'Principal withdrawn successfully. Savings completed.',
                 'data' => [
                     'withdrawn_amount' => $amount,
-                    'investment' => $this->easyearnService->getInvestmentSummary($investment->fresh())
+                    'investment' => $this->usdtearnService
+                        ->getInvestmentSummary($investment->fresh())
                 ]
             ]);
         } catch (Exception $e) {
@@ -230,6 +258,7 @@ class UsdtEasyearnController extends Controller
             ], 400);
         }
     }
+
     /**
      * Top up an existing investment
      * POST /api/v1/usdt-easyearn/top-up/{id}
@@ -250,21 +279,62 @@ class UsdtEasyearnController extends Controller
 
         try {
             $user = $request->user();
-            $investment = UsdtEasyearnInvestment::byUser($user->id)->findOrFail($id);
-            $amount = (float)$request->amount;
 
-            $investment = $this->easyearnService->topUp($user, $investment, $amount);
+            $investment = UsdtEasyearnInvestment::byUser($user->id)
+                ->findOrFail($id);
+
+            $amount = (float) $request->amount;
+
+            $investment = $this->usdtearnService->topUp(
+                $user,
+                $investment,
+                $amount
+            );
 
             return response()->json([
                 'success' => true,
                 'message' => 'Savings topped up successfully',
-                'data' => $this->easyearnService->getInvestmentSummary($investment)
+                'data' => $this->usdtearnService->getInvestmentSummary($investment)
             ]);
         } catch (Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage()
             ], 400);
+        }
+    }
+
+    /**
+     * Terminate an investment
+     */
+    public function terminate(Request $request, int $id)
+    {
+        $user = $request->user();
+
+        try {
+            $investment = UsdtEasyearnInvestment::byUser($user->id)
+                ->findOrFail($id);
+
+            $investment = $this->usdtearnService->terminate($investment);
+
+            return Response::successResponse(
+                'EasyEarn investment terminated successfully',
+                $this->usdtearnService->getInvestmentSummary($investment)
+            );
+
+        } catch (ModelNotFoundException $e) {
+
+            return response()->json([
+                'success' => false,
+                'message' => 'EasyEarn investment not found.'
+            ], 404);
+
+        } catch (Exception $e) {
+
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 422);
         }
     }
 }

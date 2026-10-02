@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ $subject ?? config('app.name') }}</title>
+    <title>{{ $subject ?? config('app.name', 'Bitmonie') }}</title>
 
 
 <style>
@@ -178,7 +178,7 @@
 
     <div class="header">
         <h1>
-            {{ $site_name ?? config('app.name') }}
+            {{ $site_name ?? config('app.name', 'Bitmonie') }}
         </h1>
     </div>
 
@@ -207,7 +207,7 @@
 
         <div class="closing">
             Thank you,<br>
-            <strong>{{ $site_name ?? config('app.name') }}</strong>
+            <strong>{{ $site_name ?? config('app.name', 'Bitmonie') }}</strong>
         </div>
 
     </div>
@@ -217,7 +217,7 @@
         &copy; {{ date('Y') }}
 
         <a href="{{ $site_url ?? config('app.url') }}">
-            {{ $site_name ?? config('app.name') }}
+            {{ $site_name ?? config('app.name', 'Bitmonie') }}
         </a>
 
         <div class="automated">

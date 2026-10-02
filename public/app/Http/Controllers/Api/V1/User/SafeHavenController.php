@@ -126,16 +126,18 @@ class SafeHavenController extends Controller
             'amount' => 'required|numeric|min:100',
             'bank_code' => 'required',
             'account_number' => 'required|numeric',
-            'narration' => 'nullable|string|max:100'
+            'narration' => 'nullable|string|max:100',
+            'name_enquiry_reference' => 'nullable|string',
+            'session_id' => 'nullable|string',
         ]);
 
         try {
             $user = auth()->user();
             $wallet = $user->wallets()->where('currency_code', 'NGN')->firstOrFail();
-            $amount = $request->amount;
+            $amount = (float) $request->amount;
 
             // 1. Check Balance
-            if (bccomp($wallet->balance, $amount, 8) < 0) {
+            if (bccomp((string) $wallet->balance, (string) $amount, 8) < 0) {
                 return Response::errorResponse('Insufficient wallet balance.');
             }
 
@@ -149,35 +151,58 @@ class SafeHavenController extends Controller
                     'account_number' => $request->account_number
                 ]);
 
-                // 3. Perform Name Enquiry to get Session ID (Reference)
-                $enquiry = $this->safeHaven->nameEnquiry($request->bank_code, $request->account_number);
-                $nameEnquiryRef = $enquiry['sessionId'] ?? $enquiry['data']['sessionId'] ?? null;
+                // 3. Resolve Name Enquiry & Session Reference
+                $nameEnquiryRef = $request->input('name_enquiry_reference') ?? $request->input('session_id');
+                $beneficiaryBankCode = (string) $request->bank_code;
+                $beneficiaryAccountNumber = (string) $request->account_number;
+
+                if (!$nameEnquiryRef) {
+                    $enquiry = $this->safeHaven->nameEnquiry($request->bank_code, $request->account_number);
+                    $nameEnquiryRef = $enquiry['sessionId'] 
+                        ?? $enquiry['data']['sessionId'] 
+                        ?? $enquiry['session_id'] 
+                        ?? $enquiry['nameEnquiryReference']
+                        ?? null;
+
+                    if (!empty($enquiry['bankCode']) || !empty($enquiry['data']['bankCode'])) {
+                        $beneficiaryBankCode = (string) ($enquiry['bankCode'] ?? $enquiry['data']['bankCode']);
+                    }
+                    if (!empty($enquiry['accountNumber']) || !empty($enquiry['data']['accountNumber'])) {
+                        $beneficiaryAccountNumber = (string) ($enquiry['accountNumber'] ?? $enquiry['data']['accountNumber']);
+                    }
+                }
 
                 if (!$nameEnquiryRef) {
                     throw new Exception("Failed to generate name enquiry reference.");
                 }
 
-                // 4. Call SafeHaven Transfer API
+                // 4. Resolve Debit Account (User Sub-Account or configured Main/Settlement Account)
+                $userSubAccount = $this->safeHaven->getUserSubAccount($user);
+                $debitAccountNumber = $userSubAccount?->account_number 
+                    ?: config('services.safeHeaven.main_account') 
+                    ?: env('SAFE_HEAVEN_MAIN_ACCOUNT');
+
+                if (!$debitAccountNumber) {
+                    throw new Exception("No active debit account found for bank transfer. Please ensure your account or platform settlement account is configured.");
+                }
+
+                // 5. Call SafeHaven Transfer API
                 $payload = [
                     "saveBeneficiary" => false,
-                    "nameEnquiryReference" => $nameEnquiryRef,//"5019688052",//
-                    "debitAccountNumber" => optional($this->safeHaven->getUserSubAccount($user))->account_number,
-                    "beneficiaryBankCode" => $request->bank_code,
-                    "beneficiaryAccountNumber" => $request->account_number,
-                    "amount" => (float)$amount,
+                    "nameEnquiryReference" => (string) $nameEnquiryRef,
+                    "debitAccountNumber" => (string) $debitAccountNumber,
+                    "beneficiaryBankCode" => (string) $beneficiaryBankCode,
+                    "beneficiaryAccountNumber" => (string) $beneficiaryAccountNumber,
+                    "amount" => (float) $amount,
                     "narration" => $request->narration ?? "Withdrawal from wallet",
                     "paymentReference" => $reference
                 ];
-
-                if (!$payload['debitAccountNumber']) {
-                     throw new Exception("User does not have a SafeHaven sub-account to debit.");
-                }
 
                 try {
                     $result = $this->safeHaven->transfer($payload);
                     return Response::successResponse('Transfer initiated successfully', $result);
                 } catch (Exception $e) {
-                    // 4. Refund on Failure
+                    // Refund on Failure
                     \App\Services\WalletService::credit($wallet->id, (string)$amount, $reference . ':refund', [
                         'reason' => 'SafeHaven API Failure: ' . $e->getMessage()
                     ]);

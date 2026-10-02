@@ -20,7 +20,7 @@ class ConfigSeeder extends Seeder
                 | Application
                 |--------------------------------------------------------------------------
                 */
-                'site_title' => config('app.name'),
+                'site_title' => config('app.name', 'Bitmonie'),
                 'time_zone' => config('app.timezone'),
 
                 /*
@@ -37,7 +37,7 @@ class ConfigSeeder extends Seeder
                 |--------------------------------------------------------------------------
                 */
                 'sender_email' => config('mail.from.address'),
-                'sender_email_name' => config('mail.from.name'),
+                'sender_email_name' => config('mail.from.name', 'Bitmonie'),
             ]
         );
         BasicSettings::updateOrCreate(
@@ -49,7 +49,7 @@ class ConfigSeeder extends Seeder
                 |--------------------------------------------------------------------------
                 */
                 'site_title' =>'Your Crypto Powered Neo Bank',
-                 'site_name' => config('app.name'),
+                 'site_name' => config('app.name', 'Bitmonie'),
             ]
 
         );

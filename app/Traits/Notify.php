@@ -595,7 +595,7 @@ private function sendFirebasePush(
         
             $title = $isAdmin
                 ? $templateObj->name
-                : $templateObj->name . ' from ' . $basic->site_title;
+                : $templateObj->name . ' from ' . ($basic?->site_title ?: config('app.name', 'Bitmonie'));
 
             $modelType = $isAdmin ? Admin::class : ($user ? get_class($user) : null);
             $tokenQuery = FireBaseToken::where('tokenable_type', $modelType);
