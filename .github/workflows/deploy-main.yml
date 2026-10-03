@@ -21,7 +21,7 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.2'
+          php-version: '8.4'
           extensions: pdo_mysql, bcmath, ctype, fileinfo, json, mbstring, openssl, tokenizer, xml, curl
           coverage: none
 
@@ -29,7 +29,7 @@ jobs:
         run: composer validate
 
       - name: Install PHP Dependencies
-        run: composer install --no-interaction --prefer-dist
+        run: composer install --no-interaction --prefer-dist --ignore-platform-req=php
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -61,7 +61,7 @@ jobs:
           script_stop: true
           script: |
             # Ensure environment and CLI binaries (php, composer, node, npm) are available
-            export PATH=$PATH:/usr/local/bin:/usr/bin:~/.nvm/versions/node/$(ls ~/.nvm/versions/node 2>/dev/null | tail -n 1)/bin:~/.composer/vendor/bin:/opt/cpanel/ea-php82/root/usr/bin
+            export PATH=$PATH:/usr/local/bin:/usr/bin:~/.nvm/versions/node/$(ls ~/.nvm/versions/node 2>/dev/null | tail -n 1)/bin:~/.composer/vendor/bin:/opt/cpanel/ea-php84/root/usr/bin:/opt/cpanel/ea-php83/root/usr/bin:/opt/cpanel/ea-php82/root/usr/bin
             [ -f ~/.bashrc ] && source ~/.bashrc || true
             [ -f ~/.profile ] && source ~/.profile || true
 
@@ -83,7 +83,7 @@ jobs:
             git pull origin main
 
             # Install backend dependencies
-            composer install --no-interaction --prefer-dist --optimize-autoloader --no-dev
+            composer install --no-interaction --prefer-dist --optimize-autoloader --no-dev --ignore-platform-req=php
 
             # Run database migrations
             php artisan migrate --force
