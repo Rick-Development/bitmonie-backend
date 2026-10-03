@@ -90,6 +90,11 @@ jobs:
 
             git remote set-url origin "$REPO_URL" 2>/dev/null || git remote add origin "$REPO_URL" 2>/dev/null || true
 
+            # Backup .env safely before any git operations
+            if [ -f ".env" ]; then
+              cp -p .env .env.deploy.bak
+            fi
+
             # Pull latest code
             echo "📥 Fetching origin main..."
             git fetch origin main
@@ -98,6 +103,12 @@ jobs:
             git checkout -f -B main origin/main
             git reset --hard origin/main
             git pull origin main
+
+            # Restore .env if git removed or touched it
+            if [ -f ".env.deploy.bak" ]; then
+              cp -p .env.deploy.bak .env
+            fi
+            git rm --cached .env 2>/dev/null || true
 
             # Install backend dependencies
             composer install --no-interaction --prefer-dist --optimize-autoloader --no-dev --ignore-platform-req=php
