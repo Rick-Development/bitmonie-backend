@@ -1,0 +1,110 @@
+name: Deploy to Production (Main)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    name: Run Build Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: pdo_mysql, bcmath, ctype, fileinfo, json, mbstring, openssl, tokenizer, xml, curl
+          coverage: none
+
+      - name: Validate Composer
+        run: composer validate
+
+      - name: Install PHP Dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install Frontend Dependencies
+        run: npm ci || npm install
+
+      - name: Build Frontend
+        run: npm run build
+
+  deploy:
+    name: Deploy to Production Server
+    needs: ci
+    runs-on: ubuntu-latest
+    steps:
+      - name: Execute Remote SSH Commands
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          MAIN_DEPLOY_PATH: ${{ secrets.MAIN_DEPLOY_PATH }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          envs: MAIN_DEPLOY_PATH
+          script_stop: true
+          script: |
+            # Ensure environment and CLI binaries (php, composer, node, npm) are available
+            export PATH=$PATH:/usr/local/bin:/usr/bin:~/.nvm/versions/node/$(ls ~/.nvm/versions/node 2>/dev/null | tail -n 1)/bin:~/.composer/vendor/bin:/opt/cpanel/ea-php82/root/usr/bin
+            [ -f ~/.bashrc ] && source ~/.bashrc || true
+            [ -f ~/.profile ] && source ~/.profile || true
+
+            TARGET_DIR="${MAIN_DEPLOY_PATH}"
+            if [ -z "$TARGET_DIR" ]; then
+              echo "Error: MAIN_DEPLOY_PATH secret is not set."
+              exit 1
+            fi
+
+            echo "🚀 Deploying 'main' branch to $TARGET_DIR..."
+            cd "$TARGET_DIR"
+
+            # Graceful maintenance mode
+            php artisan down || true
+
+            # Pull latest code
+            git fetch origin main
+            git checkout -B main origin/main
+            git pull origin main
+
+            # Install backend dependencies
+            composer install --no-interaction --prefer-dist --optimize-autoloader --no-dev
+
+            # Run database migrations
+            php artisan migrate --force
+
+            # Install frontend dependencies and build assets
+            npm ci || npm install
+            npm run build
+
+            # Cache configuration, routes, and views
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
+            php artisan event:cache
+
+            # Set file permissions for cache and storage
+            chmod -R 775 storage bootstrap/cache 2>/dev/null || true
+
+            # Restart queue workers if configured
+            php artisan queue:restart || true
+
+            # Exit maintenance mode
+            php artisan up
+
+            echo "✅ Main deployment successfully completed!"
