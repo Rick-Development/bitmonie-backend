@@ -54,12 +54,13 @@ jobs:
         uses: appleboy/ssh-action@v1.2.0
         env:
           SANDBOX_DEPLOY_PATH: ${{ secrets.SANDBOX_DEPLOY_PATH }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          envs: SANDBOX_DEPLOY_PATH
+          envs: SANDBOX_DEPLOY_PATH,REPO_URL
           script_stop: true
           script: |
             # Ensure environment and CLI binaries (php, composer, node, npm) are available
@@ -78,6 +79,17 @@ jobs:
 
             # Graceful maintenance mode
             php artisan down || true
+
+            # Ensure git repository is initialized with remote origin
+            if [ ! -d ".git" ]; then
+              git init
+            fi
+
+            if ! git remote | grep -q 'origin'; then
+              git remote add origin "$REPO_URL"
+            else
+              git remote set-url origin "$REPO_URL"
+            fi
 
             # Pull latest code
             git fetch origin sandbox
