@@ -60,10 +60,6 @@ Route::middleware('auth:api')->group(function () {
     Route::post('yellow-card/coverage/sync', [\App\Http\Controllers\Api\V1\User\YellowCardController::class, 'syncCoverage']);
 });
 
-// Fallback login route to prevent 500 RouteNotFoundException
-Route::get('/login', function () {
-    return response()->json(['message' => 'Unauthenticated.'], 401);
-})->name('api.login');
 
 // Public Referral Code Validation
 Route::post('/referral/validate', [App\Http\Controllers\Api\V1\User\ReferralController::class, 'validateCode']);
