@@ -80,20 +80,21 @@ jobs:
             # Graceful maintenance mode
             php artisan down || true
 
+            # Ensure safe directory
+            git config --global --add safe.directory "$TARGET_DIR" 2>/dev/null || true
+
             # Ensure git repository is initialized with remote origin
             if [ ! -d ".git" ]; then
               git init
             fi
 
-            if ! git remote | grep -q 'origin'; then
-              git remote add origin "$REPO_URL"
-            else
-              git remote set-url origin "$REPO_URL"
-            fi
+            git remote set-url origin "$REPO_URL" 2>/dev/null || git remote add origin "$REPO_URL" 2>/dev/null || true
 
             # Pull latest code
-            git reset --hard 2>/dev/null || true
+            echo "📥 Fetching origin sandbox..."
             git fetch origin sandbox
+
+            echo "🔄 Checking out sandbox branch..."
             git checkout -f -B sandbox origin/sandbox
             git reset --hard origin/sandbox
             git pull origin sandbox
