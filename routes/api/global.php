@@ -16,4 +16,4 @@ Route::controller(SettingController::class)->prefix("settings")->group(function(
 
 // YouVerify webhook endpoint (callback URL for provider)
 Route::post('webhook/youverify', [YouVerifyWebhookController::class, 'handle'])
-    ->name('webhook.youverify');
+    ->name('api.global.webhook.youverify');

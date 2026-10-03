@@ -57,8 +57,8 @@ Route::prefix("user")->name("user.")->group(function(){
         Route::post("callback/response/{gateway}",'callback')->name('payment.callback')->withoutMiddleware(['web','auth','verification.guard','user.google.two.factor']);
 
         // POST Route For Unauthenticated Request
-        Route::post('success/response/{gateway}', 'postSuccess')->name('payment.success')->withoutMiddleware(['auth','verification.guard','user.google.two.factor','kyc.verification.guard','pin.setup.guard']);
-        Route::post('cancel/response/{gateway}', 'postCancel')->name('payment.cancel')->withoutMiddleware(['auth','verification.guard','user.google.two.factor']);
+        Route::post('success/response/{gateway}', 'postSuccess')->name('payment.post.success')->withoutMiddleware(['auth','verification.guard','user.google.two.factor','kyc.verification.guard','pin.setup.guard']);
+        Route::post('cancel/response/{gateway}', 'postCancel')->name('payment.post.cancel')->withoutMiddleware(['auth','verification.guard','user.google.two.factor']);
 
         // redirect with HTML form route
         Route::get('redirect/form/{gateway}', 'redirectUsingHTMLForm')->name('payment.redirect.form')->withoutMiddleware(['auth','verification.guard','user.google.two.factor']);

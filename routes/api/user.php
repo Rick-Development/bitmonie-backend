@@ -185,8 +185,8 @@ Route::prefix("user")->name("api.user.")->group(function () {
             Route::get("cancel/response/{gateway}", 'cancel')->withoutMiddleware(['auth:api', 'verification.guard.api', 'kyc.verification.guard', 'api.kyc.verification.guard', 'pin.setup.guard'])->name("payment.cancel");
 
             // POST Route For Unauthenticated Request
-            Route::post('success/response/{gateway}', 'postSuccess')->name('payment.success')->withoutMiddleware(['auth:api', 'verification.guard.api', 'kyc.verification.guard', 'api.kyc.verification.guard', 'pin.setup.guard']);
-            Route::post('cancel/response/{gateway}', 'postCancel')->name('payment.cancel')->withoutMiddleware(['auth:api', 'verification.guard.api', 'kyc.verification.guard', 'api.kyc.verification.guard', 'pin.setup.guard']);
+            Route::post('success/response/{gateway}', 'postSuccess')->name('payment.post.success')->withoutMiddleware(['auth:api', 'verification.guard.api', 'kyc.verification.guard', 'api.kyc.verification.guard', 'pin.setup.guard']);
+            Route::post('cancel/response/{gateway}', 'postCancel')->name('payment.post.cancel')->withoutMiddleware(['auth:api', 'verification.guard.api', 'kyc.verification.guard', 'api.kyc.verification.guard', 'pin.setup.guard']);
 
             Route::get('manual/input-fields', 'manualInputFields');
 
