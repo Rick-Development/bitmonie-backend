@@ -92,8 +92,10 @@ jobs:
             fi
 
             # Pull latest code
+            git reset --hard 2>/dev/null || true
             git fetch origin sandbox
-            git checkout -B sandbox origin/sandbox
+            git checkout -f -B sandbox origin/sandbox
+            git reset --hard origin/sandbox
             git pull origin sandbox
 
             # Install backend dependencies

@@ -92,8 +92,10 @@ jobs:
             fi
 
             # Pull latest code
+            git reset --hard 2>/dev/null || true
             git fetch origin main
-            git checkout -B main origin/main
+            git checkout -f -B main origin/main
+            git reset --hard origin/main
             git pull origin main
 
             # Install backend dependencies
