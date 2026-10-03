@@ -15,11 +15,16 @@ class ApiConnectionHelper
 
     public function __construct()
     {
-        $basicSettings = \App\Models\Admin\BasicSettings::first();
+        $basicSettings = null;
+        try {
+            $basicSettings = \App\Models\Admin\BasicSettings::first();
+        } catch (\Throwable $e) {
+            // Database is unreachable (e.g. during build / package discovery)
+        }
 
-        $this->apiClientId = $basicSettings->safehaven_client_id ?? trim(config('services.safeHeaven.client_id'));
-        $this->apiClientAssertion = $basicSettings->safehaven_client_assertion ?? trim(config('services.safeHeaven.client_assertion'));
-        $this->apiAuthUrl = rtrim($basicSettings->safehaven_api_url ?? config('services.safeHeaven.api_url'), '/');
+        $this->apiClientId = $basicSettings?->safehaven_client_id ?? trim((string) config('services.safeHeaven.client_id'));
+        $this->apiClientAssertion = $basicSettings?->safehaven_client_assertion ?? trim((string) config('services.safeHeaven.client_assertion'));
+        $this->apiAuthUrl = rtrim($basicSettings?->safehaven_api_url ?? (string) config('services.safeHeaven.api_url'), '/');
     }
 
     public function authentication()
