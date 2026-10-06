@@ -9,7 +9,7 @@
     "license": "MIT",
     "require": {
         "php": "^8.2.12|^8.3|^8.4",
-        "authorizenet/authorizenet": "2.0.2",
+        "authorizenet/authorizenet": "^2.0.2",
         "barryvdh/laravel-dompdf": "^3.1",
         "buglinjo/laravel-webp": "^2.3",
         "carbonphp/carbon-doctrine-types": "^2.0",
@@ -29,7 +29,7 @@
         "pusher/pusher-php-server": "^7.2",
         "pusher/pusher-push-notifications": "^2.0",
         "srmklive/paypal": "^3.0",
-        "stella-maris/clock": "*",
+        "stella-maris/clock": "^0.1.7",
         "stripe/stripe-php": "^10.3",
         "torann/geoip": "^3.0",
         "dedoc/scramble": "^0.8"

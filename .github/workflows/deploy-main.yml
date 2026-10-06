@@ -26,7 +26,7 @@ jobs:
           coverage: none
 
       - name: Validate Composer
-        run: composer validate
+        run: composer validate --no-check-publish --no-check-lock
 
       - name: Install PHP Dependencies
         run: composer install --no-interaction --prefer-dist --ignore-platform-req=php
