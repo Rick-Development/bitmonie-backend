@@ -1,0 +1,1148 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Bitmonie / Cryptomart API Reference",
+    "version": "1.0.0",
+    "description": "Comprehensive internal REST API documentation for the Bitmonie / Cryptomart mobile application and frontend developers."
+  },
+  "servers": [
+    {
+      "url": "https://api.bitmonie.com",
+      "description": "Production Server"
+    },
+    {
+      "url": "https://sandbox-api.bitmonie.com",
+      "description": "Sandbox Server"
+    },
+    {
+      "url": "http://127.0.0.1:8000",
+      "description": "Local Development Server"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Enter the Bearer token returned from login/register endpoints."
+      }
+    },
+    "schemas": {
+      "StandardSuccess": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "example": "success"
+          },
+          "message": {
+            "type": "string",
+            "example": "Operation completed successfully."
+          },
+          "data": {
+            "type": "object"
+          }
+        }
+      },
+      "StandardError": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "example": "error"
+          },
+          "message": {
+            "type": "string",
+            "example": "Something went wrong! Please try again."
+          },
+          "data": {
+            "type": "null"
+          }
+        }
+      },
+      "ValidationError": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "example": "error"
+          },
+          "message": {
+            "type": "string",
+            "example": "The given data was invalid."
+          },
+          "errors": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/v1/user/register": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Register New User Account",
+        "description": "Creates a new user account on Bitmonie. Sends Account Authorization email.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "firstname",
+                  "lastname",
+                  "email",
+                  "password",
+                  "password_confirmation",
+                  "mobile",
+                  "country"
+                ],
+                "properties": {
+                  "firstname": {
+                    "type": "string",
+                    "example": "John"
+                  },
+                  "lastname": {
+                    "type": "string",
+                    "example": "Doe"
+                  },
+                  "username": {
+                    "type": "string",
+                    "example": "johndoe",
+                    "description": "Optional unique username"
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "john@example.com"
+                  },
+                  "mobile": {
+                    "type": "string",
+                    "example": "+2348012345678"
+                  },
+                  "country": {
+                    "type": "string",
+                    "example": "Nigeria"
+                  },
+                  "password": {
+                    "type": "string",
+                    "format": "password",
+                    "example": "Secret@1234"
+                  },
+                  "password_confirmation": {
+                    "type": "string",
+                    "format": "password",
+                    "example": "Secret@1234"
+                  },
+                  "referral_code": {
+                    "type": "string",
+                    "example": "BM-REF123",
+                    "description": "Optional referral code"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Registration successful with authorization token"
+          },
+          "422": {
+            "description": "Validation error"
+          }
+        }
+      }
+    },
+    "/api/v1/user/login": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "User Login (Email / Username & Password)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "credentials",
+                  "password"
+                ],
+                "properties": {
+                  "credentials": {
+                    "type": "string",
+                    "example": "john@example.com"
+                  },
+                  "password": {
+                    "type": "string",
+                    "format": "password",
+                    "example": "Secret@1234"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authenticated successfully, returns Bearer token and user profile"
+          },
+          "400": {
+            "description": "Invalid credentials"
+          }
+        }
+      }
+    },
+    "/api/v1/user/login-with-pin": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "User Quick Login with 4-Digit PIN",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email",
+                  "pin"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "john@example.com"
+                  },
+                  "pin": {
+                    "type": "string",
+                    "example": "1234"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authenticated successfully"
+          }
+        }
+      }
+    },
+    "/api/v1/user/authorize/mail/verify/code": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Verify Email Authorization OTP",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "token",
+                  "code"
+                ],
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "example": "authorization-token-from-register"
+                  },
+                  "code": {
+                    "type": "integer",
+                    "example": 123456
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Email verified successfully"
+          }
+        }
+      }
+    },
+    "/api/v1/user/authorize/mail/resend/code": {
+      "get": {
+        "tags": [
+          "Authentication"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Resend Email Authorization Code",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "authorization-token-from-register"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Verification code resent"
+          }
+        }
+      }
+    },
+    "/api/v1/user/crypto-cards/charges": {
+      "get": {
+        "tags": [
+          "Crypto Cards"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get Configured Crypto Card Fees (Virtual & Physical)",
+        "description": "Returns categorized fee structures for virtual card issuance/funding/maintenance and physical card order/funding/maintenance.",
+        "responses": {
+          "200": {
+            "description": "Crypto card charges retrieved successfully",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "message": "Crypto card charges retrieved successfully.",
+                  "data": {
+                    "currency": "USDT",
+                    "virtual_card": {
+                      "card_issuance_fee": "3.00",
+                      "card_funding_fee": "0.50",
+                      "monthly_card_maintenance_fee": "1.00"
+                    },
+                    "physical_card": {
+                      "physical_card_fee": "10.00",
+                      "card_funding_fee": "1.00",
+                      "monthly_card_maintenance_fee": "2.00"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/user/crypto-cards/holders": {
+      "get": {
+        "tags": [
+          "Crypto Cards"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get Card Holder Status & Verified Info",
+        "responses": {
+          "200": {
+            "description": "Card holder information returned"
+          }
+        }
+      }
+    },
+    "/api/v1/user/crypto-cards/create-holder": {
+      "post": {
+        "tags": [
+          "Crypto Cards"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Create Card Holder (BVN Optional for Tier 1+ Verified Users)",
+        "description": "Creates a card holder profile. For users who have verified KYC (Tier 1+), BVN is optional and automatically retrieved and forwarded directly to the provider.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "example": "John Doe"
+                  },
+                  "email": {
+                    "type": "string",
+                    "example": "john@example.com"
+                  },
+                  "phoneNumber": {
+                    "type": "string",
+                    "example": "+2348012345678"
+                  },
+                  "individual": {
+                    "type": "object",
+                    "properties": {
+                      "identity": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "BVN"
+                          },
+                          "number": {
+                            "type": "string",
+                            "example": "22233344455",
+                            "description": "Optional if user is Tier 1+ verified"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Card holder created successfully"
+          }
+        }
+      }
+    },
+    "/api/v1/user/crypto-cards/create": {
+      "post": {
+        "tags": [
+          "Crypto Cards"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Create / Issue Crypto Card (Virtual or Physical)",
+        "description": "Creates a crypto card and debits the appropriate issuance fee from the user fiat NGN balance.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "provider",
+                  "type",
+                  "currency"
+                ],
+                "properties": {
+                  "provider": {
+                    "type": "string",
+                    "enum": [
+                      "sudo"
+                    ],
+                    "example": "sudo"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "virtual",
+                      "physical"
+                    ],
+                    "example": "virtual"
+                  },
+                  "currency": {
+                    "type": "string",
+                    "enum": [
+                      "USDT",
+                      "usdt"
+                    ],
+                    "example": "USDT"
+                  },
+                  "brand": {
+                    "type": "string",
+                    "example": "Mastercard"
+                  },
+                  "cardHolderId": {
+                    "type": "integer",
+                    "example": 123
+                  },
+                  "number": {
+                    "type": "string",
+                    "description": "Required only if type is physical"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Card created successfully"
+          }
+        }
+      }
+    },
+    "/api/v1/user/crypto-cards": {
+      "get": {
+        "tags": [
+          "Crypto Cards"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List User Crypto Cards",
+        "responses": {
+          "200": {
+            "description": "Returns list of user crypto cards"
+          }
+        }
+      }
+    },
+    "/api/v1/user/crypto-cards/{id}": {
+      "get": {
+        "tags": [
+          "Crypto Cards"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get Crypto Card Details",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "example": 1
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Card details returned"
+          }
+        }
+      }
+    },
+    "/api/v1/user/crypto-cards/{id}/fund": {
+      "post": {
+        "tags": [
+          "Crypto Cards"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Fund / Top-up Crypto Card",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "example": 1
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "amount"
+                ],
+                "properties": {
+                  "amount": {
+                    "type": "number",
+                    "example": 50.0
+                  },
+                  "description": {
+                    "type": "string",
+                    "example": "Card top-up"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Card funded successfully"
+          }
+        }
+      }
+    },
+    "/api/v1/user/crypto-cards/{id}/freeze": {
+      "post": {
+        "tags": [
+          "Crypto Cards"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Freeze Crypto Card",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "example": 1
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Card frozen"
+          }
+        }
+      }
+    },
+    "/api/v1/user/crypto-cards/{id}/unfreeze": {
+      "post": {
+        "tags": [
+          "Crypto Cards"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Unfreeze Crypto Card",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "example": 1
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Card unfrozen"
+          }
+        }
+      }
+    },
+    "/api/v1/user/crypto-cards/{id}/transactions": {
+      "get": {
+        "tags": [
+          "Crypto Cards"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get Card Transaction History",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "example": 1
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Transactions list returned"
+          }
+        }
+      }
+    },
+    "/api/v1/savings/flex": {
+      "get": {
+        "tags": [
+          "Savings - Flex"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get Flex Savings Balance & Statistics",
+        "responses": {
+          "200": {
+            "description": "Flex savings info returned"
+          }
+        }
+      }
+    },
+    "/api/v1/savings/flex/deposit": {
+      "post": {
+        "tags": [
+          "Savings - Flex"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Deposit Funds to Flex Savings",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "amount"
+                ],
+                "properties": {
+                  "amount": {
+                    "type": "number",
+                    "example": 5000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Deposited successfully"
+          }
+        }
+      }
+    },
+    "/api/v1/savings/flex/withdraw": {
+      "post": {
+        "tags": [
+          "Savings - Flex"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Withdraw Funds from Flex Savings to Wallet",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "amount"
+                ],
+                "properties": {
+                  "amount": {
+                    "type": "number",
+                    "example": 5000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Withdrawn successfully to wallet"
+          }
+        }
+      }
+    },
+    "/api/v1/savings/safelock": {
+      "get": {
+        "tags": [
+          "Savings - SafeLock"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get All User SafeLocks",
+        "responses": {
+          "200": {
+            "description": "SafeLocks returned"
+          }
+        }
+      }
+    },
+    "/api/v1/savings/safelock/plans": {
+      "get": {
+        "tags": [
+          "Savings - SafeLock"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get Available SafeLock Plans & Interest Rates",
+        "responses": {
+          "200": {
+            "description": "Plans returned"
+          }
+        }
+      }
+    },
+    "/api/v1/savings/safelock/create": {
+      "post": {
+        "tags": [
+          "Savings - SafeLock"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Create New SafeLock Investment",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "title",
+                  "amount",
+                  "duration_days"
+                ],
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "example": "Car Purchase Lock"
+                  },
+                  "amount": {
+                    "type": "number",
+                    "example": 50000
+                  },
+                  "duration_days": {
+                    "type": "integer",
+                    "example": 90
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "SafeLock created successfully"
+          }
+        }
+      }
+    },
+    "/api/v1/savings/safelock/break": {
+      "post": {
+        "tags": [
+          "Savings - SafeLock"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Break SafeLock Early and Refund to Balance",
+        "description": "Calculates penalty fee (if applicable) and refunds the balance directly to the user main wallet with full ledger records.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "integer",
+                    "example": 12
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "SafeLock broken and balance credited to wallet"
+          }
+        }
+      }
+    },
+    "/api/v1/savings/target": {
+      "get": {
+        "tags": [
+          "Savings - Target"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get User Target Savings Plans",
+        "responses": {
+          "200": {
+            "description": "Targets returned"
+          }
+        }
+      }
+    },
+    "/api/v1/savings/target/create": {
+      "post": {
+        "tags": [
+          "Savings - Target"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Create Target Savings Goal",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "title",
+                  "target_amount",
+                  "end_date"
+                ],
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "example": "School Fees 2027"
+                  },
+                  "target_amount": {
+                    "type": "number",
+                    "example": 200000
+                  },
+                  "end_date": {
+                    "type": "string",
+                    "format": "date",
+                    "example": "2027-01-15"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Target savings created"
+          }
+        }
+      }
+    },
+    "/api/v1/savings/target/quick-save": {
+      "post": {
+        "tags": [
+          "Savings - Target"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Quick Save into Target Goal",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "amount"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "integer",
+                    "example": 5
+                  },
+                  "amount": {
+                    "type": "number",
+                    "example": 15000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved successfully"
+          }
+        }
+      }
+    },
+    "/api/v1/savings/target/break": {
+      "post": {
+        "tags": [
+          "Savings - Target"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Break Target Savings and Refund to Wallet",
+        "description": "Withdraws all saved funds from subaccount and credits the user NGN wallet atomically.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "integer",
+                    "example": 5
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Target broken and refunded to wallet"
+          }
+        }
+      }
+    },
+    "/api/v1/user/profile": {
+      "get": {
+        "tags": [
+          "User & Profile"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get User Profile & KYC Status",
+        "description": "Returns user profile details with masked BVN (`222******34`), `bvn_verified`, and `kyc_tier`.",
+        "responses": {
+          "200": {
+            "description": "User profile returned"
+          }
+        }
+      }
+    },
+    "/api/v1/user/wallets": {
+      "get": {
+        "tags": [
+          "User & Profile"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get User Wallets & Multi-Currency Balances",
+        "responses": {
+          "200": {
+            "description": "Wallets and balances returned"
+          }
+        }
+      }
+    },
+    "/api/kyc/tiers": {
+      "get": {
+        "tags": [
+          "User & Profile"
+        ],
+        "summary": "Get KYC Tier Levels & Limits",
+        "responses": {
+          "200": {
+            "description": "KYC tiers and requirements returned"
+          }
+        }
+      }
+    },
+    "/api/statement": {
+      "get": {
+        "tags": [
+          "Statements & Transactions"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get Transaction Statement / Ledger History",
+        "parameters": [
+          {
+            "name": "start_date",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Statement items returned"
+          }
+        }
+      }
+    }
+  }
+}
