@@ -27,7 +27,11 @@ class YouVerifyService
         $configWebhookKey = config('services.youverify.webhook_key', config('youverify.webhook_secret'));
 
         // Check for Admin Override in database
-        $basicSettings = \App\Models\Admin\BasicSettings::first();
+        try {
+            $basicSettings = \App\Models\Admin\BasicSettings::first();
+        } catch (\Throwable $e) {
+            $basicSettings = null;
+        }
         
         $this->baseUrl   = rtrim($configUrl, '/');
         $this->secretKey = ($basicSettings && $basicSettings->youverify_key) ? $basicSettings->youverify_key : $configKey;

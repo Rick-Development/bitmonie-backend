@@ -56,19 +56,43 @@ class CryptoCardCharge extends Controller
                 'numeric',
                 'min:0',
             ],
+            'physical_card_funding_fee' => [
+                'nullable',
+                'numeric',
+                'min:0',
+            ],
+            'physical_monthly_card_maintenance_fee' => [
+                'nullable',
+                'numeric',
+                'min:0',
+            ],
+
+            'virtual_card_issuance_fee' => [
+                'nullable',
+                'numeric',
+                'min:0',
+            ],
+            'virtual_card_funding_fee' => [
+                'nullable',
+                'numeric',
+                'min:0',
+            ],
+            'virtual_monthly_card_maintenance_fee' => [
+                'nullable',
+                'numeric',
+                'min:0',
+            ],
 
             'card_issuance_fee' => [
                 'nullable',
                 'numeric',
                 'min:0',
             ],
-
             'card_funding_fee' => [
                 'nullable',
                 'numeric',
                 'min:0',
             ],
-
             'monthly_card_maintenance_fee' => [
                 'nullable',
                 'numeric',
@@ -77,9 +101,16 @@ class CryptoCardCharge extends Controller
         ]);
 
         $data['physical_card_fee'] = $data['physical_card_fee'] ?? 0;
-        $data['card_issuance_fee'] = $data['card_issuance_fee'] ?? 0;
-        $data['card_funding_fee'] = $data['card_funding_fee'] ?? 0;
-        $data['monthly_card_maintenance_fee'] = $data['monthly_card_maintenance_fee'] ?? 0;
+        $data['physical_card_funding_fee'] = $data['physical_card_funding_fee'] ?? 0;
+        $data['physical_monthly_card_maintenance_fee'] = $data['physical_monthly_card_maintenance_fee'] ?? 0;
+
+        $data['virtual_card_issuance_fee'] = $data['virtual_card_issuance_fee'] ?? $data['card_issuance_fee'] ?? 0;
+        $data['virtual_card_funding_fee'] = $data['virtual_card_funding_fee'] ?? $data['card_funding_fee'] ?? 0;
+        $data['virtual_monthly_card_maintenance_fee'] = $data['virtual_monthly_card_maintenance_fee'] ?? $data['monthly_card_maintenance_fee'] ?? 0;
+
+        $data['card_issuance_fee'] = $data['virtual_card_issuance_fee'];
+        $data['card_funding_fee'] = $data['virtual_card_funding_fee'];
+        $data['monthly_card_maintenance_fee'] = $data['virtual_monthly_card_maintenance_fee'];
 
         try {
             CryptoCardSetup::query()->updateOrCreate(
@@ -153,19 +184,43 @@ class CryptoCardCharge extends Controller
                 'numeric',
                 'min:0',
             ],
+            'physical_card_funding_fee' => [
+                'nullable',
+                'numeric',
+                'min:0',
+            ],
+            'physical_monthly_card_maintenance_fee' => [
+                'nullable',
+                'numeric',
+                'min:0',
+            ],
+
+            'virtual_card_issuance_fee' => [
+                'nullable',
+                'numeric',
+                'min:0',
+            ],
+            'virtual_card_funding_fee' => [
+                'nullable',
+                'numeric',
+                'min:0',
+            ],
+            'virtual_monthly_card_maintenance_fee' => [
+                'nullable',
+                'numeric',
+                'min:0',
+            ],
 
             'card_issuance_fee' => [
                 'nullable',
                 'numeric',
                 'min:0',
             ],
-
             'card_funding_fee' => [
                 'nullable',
                 'numeric',
                 'min:0',
             ],
-
             'monthly_card_maintenance_fee' => [
                 'nullable',
                 'numeric',
@@ -174,9 +229,16 @@ class CryptoCardCharge extends Controller
         ]);
 
         $data['physical_card_fee'] = $data['physical_card_fee'] ?? 0;
-        $data['card_issuance_fee'] = $data['card_issuance_fee'] ?? 0;
-        $data['card_funding_fee'] = $data['card_funding_fee'] ?? 0;
-        $data['monthly_card_maintenance_fee'] = $data['monthly_card_maintenance_fee'] ?? 0;
+        $data['physical_card_funding_fee'] = $data['physical_card_funding_fee'] ?? 0;
+        $data['physical_monthly_card_maintenance_fee'] = $data['physical_monthly_card_maintenance_fee'] ?? 0;
+
+        $data['virtual_card_issuance_fee'] = $data['virtual_card_issuance_fee'] ?? $data['card_issuance_fee'] ?? 0;
+        $data['virtual_card_funding_fee'] = $data['virtual_card_funding_fee'] ?? $data['card_funding_fee'] ?? 0;
+        $data['virtual_monthly_card_maintenance_fee'] = $data['virtual_monthly_card_maintenance_fee'] ?? $data['monthly_card_maintenance_fee'] ?? 0;
+
+        $data['card_issuance_fee'] = $data['virtual_card_issuance_fee'];
+        $data['card_funding_fee'] = $data['virtual_card_funding_fee'];
+        $data['monthly_card_maintenance_fee'] = $data['virtual_monthly_card_maintenance_fee'];
 
         try {
             $setup = CryptoCardSetup::query()->first();
@@ -214,6 +276,11 @@ class CryptoCardCharge extends Controller
     ): RedirectResponse {
         $allowedCharges = [
             'physical_card_fee',
+            'physical_card_funding_fee',
+            'physical_monthly_card_maintenance_fee',
+            'virtual_card_issuance_fee',
+            'virtual_card_funding_fee',
+            'virtual_monthly_card_maintenance_fee',
             'card_issuance_fee',
             'card_funding_fee',
             'monthly_card_maintenance_fee',
@@ -233,17 +300,32 @@ class CryptoCardCharge extends Controller
 
         $amount = $data['amount'] ?? 0;
 
+        $updatePayload = [
+            $charge => $amount,
+        ];
+
+        // Keep legacy and new virtual keys synchronized
+        if ($charge === 'virtual_card_issuance_fee') {
+            $updatePayload['card_issuance_fee'] = $amount;
+        } elseif ($charge === 'card_issuance_fee') {
+            $updatePayload['virtual_card_issuance_fee'] = $amount;
+        } elseif ($charge === 'virtual_card_funding_fee') {
+            $updatePayload['card_funding_fee'] = $amount;
+        } elseif ($charge === 'card_funding_fee') {
+            $updatePayload['virtual_card_funding_fee'] = $amount;
+        } elseif ($charge === 'virtual_monthly_card_maintenance_fee') {
+            $updatePayload['monthly_card_maintenance_fee'] = $amount;
+        } elseif ($charge === 'monthly_card_maintenance_fee') {
+            $updatePayload['virtual_monthly_card_maintenance_fee'] = $amount;
+        }
+
         try {
             $setup = CryptoCardSetup::query()->first();
 
             if (!$setup) {
-                $setup = CryptoCardSetup::query()->create([
-                    $charge => $amount,
-                ]);
+                $setup = CryptoCardSetup::query()->create($updatePayload);
             } else {
-                $setup->update([
-                    $charge => $amount,
-                ]);
+                $setup->update($updatePayload);
             }
 
             return back()->with([

@@ -8,7 +8,7 @@
     ],
     "license": "MIT",
     "require": {
-        "php": "^8.2.12",
+        "php": "^8.2.12|^8.3|^8.4",
         "authorizenet/authorizenet": "2.0.2",
         "barryvdh/laravel-dompdf": "^3.1",
         "buglinjo/laravel-webp": "^2.3",
@@ -31,7 +31,8 @@
         "srmklive/paypal": "^3.0",
         "stella-maris/clock": "*",
         "stripe/stripe-php": "^10.3",
-        "torann/geoip": "^3.0"
+        "torann/geoip": "^3.0",
+        "dedoc/scramble": "^0.8"
     },
     "require-dev": {
         "barryvdh/laravel-debugbar": "^3.7",
@@ -83,9 +84,7 @@
         "optimize-autoloader": true,
         "preferred-install": "dist",
         "sort-packages": true,
-        "platform": {
-            "php": "8.4"
-        },
+        "platform-check": false,
         "allow-plugins": {
             "pestphp/pest-plugin": true,
             "php-http/discovery": true

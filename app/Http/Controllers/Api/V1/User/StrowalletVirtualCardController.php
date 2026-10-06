@@ -27,16 +27,23 @@ use App\Providers\Admin\BasicSettingsProvider;
 use App\Notifications\User\VirtualCard\CardBuyNotification;
 use App\Notifications\User\VirtualCard\CardFundNotification;
 
-class StrowalletVirtualCardController extends Controller{
+class StrowalletVirtualCardController extends Controller
+{
     protected $api;
     protected $card_limit;
     protected $basic_settings;
     public function __construct()
     {
-        $cardApi = VirtualCardApi::first();
-        $this->api =  $cardApi;
-        $this->card_limit =  $cardApi->card_limit;
-        $this->basic_settings = BasicSettingsProvider::get();
+        try {
+            $cardApi = VirtualCardApi::first();
+            $this->api =  $cardApi;
+            $this->card_limit =  @$cardApi->card_limit;
+            $this->basic_settings = BasicSettingsProvider::get();
+        } catch (\Throwable $e) {
+            $this->api = null;
+            $this->card_limit = null;
+            $this->basic_settings = null;
+        }
     }
     public function index()
     {

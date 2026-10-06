@@ -11,13 +11,13 @@ use Throwable;
 
 class QuidaxRampService
 {
-    protected string $baseUrl;
-    protected string $privateKey;
+    protected ?string $baseUrl = null;
+    protected ?string $privateKey = null;
 
     public function __construct()
     {
-        $this->baseUrl    = config('services.quidax_ramp.base_url', 'https://ramp-be.quidax.io/api/v1');
-        $this->privateKey = config('services.quidax_ramp.private_key', '');
+        $this->baseUrl    = (string) config('services.quidax_ramp.base_url', 'https://ramp-be.quidax.io/api/v1');
+        $this->privateKey = (string) (config('services.quidax_ramp.private_key') ?? '');
     }
 
     // -------------------------------------------------------------------------

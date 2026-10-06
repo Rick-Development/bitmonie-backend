@@ -26,4 +26,4 @@ yarn-error.log
 /public/fileholder/img/*.webp
 /public/fileholder/img/*.png
 .DS_Store
-
+*.sqlite

@@ -9,18 +9,18 @@ use Throwable;
 
 class SudoCardService
 {
-    protected string $baseUrl;
-    protected string $apiKey;
+    protected ?string $baseUrl = null;
+    protected ?string $apiKey = null;
     protected int $timeout = 30;
 
     public function __construct()
     {
         $this->baseUrl = rtrim(
-            config('services.sudo.base_url', 'https://api.sudo.africa'),
+            (string) config('services.sudo.base_url', 'https://api.sudo.africa'),
             '/'
         );
 
-        $this->apiKey = (string) config('services.sudo.api_key');
+        $this->apiKey = (string) (config('services.sudo.api_key') ?? '');
     }
 
     /*

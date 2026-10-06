@@ -586,12 +586,14 @@ public function createCard(Request $request): JsonResponse
 
     /*
     |--------------------------------------------------------------------------
-    | Charge card issuance fee FIRST
+    | Charge card issuance fee FIRST based on card type
     | (This already records the charge in CryptoTransactionService)
     |--------------------------------------------------------------------------
     */
 
-    $charge = $this->transferCardCharge('card_issuance_fee');
+    $cardType = $request->input('type', 'virtual');
+    $issuanceChargeType = ($cardType === 'physical') ? 'physical_card_fee' : 'virtual_card_issuance_fee';
+    $charge = $this->transferCardCharge($issuanceChargeType);
     
 
     if (!$charge['success']) {
@@ -1709,12 +1711,16 @@ public function fund(Request $request, int $id): JsonResponse
 
     /*
     |--------------------------------------------------------------------------
-    | Transfer configured card funding fee
+    | Transfer configured card funding fee based on card type
     | (This already records the charge in CryptoTransactionService)
     |--------------------------------------------------------------------------
     */
 
-    $charge = $this->transferCardCharge('card_funding_fee');
+    $cardRecord = \App\Models\CryptoCard::find($id);
+    $fundingChargeType = ($cardRecord && $cardRecord->type === 'physical')
+        ? 'physical_card_funding_fee'
+        : 'virtual_card_funding_fee';
+    $charge = $this->transferCardCharge($fundingChargeType);
 
     if (!$charge['success']) {
         return $this->serviceResponse($charge);
@@ -2248,197 +2254,256 @@ public function transfer(Request $request): JsonResponse
 
     /**
      * Get all configured crypto card charges before creation/order.
-     * Includes physical card fee, issuance fee, monthly maintenance fee, and funding fee.
+     * Includes physical and virtual card fees (issuance/order, funding, and monthly maintenance).
      * GET /api/v1/user/crypto-cards/charges
      */
     public function charges(): JsonResponse
     {
         $setup = CryptoCardSetup::query()->first();
 
-        $physicalCardFee = $setup ? (string) $setup->physical_card_fee : '0.00';
-        $cardIssuanceFee = $setup ? (string) $setup->card_issuance_fee : '0.00';
-        $monthlyMaintenanceFee = $setup ? (string) $setup->monthly_card_maintenance_fee : '0.00';
-        $cardFundingFee = $setup ? (string) $setup->card_funding_fee : '0.00';
+        $virtualIssuanceFee = $setup ? number_format($setup->virtual_issuance_fee, 2, '.', '') : '0.00';
+        $virtualFundingFee = $setup ? number_format($setup->virtual_funding_fee, 2, '.', '') : '0.00';
+        $virtualMaintenanceFee = $setup ? number_format($setup->virtual_maintenance_fee, 2, '.', '') : '0.00';
+
+        $physicalOrderFee = $setup ? number_format($setup->physical_order_fee, 2, '.', '') : '0.00';
+        $physicalFundingFee = $setup ? number_format($setup->physical_funding_fee, 2, '.', '') : '0.00';
+        $physicalMaintenanceFee = $setup ? number_format($setup->physical_maintenance_fee, 2, '.', '') : '0.00';
 
         return response()->json([
             'success' => true,
             'message' => 'Crypto card charges retrieved successfully.',
             'data' => [
                 'currency' => 'USDT',
-                'physical_card_fee' => $physicalCardFee,
-                'card_issuance_fee' => $cardIssuanceFee,
-                'monthly_card_maintenance_fee' => $monthlyMaintenanceFee,
-                'card_funding_fee' => $cardFundingFee,
+                'virtual_card' => [
+                    'card_issuance_fee' => $virtualIssuanceFee,
+                    'card_funding_fee' => $virtualFundingFee,
+                    'monthly_card_maintenance_fee' => $virtualMaintenanceFee,
+                ],
+                'physical_card' => [
+                    'physical_card_fee' => $physicalOrderFee,
+                    'card_funding_fee' => $physicalFundingFee,
+                    'monthly_card_maintenance_fee' => $physicalMaintenanceFee,
+                ],
+                // Legacy top-level keys for backward compatibility
+                'physical_card_fee' => $physicalOrderFee,
+                'card_issuance_fee' => $virtualIssuanceFee,
+                'monthly_card_maintenance_fee' => $virtualMaintenanceFee,
+                'card_funding_fee' => $virtualFundingFee,
                 'charges' => [
+                    [
+                        'key' => 'virtual_card_issuance_fee',
+                        'name' => 'Virtual Card Issuance Fee',
+                        'amount' => $virtualIssuanceFee,
+                        'currency' => 'USDT',
+                        'description' => 'Fee charged upon issuing a virtual crypto card.',
+                    ],
+                    [
+                        'key' => 'virtual_card_funding_fee',
+                        'name' => 'Virtual Card Funding Fee',
+                        'amount' => $virtualFundingFee,
+                        'currency' => 'USDT',
+                        'description' => 'Fee charged when topping up or funding a virtual crypto card.',
+                    ],
+                    [
+                        'key' => 'virtual_monthly_card_maintenance_fee',
+                        'name' => 'Virtual Card Monthly Maintenance Fee',
+                        'amount' => $virtualMaintenanceFee,
+                        'currency' => 'USDT',
+                        'description' => 'Monthly fee charged for virtual crypto card maintenance.',
+                    ],
                     [
                         'key' => 'physical_card_fee',
                         'name' => 'Physical Card Order Fee',
-                        'amount' => $physicalCardFee,
+                        'amount' => $physicalOrderFee,
                         'currency' => 'USDT',
-                        'description' => 'Fee charged when ordering a physical crypto card.',
+                        'description' => 'Fee charged when ordering or issuing a physical crypto card.',
                     ],
                     [
-                        'key' => 'card_issuance_fee',
-                        'name' => 'Card Issuance Fee',
-                        'amount' => $cardIssuanceFee,
+                        'key' => 'physical_card_funding_fee',
+                        'name' => 'Physical Card Funding Fee',
+                        'amount' => $physicalFundingFee,
                         'currency' => 'USDT',
-                        'description' => 'Fee charged upon issuing a virtual or physical crypto card.',
+                        'description' => 'Fee charged when topping up or funding a physical crypto card.',
                     ],
                     [
-                        'key' => 'monthly_card_maintenance_fee',
-                        'name' => 'Monthly Card Maintenance Fee',
-                        'amount' => $monthlyMaintenanceFee,
+                        'key' => 'physical_monthly_card_maintenance_fee',
+                        'name' => 'Physical Card Monthly Maintenance Fee',
+                        'amount' => $physicalMaintenanceFee,
                         'currency' => 'USDT',
-                        'description' => 'Monthly fee charged for crypto card maintenance.',
-                    ],
-                    [
-                        'key' => 'card_funding_fee',
-                        'name' => 'Card Funding Fee',
-                        'amount' => $cardFundingFee,
-                        'currency' => 'USDT',
-                        'description' => 'Fee charged when topping up or funding a crypto card.',
+                        'description' => 'Monthly fee charged for physical crypto card maintenance.',
                     ],
                 ],
             ],
         ]);
     }
 
-public function getCharge(string $charge): JsonResponse
-{
-$validator = Validator::make(
-['charge' => $charge],
-[
-'charge' => [
-'required',
-'string',
-Rule::in([
-'physical_card_fee',//when orderign a card
-'card_issuance_fee',//when issueing a card
-'card_funding_fee',//when funding a card
-'monthly_card_maintenance_fee',//to be used by job on autodebit 
-]),
-],
-]
-);
+    public function getCharge(string $charge): JsonResponse
+    {
+        $validator = Validator::make(
+            ['charge' => $charge],
+            [
+                'charge' => [
+                    'required',
+                    'string',
+                    Rule::in([
+                        'physical_card_fee',
+                        'physical_card_funding_fee',
+                        'physical_monthly_card_maintenance_fee',
+                        'virtual_card_issuance_fee',
+                        'virtual_card_funding_fee',
+                        'virtual_monthly_card_maintenance_fee',
+                        'card_issuance_fee',
+                        'card_funding_fee',
+                        'monthly_card_maintenance_fee',
+                    ]),
+                ],
+            ]
+        );
 
-if ($validator->fails()) {
-    return response()->json([
-        'success' => false,
-        'message' => 'Invalid charge type.',
-        'errors' => $validator->errors(),
-    ], 422);
-}
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid charge type.',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
 
-$setup = CryptoCardSetup::query()->first();
+        $setup = CryptoCardSetup::query()->first();
 
-if (!$setup) {
-    return response()->json([
-        'success' => false,
-        'message' => 'Crypto card charge configuration not found.',
-    ], 404);
-}
+        if (!$setup) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Crypto card charge configuration not found.',
+            ], 404);
+        }
 
-return response()->json([
-    'success' => true,
-    'charge_type' => $charge,
-    'amount' => $setup->{$charge},
-]);
+        $amount = match ($charge) {
+            'virtual_card_issuance_fee', 'card_issuance_fee' => $setup->virtual_issuance_fee,
+            'virtual_card_funding_fee', 'card_funding_fee' => $setup->virtual_funding_fee,
+            'virtual_monthly_card_maintenance_fee', 'monthly_card_maintenance_fee' => $setup->virtual_maintenance_fee,
+            'physical_card_fee' => $setup->physical_order_fee,
+            'physical_card_funding_fee' => $setup->physical_funding_fee,
+            'physical_monthly_card_maintenance_fee' => $setup->physical_maintenance_fee,
+            default => (float) ($setup->{$charge} ?? 0),
+        };
 
-}
-//creata a method that trnafers the selceted account from sub account to main accouunt call it in the respective endpoints
-//trnsfer funds selected charge in usd from usdt wallet to master account
-
-/**
- * Transfer a configured crypto-card charge from the user's
- * fiat (NGN) account to the platform.
- */
-protected function transferCardCharge(string $chargeType): array
-{
-    $user = auth()->user();
-
-    if (!$user) {
-        return [
-            'success' => false,
-            'message' => 'Unauthenticated.',
-            'statusCode' => 401,
-        ];
-    }
-
-    $allowedCharges = [
-        'physical_card_fee',
-        'card_issuance_fee',
-        'card_funding_fee',
-        'monthly_card_maintenance_fee',
-    ];
-
-    if (!in_array($chargeType, $allowedCharges, true)) {
-        return [
-            'success' => false,
-            'message' => 'Invalid crypto card charge type.',
-            'statusCode' => 422,
-        ];
-    }
-
-    $setup = CryptoCardSetup::query()->first();
-
-    if (!$setup) {
-        return [
-            'success' => false,
-            'message' => 'Crypto card charge configuration not found.',
-            'statusCode' => 404,
-        ];
-    }
-
-    $amount = $setup->{$chargeType} ?? 0;
-
-    if (!is_numeric($amount)) {
-        return [
-            'success' => false,
-            'message' => 'Invalid configured crypto card charge.',
-            'statusCode' => 422,
-        ];
-    }
-
-    $amount = number_format((float) $amount, 2, '.', '');
-
-    /*
-     * No charge configured.
-     */
-    if (bccomp($amount, '0', 2) <= 0) {
-        return [
+        return response()->json([
             'success' => true,
-            'charged' => false,
-            'amount' => '0.00',
-            'ngn_amount' => '0.00',
-            'currency' => 'NGN',
-            'charge_type' => $chargeType,
-            'reference' => null,
-            'response' => null,
-            'message' => 'No charge configured.',
-        ];
+            'charge_type' => $charge,
+            'amount' => number_format((float) $amount, 2, '.', ''),
+        ]);
     }
 
-    $reference = 'CARD-' .
-        strtoupper($chargeType) .
-        '-' .
-        Str::uuid()->toString();
+    /**
+     * Transfer a configured crypto-card charge from the user's
+     * fiat (NGN) account to the platform.
+     */
+    protected function transferCardCharge(string $chargeType): array
+    {
+        $user = auth()->user();
 
-    $note = match ($chargeType) {
-        'physical_card_fee' =>
-            'Crypto card physical card fee',
+        if (!$user) {
+            return [
+                'success' => false,
+                'message' => 'Unauthenticated.',
+                'statusCode' => 401,
+            ];
+        }
 
-        'card_issuance_fee' =>
-            'Crypto card issuance fee',
+        $allowedCharges = [
+            'physical_card_fee',
+            'physical_card_funding_fee',
+            'physical_monthly_card_maintenance_fee',
+            'virtual_card_issuance_fee',
+            'virtual_card_funding_fee',
+            'virtual_monthly_card_maintenance_fee',
+            'card_issuance_fee',
+            'card_funding_fee',
+            'monthly_card_maintenance_fee',
+        ];
 
-        'card_funding_fee' =>
-            'Crypto card funding fee',
+        if (!in_array($chargeType, $allowedCharges, true)) {
+            return [
+                'success' => false,
+                'message' => 'Invalid crypto card charge type.',
+                'statusCode' => 422,
+            ];
+        }
 
-        'monthly_card_maintenance_fee' =>
-            'Crypto card monthly maintenance fee',
+        $setup = CryptoCardSetup::query()->first();
 
-        default =>
-            'Crypto card charge',
-    };
+        if (!$setup) {
+            return [
+                'success' => false,
+                'message' => 'Crypto card charge configuration not found.',
+                'statusCode' => 404,
+            ];
+        }
+
+        $amount = match ($chargeType) {
+            'virtual_card_issuance_fee', 'card_issuance_fee' => $setup->virtual_issuance_fee,
+            'virtual_card_funding_fee', 'card_funding_fee' => $setup->virtual_funding_fee,
+            'virtual_monthly_card_maintenance_fee', 'monthly_card_maintenance_fee' => $setup->virtual_maintenance_fee,
+            'physical_card_fee' => $setup->physical_order_fee,
+            'physical_card_funding_fee' => $setup->physical_funding_fee,
+            'physical_monthly_card_maintenance_fee' => $setup->physical_maintenance_fee,
+            default => (float) ($setup->{$chargeType} ?? 0),
+        };
+
+        if (!is_numeric($amount)) {
+            return [
+                'success' => false,
+                'message' => 'Invalid configured crypto card charge.',
+                'statusCode' => 422,
+            ];
+        }
+
+        $amount = number_format((float) $amount, 2, '.', '');
+
+        /*
+         * No charge configured.
+         */
+        if (bccomp($amount, '0', 2) <= 0) {
+            return [
+                'success' => true,
+                'charged' => false,
+                'amount' => '0.00',
+                'ngn_amount' => '0.00',
+                'currency' => 'NGN',
+                'charge_type' => $chargeType,
+                'reference' => null,
+                'response' => null,
+                'message' => 'No charge configured.',
+            ];
+        }
+
+        $reference = 'CARD-' .
+            strtoupper($chargeType) .
+            '-' .
+            Str::uuid()->toString();
+
+        $note = match ($chargeType) {
+            'physical_card_fee' =>
+                'Crypto physical card order/issuance fee',
+
+            'physical_card_funding_fee' =>
+                'Crypto physical card funding fee',
+
+            'physical_monthly_card_maintenance_fee' =>
+                'Crypto physical card monthly maintenance fee',
+
+            'virtual_card_issuance_fee', 'card_issuance_fee' =>
+                'Crypto virtual card issuance fee',
+
+            'virtual_card_funding_fee', 'card_funding_fee' =>
+                'Crypto virtual card funding fee',
+
+            'virtual_monthly_card_maintenance_fee', 'monthly_card_maintenance_fee' =>
+                'Crypto virtual card monthly maintenance fee',
+
+            default =>
+                'Crypto card charge',
+        };
 
     // Calculate NGN fee using exchange rate
     $ngnCurrency = Currency::where('code', 'NGN')->first();

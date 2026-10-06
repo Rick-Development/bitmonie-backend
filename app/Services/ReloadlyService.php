@@ -8,15 +8,15 @@ use Exception;
 
 class ReloadlyService
 {
-    protected string $baseUrl;
-    protected string $authUrl;
-    protected string $clientId;
-    protected string $clientSecret;
+    protected ?string $baseUrl;
+    protected ?string $authUrl;
+    protected ?string $clientId;
+    protected ?string $clientSecret;
 
     public function __construct()
     {
-        $this->baseUrl = config('services.reloadly.base_url');
-        $this->authUrl = config('services.reloadly.auth_url');
+        $this->baseUrl = (string) config('services.reloadly.base_url', '');
+        $this->authUrl = (string) config('services.reloadly.auth_url', '');
         $this->clientId = config('services.reloadly.client_id');
         $this->clientSecret = config('services.reloadly.client_secret');
     }

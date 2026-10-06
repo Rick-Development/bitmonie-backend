@@ -28,6 +28,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        @ini_set('memory_limit', '512M');
+
         /*
          * Laravel UI / pagination.
          */
@@ -43,6 +45,30 @@ class AppServiceProvider extends ServiceProvider
          */
         if ($this->app->environment('production')) {
             URL::forceScheme('https');
+        }
+
+        /*
+         * Scramble API Documentation access & Bearer Token security.
+         * Access is direct via /docs/api only (no landing page button).
+         */
+        \Illuminate\Support\Facades\Gate::define('viewApiDocs', function ($user = null) {
+            return true;
+        });
+
+        if (class_exists(\Dedoc\Scramble\Scramble::class)) {
+            if (method_exists(\Dedoc\Scramble\Scramble::class, 'extendOpenApi')) {
+                \Dedoc\Scramble\Scramble::extendOpenApi(function (\Dedoc\Scramble\Support\Generator\OpenApi $openApi) {
+                    $openApi->secure(
+                        \Dedoc\Scramble\Support\Generator\SecurityScheme::http('bearer', 'JWT')
+                    );
+                });
+            } elseif (method_exists(\Dedoc\Scramble\Scramble::class, 'afterOpenApiGenerated')) {
+                \Dedoc\Scramble\Scramble::afterOpenApiGenerated(function (\Dedoc\Scramble\Support\Generator\OpenApi $openApi) {
+                    $openApi->secure(
+                        \Dedoc\Scramble\Support\Generator\SecurityScheme::http('bearer', 'JWT')
+                    );
+                });
+            }
         }
 
         /*
@@ -96,11 +122,8 @@ class AppServiceProvider extends ServiceProvider
         } catch (\Throwable $e) {
             /*
              * Do not prevent the application from booting if the
-             * database is temporarily unavailable.
-             *
-             * Log the error instead.
+             * database is temporarily unavailable (e.g. during local API doc generation).
              */
-            report($e);
         }
     }
 }

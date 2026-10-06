@@ -31,7 +31,7 @@ return [
 
 'fcm'=>[
     'project_id'=>env('FCM_PROJECT_ID'),
-    'service_account' => json_decode(env('FIREBASE_CREDENTIALS_JSON'), true),
+    'service_account' => env('FIREBASE_CREDENTIALS_JSON') ? json_decode(env('FIREBASE_CREDENTIALS_JSON'), true) : null,
 ],
     'busha' => [
         'base_url' => env('BUSHA_BASE_URL', 'https://api.connect.busha.co'),
