@@ -11,7 +11,7 @@
       "description": "Production Server"
     },
     {
-      "url": "https://sandbox-api.bitmonie.com",
+      "url": "https://sandbox.bitmonie.com",
       "description": "Sandbox Server"
     },
     {
