@@ -51,17 +51,25 @@ class RouteServiceProvider extends ServiceProvider
             Route::middleware('web','system.maintenance') // declare frontend routes
                 ->group(base_path('routes/frontend.php'));
 
-            Route::middleware(['system.maintenance.api','api']) // User API Routes (v1)
-                ->prefix('api')
-                ->group(base_path('routes/api/user.php'));
+            // Register API routes for both /api and /api/v1 prefixes
+            $apiPrefixes = ['api', 'api/v1'];
+            foreach ($apiPrefixes as $prefix) {
+                Route::middleware(['system.maintenance.api', 'api'])
+                    ->prefix($prefix)
+                    ->group(base_path('routes/api.php'));
 
-            Route::middleware(['system.maintenance.api','api']) // Auth API Routes - User/Merchant/Agent (v1)
-                ->prefix('api')
-                ->group(base_path('routes/api/auth.php'));
+                Route::middleware(['system.maintenance.api', 'api'])
+                    ->prefix($prefix)
+                    ->group(base_path('routes/api/user.php'));
 
-            Route::middleware(['system.maintenance.api','api']) // User API Routes (v1)
-                ->prefix('api')
-                ->group(base_path('routes/api/global.php'));
+                Route::middleware(['system.maintenance.api', 'api'])
+                    ->prefix($prefix)
+                    ->group(base_path('routes/api/auth.php'));
+
+                Route::middleware(['system.maintenance.api', 'api'])
+                    ->prefix($prefix)
+                    ->group(base_path('routes/api/global.php'));
+            }
 
             // $this->mapInstallerRoute();
         });
