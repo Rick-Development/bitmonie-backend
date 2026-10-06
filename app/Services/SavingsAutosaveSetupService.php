@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\AutosavePlan;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 
 class SavingsAutosaveSetupService
@@ -15,7 +16,7 @@ class SavingsAutosaveSetupService
     public function rules(): array
     {
         return [
-            'autosave' => ['sometimes', 'array'],
+            'autosave' => ['sometimes', 'nullable', 'array'],
             'autosave.enabled' => ['sometimes', 'boolean'],
             'autosave.name' => ['nullable', 'string', 'max:120'],
             'autosave.mode' => ['exclude_if:autosave.enabled,false', 'required_with:autosave', 'in:scheduled,percentage,both'],
@@ -27,19 +28,91 @@ class SavingsAutosaveSetupService
         ];
     }
 
-    public function createForTarget(User $user, Model $target, string $targetType, ?array $config = [], array $defaults = []): ?AutosavePlan
+    /**
+     * Normalize autosave payload (trim strings, convert empty strings to null, format dates).
+     */
+    public function normalizeConfig(?array $config): array
     {
-        $config = $config ?: [];
+        if (empty($config)) {
+            return [];
+        }
 
-        if (array_key_exists('enabled', $config) && !$this->truthy($config['enabled'])) {
+        foreach ($config as $key => $value) {
+            if (is_string($value)) {
+                $trimmed = trim($value);
+                $config[$key] = $trimmed === '' ? null : $trimmed;
+            }
+        }
+
+        if (!empty($config['maturity_date'])) {
+            $parsedDate = $this->parseMaturityDate($config['maturity_date']);
+            if ($parsedDate !== null) {
+                $config['maturity_date'] = $parsedDate;
+            }
+        }
+
+        return $config;
+    }
+
+    /**
+     * Parse and format maturity dates safely into Y-m-d.
+     */
+    public function parseMaturityDate(mixed $date): ?string
+    {
+        if (empty($date)) {
             return null;
         }
 
-        if (empty($config)) {
-            return null;
+        if ($date instanceof \Carbon\CarbonInterface || $date instanceof \DateTimeInterface) {
+            return Carbon::instance($date)->toDateString();
+        }
+
+        $dateStr = trim((string) $date);
+
+        // Try explicit common formats
+        $formats = [
+            'Y-m-d',
+            'd/m/Y',
+            'd-m-Y',
+            'm/d/Y',
+            'Y/m/d',
+            'Y-m-d H:i:s',
+        ];
+
+        foreach ($formats as $format) {
+            try {
+                $parsed = Carbon::createFromFormat($format, $dateStr);
+                if ($parsed !== false) {
+                    return $parsed->toDateString();
+                }
+            } catch (\Throwable) {
+                // Continue to next format
+            }
+        }
+
+        try {
+            return Carbon::parse($dateStr)->toDateString();
+        } catch (\Throwable) {
+            return $dateStr;
+        }
+    }
+
+    /**
+     * Validate autosave configuration semantics.
+     */
+    public function validateConfig(?array $config): void
+    {
+        $config = $this->normalizeConfig($config);
+
+        if (empty($config) || (array_key_exists('enabled', $config) && !$this->truthy($config['enabled']))) {
+            return;
         }
 
         $mode = $config['mode'] ?? AutosavePlan::MODE_SCHEDULED;
+
+        if (!in_array($mode, [AutosavePlan::MODE_SCHEDULED, AutosavePlan::MODE_PERCENTAGE, AutosavePlan::MODE_BOTH], true)) {
+            throw new \InvalidArgumentException('Invalid AutoSave mode selected.');
+        }
 
         if (in_array($mode, [AutosavePlan::MODE_SCHEDULED, AutosavePlan::MODE_BOTH], true) && empty($config['amount'])) {
             throw new \InvalidArgumentException('AutoSave amount is required for scheduled mode.');
@@ -53,6 +126,41 @@ class SavingsAutosaveSetupService
             throw new \InvalidArgumentException('AutoSave frequency is required for scheduled mode.');
         }
 
+        if (!empty($config['percentage']) && ((float) $config['percentage'] <= 0 || (float) $config['percentage'] > 100)) {
+            throw new \InvalidArgumentException('AutoSave percentage must be between 0.01 and 100.');
+        }
+
+        if (!empty($config['maturity_date'])) {
+            try {
+                $parsedMaturity = Carbon::parse($config['maturity_date'])->startOfDay();
+                if ($parsedMaturity->isPast() && !$parsedMaturity->isToday()) {
+                    throw new \InvalidArgumentException('AutoSave maturity date must be a future date.');
+                }
+            } catch (\InvalidArgumentException $e) {
+                throw $e;
+            } catch (\Throwable) {
+                throw new \InvalidArgumentException('Invalid AutoSave maturity date format.');
+            }
+        }
+    }
+
+    public function createForTarget(User $user, Model $target, string $targetType, ?array $config = [], array $defaults = []): ?AutosavePlan
+    {
+        $config = $this->normalizeConfig($config);
+
+        if (array_key_exists('enabled', $config) && !$this->truthy($config['enabled'])) {
+            return null;
+        }
+
+        if (empty($config)) {
+            return null;
+        }
+
+        $this->validateConfig($config);
+
+        $mode = $config['mode'] ?? AutosavePlan::MODE_SCHEDULED;
+        $maturityDate = $config['maturity_date'] ?? $this->parseMaturityDate($defaults['maturity_date'] ?? null);
+
         return $this->autosaveService->createPlan($user, [
             'name' => $config['name'] ?? $defaults['name'] ?? $this->defaultName($targetType),
             'mode' => $mode,
@@ -60,7 +168,7 @@ class SavingsAutosaveSetupService
             'percentage' => $config['percentage'] ?? null,
             'frequency' => $config['frequency'] ?? null,
             'goal_amount' => $config['goal_amount'] ?? $defaults['goal_amount'] ?? null,
-            'maturity_date' => $config['maturity_date'] ?? $defaults['maturity_date'] ?? null,
+            'maturity_date' => $maturityDate,
             'metadata' => [
                 'target_type' => $targetType,
                 'target_model' => $target::class,

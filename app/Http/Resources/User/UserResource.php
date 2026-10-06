@@ -42,10 +42,15 @@ class UserResource extends JsonResource
             'email_verified'      => $this->email_verified ?? '',
             'sms_verified'        => $this->sms_verified ?? 0,
             'kyc_verified'        => $this->kyc_verified ?? 0,
+            'kyc_tier'            => (int) ($this->kyc_tier ?? 0),
+            'bvn_verified'        => (bool) ($this->kyc_tier >= 1 && $this->getVerifiedBvn()),
+            'masked_bvn'          => $this->getMaskedBvn(),
             'two_factor_verified' => $this->two_factor_verified ?? 0,
             'two_factor_status'   => $this->two_factor_status ?? 0,
             'kyc'                 => [
-                'data'            => $this->kyc->data ?? [] ,
+                'status'          => (int) ($this->kyc_verified ?? 0),
+                'bvn_verified'    => (bool) ($this->kyc_tier >= 1 && $this->getVerifiedBvn()),
+                'masked_bvn'      => $this->getMaskedBvn(),
                 'reject_reason'   => $this->kyc->reject_reason ?? "",
             ]
         ];

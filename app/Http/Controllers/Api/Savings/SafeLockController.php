@@ -473,6 +473,20 @@ class SafeLockController extends Controller
                         ),
                 ]);
 
+                OrderTransaction::create([
+                    'user_wallet_id' => $wallet->id,
+                    'type' => 'credit',
+                    'amount' => $amountToReturn,
+                    'balance_after' => $wallet->balance,
+                    'reference' => $reference,
+                    'metadata' => [
+                        'source' => 'savings',
+                        'savings_type' => 'safelock',
+                        'savings_id' => $lock->id,
+                        'penalty' => $penalty,
+                    ],
+                ]);
+
                 return [
                     'lock' => $lock,
                     'amount' => $amountToReturn,
@@ -680,6 +694,21 @@ class SafeLockController extends Controller
                     'status' => 'success',
                     'source' => 'safelock',
                     'narration' => "SafeLock Matured - Principal: {$lock->amount}, Interest: {$interestEarned}",
+                ]);
+
+                OrderTransaction::create([
+                    'user_wallet_id' => $wallet->id,
+                    'type' => 'credit',
+                    'amount' => $totalAmount,
+                    'balance_after' => $wallet->balance,
+                    'reference' => $reference,
+                    'metadata' => [
+                        'source' => 'savings',
+                        'savings_type' => 'safelock',
+                        'savings_id' => $lock->id,
+                        'interest_earned' => $interestEarned,
+                        'principal' => $lock->amount,
+                    ],
                 ]);
 
                 return [

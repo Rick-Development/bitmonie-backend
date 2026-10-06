@@ -89,7 +89,7 @@
 
                     <tr>
                         <td>
-                            {{ __('Card Issuance Fee') }}
+                            {{ __('Virtual Card Fee (Issuance)') }}
                         </td>
 
                         <td>

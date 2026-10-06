@@ -54,6 +54,12 @@ class FlexController extends Controller
         SavingsAutosaveSetupService $autosaveSetup,
         SavingsFundingProviderInterface $fundingProvider
     ) {
+        if ($request->has('autosave') && is_array($request->input('autosave'))) {
+            $request->merge([
+                'autosave' => $autosaveSetup->normalizeConfig($request->input('autosave')),
+            ]);
+        }
+
         $validator = Validator::make(
             $request->all(),
             array_merge(
@@ -86,31 +92,17 @@ class FlexController extends Controller
         ]);
 
         /*
-         * Validate/create autosave configuration BEFORE
+         * Validate autosave configuration semantics BEFORE
          * initiating the financial transaction.
          */
-        
-        try {
-            $autosavePlan = $autosaveSetup->createForTarget(
-                $user,
-                $flex,
-                'flex_savings',
-                $request->input('autosave'),
-                [
-                    'name' => 'Flex Savings AutoSave',
-                    'title' => 'Flex Savings',
-                ]
-            );
-        } catch (\InvalidArgumentException $e) {
-            return Response::error([
-                $e->getMessage(),
-            ]);
-        } catch (Throwable $e) {
-            report($e);
-
-            return Response::error([
-                'Unable to configure Flex Savings autosave.',
-            ]);
+        if ($request->filled('autosave')) {
+            try {
+                $autosaveSetup->validateConfig($request->input('autosave'));
+            } catch (\InvalidArgumentException $e) {
+                return Response::error([
+                    $e->getMessage(),
+                ]);
+            }
         }
 
         /*
@@ -152,6 +144,12 @@ class FlexController extends Controller
             return Response::error([
                 $e->getMessage(),
             ]);
+        } catch (\Exception $e) {
+            report($e);
+
+            return Response::error([
+                $e->getMessage() ?: 'Unable to process Flex Savings deposit.',
+            ]);
         } catch (Throwable $e) {
             report($e);
 
@@ -167,13 +165,17 @@ class FlexController extends Controller
          * Lock the Flex Savings row to prevent concurrent deposits
          * from overwriting the balance.
          */
+        $autosavePlan = null;
+
         try {
             DB::transaction(function () use (
                 $user,
                 $amount,
                 $flex,
                 $reference,
-                $providerResult
+                $request,
+                $autosaveSetup,
+                &$autosavePlan
             ) {
                 $flex = FlexSavings::where('id', $flex->id)
                     ->where('user_id', $user->id)
@@ -191,6 +193,26 @@ class FlexController extends Controller
                  */
                 $flex->balance =
                     (float) $flex->balance + (float) $amount;
+
+                /*
+                 * Create AutoSave plan atomically with deposit if configured.
+                 */
+                if ($request->filled('autosave')) {
+                    $autosavePlan = $autosaveSetup->createForTarget(
+                        $user,
+                        $flex,
+                        'flex_savings',
+                        $request->input('autosave'),
+                        [
+                            'name' => 'Flex Savings AutoSave',
+                            'title' => 'Flex Savings',
+                        ]
+                    );
+
+                    if ($autosavePlan) {
+                        $flex->auto_save = true;
+                    }
+                }
 
                 $flex->save();
 
@@ -236,14 +258,6 @@ class FlexController extends Controller
          * Refresh latest Flex Savings balance.
          */
         $flex->refresh();
-
-        /*
-         * Enable autosave after successful deposit.
-         */
-        if ($autosavePlan && !$flex->auto_save) {
-            $flex->auto_save = true;
-            $flex->save();
-        }
 
         /*
          * Notify after successful transaction.

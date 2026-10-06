@@ -31,7 +31,7 @@ class AppModeGuard
             $request_path = explode("/",$request_path);
             $request_path = array_pop($request_path);
             if(!in_array($request_path,$ignore_routes) && !in_array($request->route()->getName(), $ignore_route_name)) {
-                if(env("APP_MODE") != 'live') {
+                if(strtolower((string) env("APP_MODE", 'live')) === 'demo') {
                     if($request->expectsJson()) {
                         return Response::error(['error' => ['Can\'t change anything for demo application.']]);
                     }

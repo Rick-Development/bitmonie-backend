@@ -52,35 +52,36 @@ class CryptoCardCharge extends Controller
     {
         $data = $request->validate([
             'physical_card_fee' => [
-                'required',
+                'nullable',
                 'numeric',
                 'min:0',
             ],
 
             'card_issuance_fee' => [
-                'required',
+                'nullable',
                 'numeric',
                 'min:0',
             ],
 
             'card_funding_fee' => [
-                'required',
+                'nullable',
                 'numeric',
                 'min:0',
             ],
 
             'monthly_card_maintenance_fee' => [
-                'required',
+                'nullable',
                 'numeric',
                 'min:0',
             ],
         ]);
 
+        $data['physical_card_fee'] = $data['physical_card_fee'] ?? 0;
+        $data['card_issuance_fee'] = $data['card_issuance_fee'] ?? 0;
+        $data['card_funding_fee'] = $data['card_funding_fee'] ?? 0;
+        $data['monthly_card_maintenance_fee'] = $data['monthly_card_maintenance_fee'] ?? 0;
+
         try {
-            /*
-             * updateOrCreate ensures that the application
-             * maintains a single crypto card setup record.
-             */
             CryptoCardSetup::query()->updateOrCreate(
                 [],
                 $data
@@ -148,29 +149,34 @@ class CryptoCardCharge extends Controller
     ): RedirectResponse {
         $data = $request->validate([
             'physical_card_fee' => [
-                'required',
+                'nullable',
                 'numeric',
                 'min:0',
             ],
 
             'card_issuance_fee' => [
-                'required',
+                'nullable',
                 'numeric',
                 'min:0',
             ],
 
             'card_funding_fee' => [
-                'required',
+                'nullable',
                 'numeric',
                 'min:0',
             ],
 
             'monthly_card_maintenance_fee' => [
-                'required',
+                'nullable',
                 'numeric',
                 'min:0',
             ],
         ]);
+
+        $data['physical_card_fee'] = $data['physical_card_fee'] ?? 0;
+        $data['card_issuance_fee'] = $data['card_issuance_fee'] ?? 0;
+        $data['card_funding_fee'] = $data['card_funding_fee'] ?? 0;
+        $data['monthly_card_maintenance_fee'] = $data['monthly_card_maintenance_fee'] ?? 0;
 
         try {
             $setup = CryptoCardSetup::query()->first();
@@ -201,9 +207,6 @@ class CryptoCardCharge extends Controller
 
     /**
      * Update a single crypto card charge.
-     *
-     * This is useful if your admin page has individual
-     * forms/buttons for each charge.
      */
     public function updateCharge(
         Request $request,
@@ -222,22 +225,24 @@ class CryptoCardCharge extends Controller
 
         $data = $request->validate([
             'amount' => [
-                'required',
+                'nullable',
                 'numeric',
                 'min:0',
             ],
         ]);
+
+        $amount = $data['amount'] ?? 0;
 
         try {
             $setup = CryptoCardSetup::query()->first();
 
             if (!$setup) {
                 $setup = CryptoCardSetup::query()->create([
-                    $charge => $data['amount'],
+                    $charge => $amount,
                 ]);
             } else {
                 $setup->update([
-                    $charge => $data['amount'],
+                    $charge => $amount,
                 ]);
             }
 

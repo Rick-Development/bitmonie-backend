@@ -88,17 +88,20 @@ class SafeHavenSavingsProvider implements SavingsFundingProviderInterface
          *          ↓
          * Platform SafeHaven Main Account
          */
-    
-        $response = $this->safeHavenService->transfer([
-            'nameEnquiryReference' => $sessionId,
-            'paymentReference' => $reference ?: (string) Str::uuid(),
-            'amount' => (float) $amount,
-            'debitAccountNumber' => $virtualAccount->account_number,
-            'beneficiaryAccountNumber' => $mainAccount,
-            'beneficiaryBankCode' => $bankCode,
-            'saveBeneficiary' => false,
-            'narration' => $narration,
-        ]);
+        try {
+            $response = $this->safeHavenService->transfer([
+                'nameEnquiryReference' => $sessionId,
+                'paymentReference' => $reference ?: (string) Str::uuid(),
+                'amount' => (float) $amount,
+                'debitAccountNumber' => $virtualAccount->account_number,
+                'beneficiaryAccountNumber' => $mainAccount,
+                'beneficiaryBankCode' => $bankCode,
+                'saveBeneficiary' => false,
+                'narration' => $narration,
+            ]);
+        } catch (\Throwable $e) {
+            throw new RuntimeException($e->getMessage() ?: 'Savings deposit transfer failed.', 0, $e);
+        }
 
         return $this->ensureTransferSucceeded(
             $response,
@@ -175,16 +178,20 @@ class SafeHavenSavingsProvider implements SavingsFundingProviderInterface
          *          ↓
          * User SafeHaven Sub-Account
          */
-        $response = $this->safeHavenService->transfer([
-            'nameEnquiryReference' => $sessionId,
-            'paymentReference' => $reference ?: (string) Str::uuid(),
-            'amount' => (float) $amount,
-            'debitAccountNumber' => $mainAccount,
-            'beneficiaryAccountNumber' => $virtualAccount->account_number,
-            'beneficiaryBankCode' => $bankCode,
-            'saveBeneficiary' => false,
-            'narration' => $narration,
-        ]);
+        try {
+            $response = $this->safeHavenService->transfer([
+                'nameEnquiryReference' => $sessionId,
+                'paymentReference' => $reference ?: (string) Str::uuid(),
+                'amount' => (float) $amount,
+                'debitAccountNumber' => $mainAccount,
+                'beneficiaryAccountNumber' => $virtualAccount->account_number,
+                'beneficiaryBankCode' => $bankCode,
+                'saveBeneficiary' => false,
+                'narration' => $narration,
+            ]);
+        } catch (\Throwable $e) {
+            throw new RuntimeException($e->getMessage() ?: 'Savings withdrawal transfer failed.', 0, $e);
+        }
 
         return $this->ensureTransferSucceeded(
             $response,

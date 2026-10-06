@@ -4,10 +4,14 @@ namespace App\Http\Controllers\Api\V1\User;
 
 use App\Http\Controllers\Controller;
 use App\Models\KycVerification;
+use App\Models\OrderTransaction;
+use App\Models\UserWallet;
+use App\Models\Admin\Currency;
 use App\Services\CryptoCardService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Throwable;
 use App\Models\CryptoCardOrder;
@@ -16,7 +20,7 @@ use Illuminate\Support\Str;
 use App\Models\CryptoCardSetup;
 use Illuminate\Validation\Rule;
 use App\Services\QuidaxService;
- use App\Services\CryptoTransactionService;
+use App\Services\CryptoTransactionService;
 
 class CryptoCards extends Controller
 {
@@ -154,7 +158,7 @@ protected function formatCard($card): array
     {
         $validator = Validator::make($request->all(), [
             'provider' => ['required', 'string', 'in:sudo'],
-            'type' => ['required', 'string', 'in:individual,company'],
+            'type' => ['nullable', 'string', 'in:individual,company'],
             'name' => ['nullable', 'string', 'max:255'],
             'phoneNumber' => ['nullable', 'string', 'max:30'],
             'emailAddress' => ['nullable', 'email', 'max:255'],
@@ -191,28 +195,11 @@ protected function formatCard($card): array
             return $this->unauthenticated();
         }
 
+        $user = auth()->user();
         $provider = strtolower(trim((string) $request->input('provider')));
 
-        // Get latest verified KYC
-        $kyc = KycVerification::where('user_id', $userId)
-            ->where('status', 'verified')
-            ->latest('id')
-            ->first();
-
-        $kycData = [];
-        if ($kyc) {
-            $kycData = $kyc->data;
-            if (is_string($kycData)) {
-                $decoded = json_decode($kycData, true);
-                if (json_last_error() === JSON_ERROR_NONE) {
-                    $kycData = $decoded;
-                }
-            }
-            if (!is_array($kycData)) {
-                $kycData = [];
-            }
-        }
-
+        // Get latest verified KYC data
+        $kycData = $user->getVerifiedKycData();
         $providerResponse = Arr::get($kycData, 'verification_result.providerResponse');
         if (!is_array($providerResponse)) {
             $providerResponse = Arr::get($kycData, 'providerResponse', []);
@@ -225,13 +212,23 @@ protected function formatCard($card): array
         $requestIndividual = is_array($payload['individual'] ?? null) ? $payload['individual'] : [];
         $requestAddress = is_array($payload['billingAddress'] ?? null) ? $payload['billingAddress'] : [];
 
-        // Individual
-        $firstName = $requestIndividual['firstName'] ?? Arr::get($providerResponse, 'firstName');
-        $lastName = $requestIndividual['lastName'] ?? Arr::get($providerResponse, 'lastName');
-        $otherNames = $requestIndividual['otherNames'] ?? Arr::get($providerResponse, 'otherNames');
+        // Individual: use request, fallback to verified KYC, fallback to User model
+        $firstName = $requestIndividual['firstName']
+            ?? Arr::get($providerResponse, 'firstName')
+            ?? $user->firstname;
+
+        $lastName = $requestIndividual['lastName']
+            ?? Arr::get($providerResponse, 'lastName')
+            ?? $user->lastname;
+
+        $otherNames = $requestIndividual['otherNames']
+            ?? Arr::get($providerResponse, 'otherNames')
+            ?? null;
+
         $dob = $requestIndividual['dob']
             ?? Arr::get($providerResponse, 'dateOfBirth')
-            ?? Arr::get($providerResponse, 'dob');
+            ?? Arr::get($providerResponse, 'dob')
+            ?? $user->birthdate;
 
         if ($dob) {
             try {
@@ -244,8 +241,19 @@ protected function formatCard($card): array
 
         $identityType = Arr::get($requestIndividual, 'identity.type') ?? 'BVN';
         $identityNumber = Arr::get($requestIndividual, 'identity.number')
+            ?? $user->getVerifiedBvn()
             ?? Arr::get($providerResponse, 'bvn')
             ?? Arr::get($kycData, 'bvn');
+
+        if (empty($identityNumber)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'BVN is required. Please verify your BVN or provide a valid BVN.',
+                'errors' => [
+                    'individual.identity.number' => ['BVN is required for unverified users.'],
+                ],
+            ], 422);
+        }
 
         $individual = [
             'firstName' => $firstName,
@@ -264,26 +272,36 @@ protected function formatCard($card): array
             ];
         }
 
-        // Billing Address
+        // Billing Address: use request, fallback to KYC, fallback to User address
+        $userAddress = (array) ($user->address ?? []);
         $addressLine1 = $requestAddress['line1']
             ?? Arr::get($providerResponse, 'residentialAddress')
-            ?? Arr::get($providerResponse, 'address');
+            ?? Arr::get($providerResponse, 'address')
+            ?? ($userAddress['address'] ?? 'Lagos');
+
         $addressLine2 = $requestAddress['line2'] ?? null;
+
         $city = $requestAddress['city']
             ?? Arr::get($providerResponse, 'city')
-            ?? Arr::get($providerResponse, 'lgaOfResidence');
+            ?? Arr::get($providerResponse, 'lgaOfResidence')
+            ?? ($userAddress['city'] ?? 'Lagos');
+
         $state = $requestAddress['state']
             ?? Arr::get($providerResponse, 'state')
-            ?? Arr::get($providerResponse, 'stateOfResidence');
+            ?? Arr::get($providerResponse, 'stateOfResidence')
+            ?? ($userAddress['state'] ?? 'Lagos');
+
         $postalCode = $requestAddress['postalCode']
             ?? Arr::get($providerResponse, 'postalCode')
             ?? Arr::get($providerResponse, 'postal_code')
-            ?? Arr::get($kycData, 'postalCode');
+            ?? Arr::get($kycData, 'postalCode')
+            ?? ($userAddress['zip'] ?? '100001');
+
         $country = $requestAddress['country']
             ?? Arr::get($providerResponse, 'country')
-            ?? 'NG';
+            ?? ($userAddress['country'] ?? 'NG');
 
-        // Customer
+        // Customer Details
         $name = $payload['name']
             ?? Arr::get($providerResponse, 'fullName')
             ?? Arr::get($providerResponse, 'nameOnCard');
@@ -291,13 +309,17 @@ protected function formatCard($card): array
         if (!$name) {
             $name = trim(implode(' ', array_filter([$firstName, $otherNames, $lastName])));
         }
+        if (!$name) {
+            $name = $user->fullname ?? ($user->firstname . ' ' . $user->lastname);
+        }
 
         $phoneNumber = $payload['phoneNumber']
+            ?? $user->full_mobile
+            ?? $user->mobile
             ?? Arr::get($providerResponse, 'phoneNumber1')
-            ?? Arr::get($providerResponse, 'phoneNumber')
-            ?? Arr::get($providerResponse, 'phone');
+            ?? Arr::get($providerResponse, 'phoneNumber');
 
-        $emailAddress = $payload['emailAddress'] ?? Arr::get($providerResponse, 'email');
+        $emailAddress = $payload['emailAddress'] ?? $user->email ?? Arr::get($providerResponse, 'email');
         $status = $payload['status'] ?? 'active';
         $type = $payload['type'] ?? 'individual';
 
@@ -2328,11 +2350,10 @@ return response()->json([
 
 /**
  * Transfer a configured crypto-card charge from the user's
- * Quidax sub-account to the platform/main Quidax account.
+ * fiat (NGN) account to the platform.
  */
 protected function transferCardCharge(string $chargeType): array
 {
-    // this must be saved in transaction log before card funding
     $user = auth()->user();
 
     if (!$user) {
@@ -2340,14 +2361,6 @@ protected function transferCardCharge(string $chargeType): array
             'success' => false,
             'message' => 'Unauthenticated.',
             'statusCode' => 401,
-        ];
-    }
-
-    if (empty($user->quidax_id)) {
-        return [
-            'success' => false,
-            'message' => 'User does not have a Quidax account.',
-            'statusCode' => 422,
         ];
     }
 
@@ -2396,7 +2409,8 @@ protected function transferCardCharge(string $chargeType): array
             'success' => true,
             'charged' => false,
             'amount' => '0.00',
-            'currency' => 'USDT',
+            'ngn_amount' => '0.00',
+            'currency' => 'NGN',
             'charge_type' => $chargeType,
             'reference' => null,
             'response' => null,
@@ -2426,106 +2440,101 @@ protected function transferCardCharge(string $chargeType): array
             'Crypto card charge',
     };
 
+    // Calculate NGN fee using exchange rate
+    $ngnCurrency = Currency::where('code', 'NGN')->first();
+    $rate = (float) ($ngnCurrency?->rate ?? 1500);
+    $ngnAmount = bcmul((string) $amount, (string) $rate, 2);
+
     try {
-        // Proper internal transfer: sub-account → main account
-        $response = $this->quidaxService->transferFromSubToMain(
-            $user->quidax_id,
-            $amount,
-            'usdt',
-            $reference,
-            $note
-        );
+        $result = DB::transaction(function () use ($user, $ngnAmount, $amount, $chargeType, $reference, $note) {
+            $wallet = UserWallet::where('user_id', $user->id)
+                ->where('currency_code', 'NGN')
+                ->lockForUpdate()
+                ->first();
+
+            if (!$wallet) {
+                throw new \RuntimeException('NGN fiat wallet not found for user.');
+            }
+
+            if (bccomp((string) $wallet->balance, (string) $ngnAmount, 2) < 0) {
+                throw new \RuntimeException("Insufficient fiat balance to cover the card fee. Required: ₦" . number_format((float)$ngnAmount, 2) . ", Available: ₦" . number_format((float)$wallet->balance, 2));
+            }
+
+            $wallet->balance = bcsub((string) $wallet->balance, (string) $ngnAmount, 2);
+            $wallet->save();
+
+            OrderTransaction::create([
+                'user_wallet_id' => $wallet->id,
+                'type' => 'debit',
+                'amount' => $ngnAmount,
+                'balance_after' => $wallet->balance,
+                'reference' => $reference,
+                'metadata' => [
+                    'source' => 'crypto_card',
+                    'charge_type' => $chargeType,
+                    'configured_fee' => $amount,
+                    'ngn_amount' => $ngnAmount,
+                    'note' => $note,
+                ],
+            ]);
+
+            return [
+                'wallet' => $wallet,
+                'ngn_amount' => $ngnAmount,
+            ];
+        });
+
+        // Record in CryptoTransactionService for unified history
+        try {
+            $this->cryptoTransactionService->create([
+                'internal_trx_type'   => $chargeType,
+                'internal_trx_ref_id' => null,
+                'transaction_type'    => 'debit',
+                'sender_address'      => 'FIAT_WALLET',
+                'receiver_address'    => 'PLATFORM_REVENUE',
+                'amount'              => $ngnAmount,
+                'asset'               => 'NGN',
+                'txn_hash'            => $reference,
+                'status'              => 'done',
+                'callback_response'   => ['reference' => $reference, 'amount' => $amount, 'ngn_amount' => $ngnAmount],
+            ]);
+        } catch (Throwable $e) {
+            Log::warning('CryptoTransactionService log warning: ' . $e->getMessage());
+        }
+
+        Log::info('Crypto card fiat charge deducted successfully.', [
+            'user_id'     => $user->id,
+            'charge_type' => $chargeType,
+            'amount'      => $amount,
+            'ngn_amount'  => $ngnAmount,
+            'currency'    => 'NGN',
+            'reference'   => $reference,
+        ]);
+
+        return [
+            'success' => true,
+            'charged' => true,
+            'charge_type' => $chargeType,
+            'amount' => $amount,
+            'ngn_amount' => $ngnAmount,
+            'currency' => 'NGN',
+            'reference' => $reference,
+            'message' => 'Card charge deducted successfully from fiat account.',
+        ];
     } catch (Throwable $e) {
-        Log::error('Crypto card charge transfer failed.', [
+        Log::error('Crypto card fiat charge deduction failed.', [
             'user_id' => $user->id,
             'charge_type' => $chargeType,
             'amount' => $amount,
-            'reference' => $reference,
             'error' => $e->getMessage(),
         ]);
 
         return [
             'success' => false,
-            'message' => 'Unable to transfer crypto card charge.',
+            'message' => $e->getMessage() ?: 'Unable to process crypto card charge from fiat account.',
             'statusCode' => 422,
         ];
     }
-
-    if (
-        !is_array($response)
-        || ($response['status'] ?? null) !== 'success'
-    ) {
-        Log::error('Crypto card charge transfer rejected by Quidax.', [
-            'user_id' => $user->id,
-            'charge_type' => $chargeType,
-            'amount' => $amount,
-            'reference' => $reference,
-            'response' => $response,
-        ]);
-
-        return [
-            'success' => false,
-            'message' => $response['message']
-                ?? 'Crypto card charge transfer failed.',
-            'statusCode' => 422,
-            'response' => $response,
-        ];
-    }
-
-    // ---------------------------------------------------------------
-    // Record the charge in CryptoTransactionService
-    // ---------------------------------------------------------------
-    try {
-        $data = $response['data'] ?? [];
-
-        $this->cryptoTransactionService->create([
-            'internal_trx_type'   => $chargeType,
-            'internal_trx_ref_id' => null,
-            'transaction_type'    => 'debit',
-            'sender_address'      => $data['wallet']['deposit_address'] ?? null,
-            'receiver_address'    => $data['recipient']['details']['address'] ?? null,
-            'amount'              => $data['amount'] ?? $amount,
-            'asset'               => strtoupper($data['currency'] ?? 'USDT'),
-            'txn_hash'            => $data['txid'] ?? $data['txId'] ?? null,
-            'status'              => $data['status'] ?? 'done',
-            'callback_response'   => $response,
-        ]);
-    } catch (Throwable $e) {
-        Log::error('Failed to save crypto card charge transaction.', [
-            'user_id'     => $user->id,
-            'charge_type' => $chargeType,
-            'amount'      => $amount,
-            'reference'   => $reference,
-            'error'       => $e->getMessage(),
-        ]);
-
-        return [
-            'success' => false,
-            'message' => 'Charge was transferred but could not be recorded. Please contact support.',
-            'statusCode' => 500,
-            'response' => $response,
-        ];
-    }
-
-    Log::info('Crypto card charge transferred successfully.', [
-        'user_id'     => $user->id,
-        'charge_type' => $chargeType,
-        'amount'      => $amount,
-        'currency'    => 'USDT',
-        'reference'   => $reference,
-        'quidax_id'   => $data['id'] ?? null,
-        'type'        => $data['type'] ?? null, // should be "internal_transfer"
-    ]);
-
-    return [
-        'success' => true,
-        'charged' => true,
-        'charge_type' => $chargeType,
-        'amount' => $amount,
-        'currency' => 'USDT',
-        'reference' => $reference,
-        'response' => $response,
-    ];
 }
 
 

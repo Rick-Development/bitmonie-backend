@@ -343,4 +343,74 @@ public function user_kyc(){
     );
 }
 
+/**
+ * Get the latest verified KYC record for the user.
+ */
+public function getVerifiedKycRecord(): ?KycVerification
+{
+    return KycVerification::where('user_id', $this->id)
+        ->where('status', 'verified')
+        ->latest('id')
+        ->first();
 }
+
+/**
+ * Get verified KYC data array safely.
+ */
+public function getVerifiedKycData(): array
+{
+    $kyc = $this->getVerifiedKycRecord();
+    if (!$kyc) {
+        return [];
+    }
+
+    $data = $kyc->data;
+    if (is_string($data)) {
+        $decoded = json_decode($data, true);
+        if (json_last_error() === JSON_ERROR_NONE) {
+            $data = $decoded;
+        }
+    }
+
+    return is_array($data) ? $data : [];
+}
+
+/**
+ * Retrieve verified BVN from the stored KYC record.
+ */
+public function getVerifiedBvn(): ?string
+{
+    $data = $this->getVerifiedKycData();
+    if (empty($data)) {
+        return null;
+    }
+
+    $bvn = $data['bvn']
+        ?? \Illuminate\Support\Arr::get($data, 'verification_result.bvn')
+        ?? \Illuminate\Support\Arr::get($data, 'verification_result.identityNumber')
+        ?? \Illuminate\Support\Arr::get($data, 'verification_result.providerResponse.bvn')
+        ?? \Illuminate\Support\Arr::get($data, 'providerResponse.bvn')
+        ?? null;
+
+    if ($bvn && is_string($bvn) && strlen(trim($bvn)) >= 11) {
+        return trim($bvn);
+    }
+
+    return null;
+}
+
+/**
+ * Get masked BVN (e.g., 222******34).
+ */
+public function getMaskedBvn(): ?string
+{
+    $bvn = $this->getVerifiedBvn();
+    if (!$bvn || strlen($bvn) < 5) {
+        return null;
+    }
+
+    return substr($bvn, 0, 3) . '******' . substr($bvn, -2);
+}
+
+}
+

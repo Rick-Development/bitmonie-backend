@@ -54,9 +54,11 @@ class KycController extends Controller
         $tier = Tier::where('level', $user->kyc_tier)->first();
         
         return Response::success([
-            'current_level' => $user->kyc_tier,
+            'current_level' => (int) $user->kyc_tier,
             'tier' => $tier,
-            'kyc_verified' => $user->kyc_verified
+            'kyc_verified' => (int) $user->kyc_verified,
+            'bvn_verified' => (bool) ($user->kyc_tier >= 1 && $user->getVerifiedBvn()),
+            'masked_bvn' => $user->getMaskedBvn(),
         ]);
     }
 
