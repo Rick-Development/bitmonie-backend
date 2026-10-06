@@ -79,7 +79,7 @@
     }
   },
   "paths": {
-    "/api/v1/user/register": {
+    "/api/user/register": {
       "post": {
         "tags": [
           "Authentication"
@@ -347,7 +347,7 @@
         }
       }
     },
-    "/api/v1/user/login": {
+    "/api/user/login": {
       "post": {
         "tags": [
           "Authentication"
@@ -562,7 +562,7 @@
         }
       }
     },
-    "/api/v1/user/login-with-pin": {
+    "/api/user/login-with-pin": {
       "post": {
         "tags": [
           "Authentication"
@@ -776,7 +776,7 @@
         }
       }
     },
-    "/api/v1/user/password/forgot/find/user": {
+    "/api/user/password/forgot/find/user": {
       "post": {
         "tags": [
           "Authentication"
@@ -975,7 +975,7 @@
         }
       }
     },
-    "/api/v1/user/password/forgot/verify/code": {
+    "/api/user/password/forgot/verify/code": {
       "post": {
         "tags": [
           "Authentication"
@@ -1177,7 +1177,7 @@
         }
       }
     },
-    "/api/v1/user/password/forgot/reset": {
+    "/api/user/password/forgot/reset": {
       "post": {
         "tags": [
           "Authentication"
@@ -1389,7 +1389,7 @@
         }
       }
     },
-    "/api/v1/user/authorize/mail/send/code": {
+    "/api/user/authorize/mail/send/code": {
       "get": {
         "tags": [
           "Authentication"
@@ -1573,7 +1573,7 @@
         }
       }
     },
-    "/api/v1/user/authorize/mail/verify/code": {
+    "/api/user/authorize/mail/verify/code": {
       "post": {
         "tags": [
           "Authentication"
@@ -1776,7 +1776,7 @@
         }
       }
     },
-    "/api/v1/user/logout": {
+    "/api/user/logout": {
       "post": {
         "tags": [
           "Authentication"
@@ -1960,7 +1960,7 @@
         }
       }
     },
-    "/api/v1/user/fcm-token/update": {
+    "/api/user/fcm-token/update": {
       "post": {
         "tags": [
           "Notifications"
@@ -2163,7 +2163,7 @@
         }
       }
     },
-    "/api/v1/user/notifications": {
+    "/api/user/notifications": {
       "get": {
         "tags": [
           "Notifications"
@@ -2366,7 +2366,7 @@
         }
       }
     },
-    "/api/v1/user/profile/info": {
+    "/api/user/profile/info": {
       "get": {
         "tags": [
           "Profile & KYC"
@@ -2596,7 +2596,7 @@
         }
       }
     },
-    "/api/v1/user/profile/info/update": {
+    "/api/user/profile/info/update": {
       "post": {
         "tags": [
           "Profile & KYC"
@@ -2820,7 +2820,7 @@
         }
       }
     },
-    "/api/v1/user/profile/password/update": {
+    "/api/user/profile/password/update": {
       "post": {
         "tags": [
           "Profile & KYC"
@@ -3033,7 +3033,7 @@
         }
       }
     },
-    "/api/v1/user/kyc-input-fields": {
+    "/api/user/kyc-input-fields": {
       "get": {
         "tags": [
           "Profile & KYC"
@@ -3243,7 +3243,7 @@
         }
       }
     },
-    "/api/v1/user/kyc-submit": {
+    "/api/user/kyc-submit": {
       "post": {
         "tags": [
           "Profile & KYC"
@@ -3457,7 +3457,7 @@
         }
       }
     },
-    "/api/v1/user/kyc/status": {
+    "/api/user/kyc/status": {
       "get": {
         "tags": [
           "Profile & KYC"
@@ -3659,7 +3659,7 @@
         }
       }
     },
-    "/api/v1/user/google-2fa": {
+    "/api/user/google-2fa": {
       "get": {
         "tags": [
           "Security & PIN"
@@ -3857,7 +3857,7 @@
         }
       }
     },
-    "/api/v1/user/google-2fa/status/update": {
+    "/api/user/google-2fa/status/update": {
       "post": {
         "tags": [
           "Security & PIN"
@@ -4065,7 +4065,7 @@
         }
       }
     },
-    "/api/v1/user/google-2fa/verify/code": {
+    "/api/user/google-2fa/verify/code": {
       "post": {
         "tags": [
           "Security & PIN"
@@ -4268,7 +4268,7 @@
         }
       }
     },
-    "/api/v1/user/transaction-pin/store": {
+    "/api/user/transaction-pin/store": {
       "post": {
         "tags": [
           "Security & PIN"
@@ -4476,7 +4476,7 @@
         }
       }
     },
-    "/api/v1/user/transaction-pin/update": {
+    "/api/user/transaction-pin/update": {
       "post": {
         "tags": [
           "Security & PIN"
@@ -4689,7 +4689,7 @@
         }
       }
     },
-    "/api/v1/user/transaction-pin/check": {
+    "/api/user/transaction-pin/check": {
       "post": {
         "tags": [
           "Security & PIN"
@@ -4892,7 +4892,7 @@
         }
       }
     },
-    "/api/v1/user/login-pin/store": {
+    "/api/user/login-pin/store": {
       "post": {
         "tags": [
           "Security & PIN"
@@ -5100,7 +5100,7 @@
         }
       }
     },
-    "/api/v1/user/dashboard": {
+    "/api/user/dashboard": {
       "get": {
         "tags": [
           "Wallets & Balances"
@@ -5325,7 +5325,7 @@
         }
       }
     },
-    "/api/v1/user/wallets": {
+    "/api/user/wallets": {
       "get": {
         "tags": [
           "Wallets & Balances"
@@ -5531,7 +5531,7 @@
         }
       }
     },
-    "/api/v1/user/wallets/history": {
+    "/api/user/wallets/history": {
       "get": {
         "tags": [
           "Wallets & Balances"
@@ -5723,7 +5723,7 @@
         }
       }
     },
-    "/api/v1/user/wallets/{code}/history": {
+    "/api/user/wallets/{code}/history": {
       "get": {
         "tags": [
           "Wallets & Balances"
@@ -5918,7 +5918,7 @@
         }
       }
     },
-    "/api/v1/user/crypto-cards": {
+    "/api/user/crypto-cards": {
       "get": {
         "tags": [
           "Crypto Cards"
@@ -6161,7 +6161,7 @@
         }
       }
     },
-    "/api/v1/user/crypto-cards/charges": {
+    "/api/user/crypto-cards/charges": {
       "get": {
         "tags": [
           "Crypto Cards"
@@ -6393,7 +6393,7 @@
         }
       }
     },
-    "/api/v1/user/crypto-cards/create": {
+    "/api/user/crypto-cards/create": {
       "post": {
         "tags": [
           "Crypto Cards"
@@ -6658,7 +6658,7 @@
         }
       }
     },
-    "/api/v1/user/crypto-cards/show/{id}": {
+    "/api/user/crypto-cards/show/{id}": {
       "get": {
         "tags": [
           "Crypto Cards"
@@ -6890,7 +6890,7 @@
         }
       }
     },
-    "/api/v1/user/crypto-cards/{id}/fund": {
+    "/api/user/crypto-cards/{id}/fund": {
       "post": {
         "tags": [
           "Crypto Cards"
@@ -7120,7 +7120,7 @@
         }
       }
     },
-    "/api/v1/user/crypto-cards/{id}/transactions": {
+    "/api/user/crypto-cards/{id}/transactions": {
       "get": {
         "tags": [
           "Crypto Cards"
@@ -7349,7 +7349,7 @@
         }
       }
     },
-    "/api/v1/user/crypto-cards/order": {
+    "/api/user/crypto-cards/order": {
       "post": {
         "tags": [
           "Crypto Cards"
@@ -7590,7 +7590,7 @@
         }
       }
     },
-    "/api/v1/user/crypto-cards/orders": {
+    "/api/user/crypto-cards/orders": {
       "get": {
         "tags": [
           "Crypto Cards"
@@ -7782,7 +7782,7 @@
         }
       }
     },
-    "/api/v1/user/payscribe/create-savings": {
+    "/api/user/payscribe/create-savings": {
       "post": {
         "tags": [
           "Savings & Vaults"
@@ -8048,7 +8048,7 @@
         }
       }
     },
-    "/api/v1/user/payscribe/deposit-savings": {
+    "/api/user/payscribe/deposit-savings": {
       "post": {
         "tags": [
           "Savings & Vaults"
@@ -8270,7 +8270,7 @@
         }
       }
     },
-    "/api/v1/user/payscribe/withdraw-savings": {
+    "/api/user/payscribe/withdraw-savings": {
       "post": {
         "tags": [
           "Savings & Vaults"
@@ -8501,7 +8501,7 @@
         }
       }
     },
-    "/api/v1/user/payscribe/list-savings": {
+    "/api/user/payscribe/list-savings": {
       "get": {
         "tags": [
           "Savings & Vaults"
@@ -8721,7 +8721,7 @@
         }
       }
     },
-    "/api/v1/user/usdt-easyearn/info": {
+    "/api/user/usdt-easyearn/info": {
       "get": {
         "tags": [
           "Savings & Vaults"
@@ -8932,7 +8932,7 @@
         }
       }
     },
-    "/api/v1/user/usdt-easyearn/save": {
+    "/api/user/usdt-easyearn/save": {
       "post": {
         "tags": [
           "Savings & Vaults"
@@ -9158,7 +9158,7 @@
         }
       }
     },
-    "/api/v1/user/fund-transfer/check-user": {
+    "/api/user/fund-transfer/check-user": {
       "post": {
         "tags": [
           "Transfers & Payouts"
@@ -9383,7 +9383,7 @@
         }
       }
     },
-    "/api/v1/user/fund-transfer/confirm": {
+    "/api/user/fund-transfer/confirm": {
       "post": {
         "tags": [
           "Transfers & Payouts"
@@ -9623,7 +9623,7 @@
         }
       }
     },
-    "/api/v1/user/money-out/info": {
+    "/api/user/money-out/info": {
       "get": {
         "tags": [
           "Transfers & Payouts"
@@ -9821,7 +9821,7 @@
         }
       }
     },
-    "/api/v1/user/money-out/submit": {
+    "/api/user/money-out/submit": {
       "post": {
         "tags": [
           "Transfers & Payouts"
@@ -10066,7 +10066,7 @@
         }
       }
     },
-    "/api/v1/user/beneficiary": {
+    "/api/user/beneficiary": {
       "get": {
         "tags": [
           "Transfers & Payouts"
@@ -10258,7 +10258,7 @@
         }
       }
     },
-    "/api/v1/user/beneficiary/bank-list": {
+    "/api/user/beneficiary/bank-list": {
       "get": {
         "tags": [
           "Transfers & Payouts"
@@ -10460,7 +10460,7 @@
         }
       }
     },
-    "/api/v1/user/beneficiary/account-details": {
+    "/api/user/beneficiary/account-details": {
       "post": {
         "tags": [
           "Transfers & Payouts"
@@ -10682,7 +10682,7 @@
         }
       }
     },
-    "/api/v1/user/beneficiary/store": {
+    "/api/user/beneficiary/store": {
       "post": {
         "tags": [
           "Transfers & Payouts"
@@ -10895,7 +10895,7 @@
         }
       }
     },
-    "/api/v1/user/beneficiary/delete": {
+    "/api/user/beneficiary/delete": {
       "post": {
         "tags": [
           "Transfers & Payouts"
@@ -11098,7 +11098,7 @@
         }
       }
     },
-    "/api/v1/user/quidax/fetch-user-wallets": {
+    "/api/user/quidax/fetch-user-wallets": {
       "get": {
         "tags": [
           "Crypto Trading (Quidax)"
@@ -11304,7 +11304,7 @@
         }
       }
     },
-    "/api/v1/user/quidax/fetch-payment-address": {
+    "/api/user/quidax/fetch-payment-address": {
       "get": {
         "tags": [
           "Crypto Trading (Quidax)"
@@ -11521,7 +11521,7 @@
         }
       }
     },
-    "/api/v1/user/quidax/create-swap-quotation": {
+    "/api/user/quidax/create-swap-quotation": {
       "post": {
         "tags": [
           "Crypto Trading (Quidax)"
@@ -11760,7 +11760,7 @@
         }
       }
     },
-    "/api/v1/user/quidax/swap": {
+    "/api/user/quidax/swap": {
       "post": {
         "tags": [
           "Crypto Trading (Quidax)"
@@ -11981,7 +11981,7 @@
         }
       }
     },
-    "/api/v1/user/quidax/create-withdrawal": {
+    "/api/user/quidax/create-withdrawal": {
       "post": {
         "tags": [
           "Crypto Trading (Quidax)"
@@ -12217,7 +12217,7 @@
         }
       }
     },
-    "/api/v1/user/busha/quote": {
+    "/api/user/busha/quote": {
       "post": {
         "tags": [
           "Crypto Ramp (Busha)"
@@ -12461,7 +12461,7 @@
         }
       }
     },
-    "/api/v1/user/busha/trade": {
+    "/api/user/busha/trade": {
       "post": {
         "tags": [
           "Crypto Ramp (Busha)"
@@ -12679,7 +12679,7 @@
         }
       }
     },
-    "/api/v1/user/busha/history": {
+    "/api/user/busha/history": {
       "get": {
         "tags": [
           "Crypto Ramp (Busha)"
@@ -12871,7 +12871,7 @@
         }
       }
     },
-    "/api/v1/user/busha/currencies": {
+    "/api/user/busha/currencies": {
       "get": {
         "tags": [
           "Crypto Ramp (Busha)"
@@ -13055,7 +13055,7 @@
         }
       }
     },
-    "/api/v1/user/busha/networks": {
+    "/api/user/busha/networks": {
       "get": {
         "tags": [
           "Crypto Ramp (Busha)"
@@ -13239,7 +13239,7 @@
         }
       }
     },
-    "/api/v1/user/payscribe/airtime": {
+    "/api/user/payscribe/airtime": {
       "post": {
         "tags": [
           "Bill Payments & Utilities"
@@ -13481,7 +13481,7 @@
         }
       }
     },
-    "/api/v1/user/payscribe/data-lookup": {
+    "/api/user/payscribe/data-lookup": {
       "get": {
         "tags": [
           "Bill Payments & Utilities"
@@ -13702,7 +13702,7 @@
         }
       }
     },
-    "/api/v1/user/payscribe/data-vending": {
+    "/api/user/payscribe/data-vending": {
       "post": {
         "tags": [
           "Bill Payments & Utilities"
@@ -13930,7 +13930,7 @@
         }
       }
     },
-    "/api/v1/user/payscribe/validate-electricity": {
+    "/api/user/payscribe/validate-electricity": {
       "post": {
         "tags": [
           "Bill Payments & Utilities"
@@ -14162,7 +14162,7 @@
         }
       }
     },
-    "/api/v1/user/payscribe/pay-electricity": {
+    "/api/user/payscribe/pay-electricity": {
       "post": {
         "tags": [
           "Bill Payments & Utilities"
@@ -14408,7 +14408,7 @@
         }
       }
     },
-    "/api/v1/user/payscribe/fetch/services": {
+    "/api/user/payscribe/fetch/services": {
       "get": {
         "tags": [
           "Bill Payments & Utilities"
@@ -14631,7 +14631,7 @@
         }
       }
     },
-    "/api/v1/user/payscribe/validate-smartcardnumber": {
+    "/api/user/payscribe/validate-smartcardnumber": {
       "post": {
         "tags": [
           "Bill Payments & Utilities"
@@ -14853,7 +14853,7 @@
         }
       }
     },
-    "/api/v1/user/payscribe/pay-cabletv": {
+    "/api/user/payscribe/pay-cabletv": {
       "post": {
         "tags": [
           "Bill Payments & Utilities"
@@ -15086,7 +15086,7 @@
         }
       }
     },
-    "/api/v1/user/usd/wallet": {
+    "/api/user/usd/wallet": {
       "get": {
         "tags": [
           "USD Wallet & Virtual Accounts"
@@ -15288,7 +15288,7 @@
         }
       }
     },
-    "/api/v1/user/usd/send": {
+    "/api/user/usd/send": {
       "post": {
         "tags": [
           "USD Wallet & Virtual Accounts"
@@ -15501,7 +15501,7 @@
         }
       }
     },
-    "/api/v1/user/graph/wallet": {
+    "/api/user/graph/wallet": {
       "get": {
         "tags": [
           "USD Wallet & Virtual Accounts"
@@ -15695,7 +15695,7 @@
         }
       }
     },
-    "/api/v1/user/graph/exchange-rate": {
+    "/api/user/graph/exchange-rate": {
       "get": {
         "tags": [
           "USD Wallet & Virtual Accounts"
@@ -15893,7 +15893,7 @@
         }
       }
     },
-    "/api/v1/user/graph/withdraw/ngn": {
+    "/api/user/graph/withdraw/ngn": {
       "post": {
         "tags": [
           "USD Wallet & Virtual Accounts"
@@ -16129,7 +16129,7 @@
         }
       }
     },
-    "/api/v1/user/transaction/log": {
+    "/api/user/transaction/log": {
       "get": {
         "tags": [
           "Transactions & Statements"
@@ -16339,7 +16339,7 @@
         }
       }
     },
-    "/api/v1/user/statement/export": {
+    "/api/user/statement/export": {
       "get": {
         "tags": [
           "Transactions & Statements"
