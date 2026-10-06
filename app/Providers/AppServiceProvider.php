@@ -55,21 +55,27 @@ class AppServiceProvider extends ServiceProvider
             return true;
         });
 
-        if (class_exists(\Dedoc\Scramble\Scramble::class)) {
-            if (method_exists(\Dedoc\Scramble\Scramble::class, 'extendOpenApi')) {
-                \Dedoc\Scramble\Scramble::extendOpenApi(function (\Dedoc\Scramble\Support\Generator\OpenApi $openApi) {
-                    $openApi->secure(
-                        \Dedoc\Scramble\Support\Generator\SecurityScheme::http('bearer', 'JWT')
-                    );
-                });
-            } elseif (method_exists(\Dedoc\Scramble\Scramble::class, 'afterOpenApiGenerated')) {
-                \Dedoc\Scramble\Scramble::afterOpenApiGenerated(function (\Dedoc\Scramble\Support\Generator\OpenApi $openApi) {
-                    $openApi->secure(
-                        \Dedoc\Scramble\Support\Generator\SecurityScheme::http('bearer', 'JWT')
-                    );
-                });
+        try {
+            if (class_exists(\Dedoc\Scramble\Scramble::class)) {
+                if (method_exists(\Dedoc\Scramble\Scramble::class, 'afterOpenApiGenerated')) {
+                    \Dedoc\Scramble\Scramble::afterOpenApiGenerated(function (\Dedoc\Scramble\Support\Generator\OpenApi $openApi) {
+                        try {
+                            $openApi->secure(
+                                \Dedoc\Scramble\Support\Generator\SecurityScheme::http('bearer', 'JWT')
+                            );
+                        } catch (\Throwable $e) {}
+                    });
+                } elseif (method_exists(\Dedoc\Scramble\Scramble::class, 'extendOpenApi')) {
+                    \Dedoc\Scramble\Scramble::extendOpenApi(function (\Dedoc\Scramble\Support\Generator\OpenApi $openApi) {
+                        try {
+                            $openApi->secure(
+                                \Dedoc\Scramble\Support\Generator\SecurityScheme::http('bearer', 'JWT')
+                            );
+                        } catch (\Throwable $e) {}
+                    });
+                }
             }
-        }
+        } catch (\Throwable $e) {}
 
         /*
          * Do not access the database while Laravel is booting

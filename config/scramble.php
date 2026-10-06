@@ -29,7 +29,7 @@ return [
      * The list of servers available in the documentation.
      */
     'servers' => [
-        'Local' => env('APP_URL', 'http://127.0.0.1:8000'),
+        'Live Server' => env('APP_URL', 'https://api.bitmonie.com'),
     ],
 
     'middleware' => [
@@ -38,6 +38,5 @@ return [
     ],
 
     'extensions' => [
-        \App\Docs\ScrambleApiEnhancerExtension::class,
     ],
 ];
