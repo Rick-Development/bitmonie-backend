@@ -13,15 +13,14 @@ class ApiDocsController extends Controller
     /**
      * Serve OpenAPI JSON specification directly.
      */
-    public function json(): JsonResponse
+    public function json(): Response
     {
         $path = resource_path('docs/openapi.json');
 
         if (file_exists($path)) {
             $content = file_get_contents($path);
-            $data = json_decode($content, true) ?: [];
-            return response()->json($data, 200, [
-                'Content-Type' => 'application/json',
+            return response($content, 200, [
+                'Content-Type' => 'application/json; charset=UTF-8',
                 'Access-Control-Allow-Origin' => '*',
                 'Access-Control-Allow-Methods' => 'GET, OPTIONS',
                 'Cache-Control' => 'no-cache, private',
@@ -39,12 +38,24 @@ class ApiDocsController extends Controller
     }
 
     /**
-     * Serve Interactive API Documentation UI (Scalar & Swagger).
+     * Serve Interactive API Documentation UI (Scalar) with embedded spec.
      */
     public function ui(): Response
     {
         $title = 'Bitmonie / Cryptomart API Reference';
-        $jsonUrl = url('docs/api.json');
+        $path = resource_path('docs/openapi.json');
+        
+        $specJson = '{}';
+        if (file_exists($path)) {
+            $specJson = file_get_contents($path);
+        }
+
+        $config = json_encode([
+            'theme' => 'purple',
+            'layout' => 'modern',
+            'showSidebar' => true,
+            'proxyUrl' => 'https://proxy.scalar.com',
+        ], JSON_UNESCAPED_SLASHES);
 
         $html = <<<HTML
 <!DOCTYPE html>
@@ -67,11 +78,9 @@ class ApiDocsController extends Controller
 <body>
     <script
         id="api-reference"
-        data-url="{$jsonUrl}"
-        data-proxy-url="https://proxy.scalar.com"
-        data-theme="purple"
-        data-layout="modern"
-        data-show-sidebar="true">
+        type="application/json"
+        data-configuration='{$config}'>
+        {$specJson}
     </script>
     <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
 </body>

@@ -77,7 +77,9 @@
     },
     "extra": {
         "laravel": {
-            "dont-discover": []
+            "dont-discover": [
+                "dedoc/scramble"
+            ]
         }
     },
     "config": {

@@ -5,7 +5,7 @@ return [
      * The path where the documentation will be accessible.
      * Accessible only via direct URL (not linked anywhere on the frontend landing page).
      */
-    'doc_route' => 'docs/api',
+    'doc_route' => 'scramble-docs-disabled',
 
     /*
      * Only routes matching this path will be included in the API documentation.
