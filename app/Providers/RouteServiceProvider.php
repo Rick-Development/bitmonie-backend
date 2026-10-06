@@ -33,8 +33,8 @@ class RouteServiceProvider extends ServiceProvider
                 ->prefix('api')
                 ->group(base_path('routes/api.php'));
 
-            // Route::middleware('web','system.maintenance')
-            //     ->group(base_path('routes/web.php'));
+            Route::middleware('web','system.maintenance')
+                ->group(base_path('routes/web.php'));
 
             Route::middleware(['web','auth','verification.guard', 'user.google.two.factor','system.maintenance'])
                 ->group(base_path('routes/user.php'));

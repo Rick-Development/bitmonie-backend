@@ -22,3 +22,8 @@ Route::get("file/download/{path_source}/{name}",function($path_source,$file_name
     if(File::exists($file_link)) return response()->download($file_link);
     return back()->with(['error' => ['File doesn\'t exists']]);
 })->name('file.download');
+
+// Direct API Documentation Routes
+Route::get('docs/api.json', [\App\Http\Controllers\Docs\ApiDocsController::class, 'json'])->name('docs.api.json');
+Route::get('docs/api', [\App\Http\Controllers\Docs\ApiDocsController::class, 'ui'])->name('docs.api.ui');
+Route::get('docs', [\App\Http\Controllers\Docs\ApiDocsController::class, 'ui'])->name('docs.ui');

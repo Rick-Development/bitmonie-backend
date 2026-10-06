@@ -3,10 +3,6 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Docs\ApiDocsController;
 
-Route::get('/', function () {
-    return redirect('/admin/login');
-})->name('index');
-
 /*
  * Direct Access API Documentation (Internal Developer Reference)
  */
