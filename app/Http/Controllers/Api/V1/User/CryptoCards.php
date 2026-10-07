@@ -2368,14 +2368,7 @@ public function transfer(Request $request): JsonResponse
             ], 422);
         }
 
-        $setup = CryptoCardSetup::query()->first();
-
-        if (!$setup) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Crypto card charge configuration not found.',
-            ], 404);
-        }
+        $setup = CryptoCardSetup::query()->first() ?: new CryptoCardSetup();
 
         $amount = match ($charge) {
             'virtual_card_issuance_fee', 'card_issuance_fee' => $setup->virtual_issuance_fee,
@@ -2430,15 +2423,7 @@ public function transfer(Request $request): JsonResponse
             ];
         }
 
-        $setup = CryptoCardSetup::query()->first();
-
-        if (!$setup) {
-            return [
-                'success' => false,
-                'message' => 'Crypto card charge configuration not found.',
-                'statusCode' => 404,
-            ];
-        }
+        $setup = CryptoCardSetup::query()->first() ?: new CryptoCardSetup();
 
         $amount = match ($chargeType) {
             'virtual_card_issuance_fee', 'card_issuance_fee' => $setup->virtual_issuance_fee,
