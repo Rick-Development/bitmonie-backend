@@ -6453,6 +6453,28 @@
                     "default": "sudo",
                     "example": "sudo",
                     "description": "Card issuing provider. Default is \"sudo\"."
+                  },
+                  "brand": {
+                    "type": "string",
+                    "enum": [
+                      "Visa",
+                      "Mastercard",
+                      "Verve",
+                      "AfriGo"
+                    ],
+                    "default": "Visa",
+                    "example": "Visa",
+                    "description": "Card scheme / brand. Defaults to Visa."
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "active",
+                      "inactive"
+                    ],
+                    "default": "active",
+                    "example": "active",
+                    "description": "Initial status of the issued card. Defaults to active."
                   }
                 },
                 "required": [

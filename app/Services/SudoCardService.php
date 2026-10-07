@@ -927,43 +927,12 @@ public function createCard(array $payload): array
          * Do NOT use removeEmptyValues() here because Sudo
          * requires some fields to remain as empty arrays.
          */
-        $payload = $this->removeNullValues($payload);
-
         /*
-         * Normalize card brand.
-         *
-         * Accepted:
-         *   visa
-         *   VISA
-         *   Visa
-         *   mastercard
-         *   MASTERCARD
-         *   MasterCard
-         *   verve
-         *   VERVE
-         *   Verve
-         *   afrigo
-         *   AFRIGO
-         *   AfriGo
-         *
-         * Sent to Sudo:
-         *   Visa
-         *   Mastercard
-         *   Verve
-         *   AfriGo
+         * Defaults for Sudo.
          */
+        $payload['status'] = (!empty($payload['status'])) ? strtolower(trim((string)$payload['status'])) : 'active';
         if (!isset($payload['brand']) || trim((string) $payload['brand']) === '') {
-            return [
-                'success' => false,
-                'statusCode' => 422,
-                'message' => 'Card brand is required.',
-                'errors' => [
-                    'brand' => [
-                        'The brand field is required.'
-                    ],
-                ],
-                'data' => null,
-            ];
+            $payload['brand'] = 'Visa';
         }
 
         $normalizedBrand = $this->normalizeCardBrand(

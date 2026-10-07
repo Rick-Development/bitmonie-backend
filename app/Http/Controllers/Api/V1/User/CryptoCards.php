@@ -615,6 +615,8 @@ public function createCard(Request $request): JsonResponse
 
     $request->merge([
         'currency' => 'NGN',
+        'status' => $request->input('status', 'active'),
+        'brand' => $request->input('brand', 'Visa'),
     ]);
 
     $result = $this->cardService->createCard(
