@@ -6432,12 +6432,27 @@
                   },
                   "currency": {
                     "type": "string",
-                    "example": "USD"
+                    "enum": [
+                      "USDT",
+                      "USD",
+                      "NGN"
+                    ],
+                    "default": "USDT",
+                    "example": "USDT"
                   },
                   "bvn": {
                     "type": "string",
                     "example": "22234567834",
                     "description": "Optional if user is already BVN-verified"
+                  },
+                  "provider": {
+                    "type": "string",
+                    "enum": [
+                      "sudo"
+                    ],
+                    "default": "sudo",
+                    "example": "sudo",
+                    "description": "Card issuing provider. Default is \"sudo\"."
                   }
                 },
                 "required": [
@@ -16443,6 +16458,81 @@
                           },
                           "example": [
                             "The given data was invalid."
+                          ]
+                        }
+                      }
+                    },
+                    "type": {
+                      "type": "string",
+                      "example": "error"
+                    },
+                    "data": {
+                      "type": "null",
+                      "example": null
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/user/crypto-cards/providers": {
+      "get": {
+        "tags": [
+          "Crypto Cards"
+        ],
+        "summary": "Get Supported Card Issuing Providers",
+        "description": "Returns list of active crypto card issuing providers (e.g. Sudo).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of supported card providers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "sudo"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "example": [
+                            "Unauthenticated."
                           ]
                         }
                       }

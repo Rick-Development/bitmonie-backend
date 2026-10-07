@@ -554,9 +554,9 @@ public function createCard(Request $request): JsonResponse
 {
   
     $validator = Validator::make($request->all(), [
-        'provider' => ['required', 'string', 'in:sudo'],
+        'provider' => ['nullable', 'string', 'in:sudo'],
         'type' => ['required', 'string', 'in:virtual,physical'],
-        'currency' => ['required', 'string', 'in:USDT,usdt'],
+        'currency' => ['required', 'string', 'in:USDT,usdt,NGN,ngn,USD,usd'],
         'status' => ['nullable', 'string', 'in:active,inactive'],
         'brand' => ['nullable', 'string', 'max:100'],
         'debitAccountId' => ['nullable', 'string'],
