@@ -1718,8 +1718,13 @@ public function fund(Request $request, int $id): JsonResponse
     |--------------------------------------------------------------------------
     */
 
-    $cardRecord = \App\Models\CryptoCard::find($id);
-    $fundingChargeType = ($cardRecord && $cardRecord->type === 'physical')
+    $cardRecord = \App\Models\CryptoCardsModel::where('id', $id)
+        ->orWhere('card_provider_id', $id)
+        ->first();
+    $fundingChargeType = ($cardRecord && (
+        $cardRecord->card_type === 'physical' ||
+        ($cardRecord->type ?? null) === 'physical'
+    ))
         ? 'physical_card_funding_fee'
         : 'virtual_card_funding_fee';
     $charge = $this->transferCardCharge($fundingChargeType);
