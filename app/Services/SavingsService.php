@@ -216,13 +216,25 @@ class SavingsService
                     ->first();
 
                 if ($wallet) {
+                    $expectedProfit = bcmul(
+                        (string) $lock->amount,
+                        bcdiv((string) ($lock->interest_rate ?? '0'), '100', 8),
+                        8
+                    );
+
+                    if (bccomp((string) ($lock->interest_accrued ?? '0'), $expectedProfit, 8) < 0) {
+                        $lock->interest_accrued = $expectedProfit;
+                    }
+
                     $totalAmount = $this->formatDecimal($this->add($lock->amount, $lock->interest_accrued));
                     $wallet->balance = $this->formatDecimal($this->add($wallet->balance, $totalAmount));
                     $wallet->save();
 
                     $lock->is_redeemed = true;
-                    $lock->status = 'matured';
+                    $lock->status = 'completed';
                     $lock->save();
+
+                    $reference = 'safelock:auto-maturity:' . $lock->id . ':' . \Illuminate\Support\Str::uuid();
 
                     SavingsTransaction::create([
                         'user_id' => $lock->user_id,
@@ -233,7 +245,22 @@ class SavingsService
                         'type' => 'withdrawal',
                         'status' => 'success',
                         'source' => 'safelock',
-                        'narration' => 'SafeLock Maturity: ' . $lock->title,
+                        'narration' => "SafeLock Matured - Principal: {$lock->amount}, Interest: {$lock->interest_accrued}",
+                    ]);
+
+                    \App\Models\OrderTransaction::create([
+                        'user_wallet_id' => $wallet->id,
+                        'type' => 'credit',
+                        'amount' => $totalAmount,
+                        'balance_after' => $wallet->balance,
+                        'reference' => $reference,
+                        'metadata' => [
+                            'source' => 'savings',
+                            'savings_type' => 'safelock',
+                            'savings_id' => $lock->id,
+                            'interest_earned' => (string) $lock->interest_accrued,
+                            'principal' => (string) $lock->amount,
+                        ],
                     ]);
 
                     Log::info('SafeLock matured and credited to wallet.', [

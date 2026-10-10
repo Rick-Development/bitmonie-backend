@@ -21,19 +21,51 @@ use RuntimeException;
 
 class SafeLockController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         $userId = auth()->id();
+        $status = $request->query('status');
 
-        $locks = SafeLock::where('user_id', $userId)->get();
+        $query = SafeLock::where('user_id', $userId)->latest();
+
+        if ($status === 'active') {
+            $query->where('status', 'active')->where('is_redeemed', false);
+        } elseif ($status === 'completed' || $status === 'history' || $status === 'matured') {
+            $query->where(function ($q) {
+                $q->whereIn('status', ['completed', 'matured', 'broken'])
+                  ->orWhere('is_redeemed', true);
+            });
+        }
+
+        $locks = $query->get();
+
+        $activeLocks = SafeLock::where('user_id', $userId)
+            ->where('status', 'active')
+            ->where('is_redeemed', false)
+            ->latest()
+            ->get();
+
+        $completedLocks = SafeLock::where('user_id', $userId)
+            ->where(function ($q) {
+                $q->whereIn('status', ['completed', 'matured', 'broken'])
+                  ->orWhere('is_redeemed', true);
+            })
+            ->latest()
+            ->get();
+
+        $totalActiveBalance = $activeLocks->sum('amount') ?? 0;
 
         Log::info('SafeLock list retrieved', [
             'user_id' => $userId,
             'count' => $locks->count(),
+            'active_count' => $activeLocks->count(),
         ]);
 
         return Response::success([
             'safe_locks' => $locks,
+            'active_locks' => $activeLocks,
+            'completed_locks' => $completedLocks,
+            'total_locked_balance' => number_format((float) $totalActiveBalance, 2, '.', ''),
         ]);
     }
 
@@ -603,7 +635,17 @@ class SafeLockController extends Controller
                     );
                 }
 
-                $interestEarned = (string) $lock->interest_accrued;
+                // Ensure guaranteed profit is credited upon maturity even if scheduler did not run
+                $expectedProfit = bcmul(
+                    (string) $lock->amount,
+                    bcdiv((string) ($lock->interest_rate ?? '0'), '100', 8),
+                    8
+                );
+
+                $interestEarned = (string) ($lock->interest_accrued ?? '0');
+                if (bccomp($interestEarned, $expectedProfit, 8) < 0) {
+                    $interestEarned = $expectedProfit;
+                }
 
                 $totalAmount = bcadd(
                     (string) $lock->amount,
