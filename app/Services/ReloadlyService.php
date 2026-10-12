@@ -26,25 +26,43 @@ class ReloadlyService
      */
     protected function getAccessToken(): string
     {
+        if (empty($this->clientId) || empty($this->clientSecret)) {
+            throw new Exception("Reloadly credentials are not configured. Please set RELOADLY_CLIENT_ID and RELOADLY_CLIENT_SECRET in .env.");
+        }
+
         // Use a unique cache key per environment/client
         $cacheKey = 'reloadly_giftcard_token_' . md5($this->clientId . $this->baseUrl);
 
-        return Cache::remember($cacheKey, 3600, function () {
-            $response = Http::post($this->authUrl, [
-                'client_id' => $this->clientId,
-                'client_secret' => $this->clientSecret,
-                'grant_type' => 'client_credentials',
-                'audience' => str_contains($this->baseUrl, 'sandbox') 
+        try {
+            return Cache::remember($cacheKey, 3600, function () use ($cacheKey) {
+                $audience = str_contains($this->baseUrl, 'sandbox') 
                     ? 'https://giftcards-sandbox.reloadly.com' 
-                    : 'https://giftcards.reloadly.com',
-            ]);
+                    : 'https://giftcards.reloadly.com';
 
-            if ($response->failed()) {
-                throw new Exception("Reloadly Auth Failed: " . $response->body());
-            }
+                $response = Http::timeout(15)->post($this->authUrl, [
+                    'client_id' => $this->clientId,
+                    'client_secret' => $this->clientSecret,
+                    'grant_type' => 'client_credentials',
+                    'audience' => $audience,
+                ]);
 
-            return $response->json()['access_token'];
-        });
+                if ($response->failed()) {
+                    Cache::forget($cacheKey);
+                    throw new Exception("Reloadly Auth Failed: " . $response->body());
+                }
+
+                $token = $response->json()['access_token'] ?? null;
+                if (!$token) {
+                    Cache::forget($cacheKey);
+                    throw new Exception("Reloadly Auth Failed: No access token returned.");
+                }
+
+                return $token;
+            });
+        } catch (\Throwable $e) {
+            Cache::forget($cacheKey);
+            throw $e;
+        }
     }
 
     /**
@@ -63,6 +81,11 @@ class ReloadlyService
 
     protected function parseResponse($response)
     {
+        if ($response->status() === 401 || $response->status() === 403) {
+            $cacheKey = 'reloadly_giftcard_token_' . md5($this->clientId . $this->baseUrl);
+            Cache::forget($cacheKey);
+        }
+
         if ($response->failed()) {
             throw new Exception("Reloadly API Error: " . $response->body());
         }

@@ -9,6 +9,7 @@ use App\Models\BasicControl;
 use App\Models\PayscribeVirtualCardDetails;
 use App\Models\PayscribeVirtualCardTransaction;
 use App\Models\Transaction;
+use App\Models\VirtualCardSetting;
 use App\Traits\Notify;
 use App\Http\Helpers\Response;
 use Illuminate\Http\Request;
@@ -48,6 +49,40 @@ class PayscribeCreateCardController extends Controller
                 "type",
             ]
         );
+
+        $brand = strtolower(trim($data['brand'] ?? ''));
+
+        // Reject domestic card schemes for USD Virtual Cards
+        if (in_array($brand, ['verve', 'afrigo'])) {
+            return Response::errorResponse(
+                ucfirst($brand) . ' cards are not supported for USD Virtual Cards. For NGN Domestic Cards, please use Crypto Cards.',
+                [],
+                422
+            );
+        }
+
+        if (!in_array($brand, ['visa', 'mastercard'])) {
+            return Response::errorResponse(
+                'Invalid card brand: ' . ($data['brand'] ?? '') . '. Supported brands are Visa and Mastercard.',
+                [],
+                422
+            );
+        }
+
+        try {
+            $settings = VirtualCardSetting::getSettings();
+            if (!$settings->card_creation_enabled) {
+                return Response::errorResponse('Virtual card creation is temporarily disabled. Please check back later.', [], 400);
+            }
+            if ($brand === 'visa' && !$settings->visa_enabled) {
+                return Response::errorResponse('Visa virtual cards are currently unavailable. Please check back later or use Crypto Cards.', [], 400);
+            }
+            if ($brand === 'mastercard' && !$settings->mastercard_enabled) {
+                return Response::errorResponse('Mastercard virtual cards are currently unavailable. Please check back later or use Crypto Cards.', [], 400);
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('Could not load VirtualCardSetting in createCard: ' . $e->getMessage());
+        }
 
         $user = auth()->user();
 
@@ -90,9 +125,15 @@ class PayscribeCreateCardController extends Controller
         $referenceIdString = (string) $referenceId . '-cardIssuing';
         $data = array_merge($data, ['ref' => $referenceIdString]);
 
-        $response = json_decode($this->createCardHelper->createCard($data), true);
+        $rawResponse = $this->createCardHelper->createCard($data);
+        $response = json_decode($rawResponse, true);
 
-        if ($response['status'] === true) {
+        if (!is_array($response)) {
+            \Log::error('Payscribe createCard invalid response: ' . $rawResponse);
+            return Response::errorResponse('Card issuing service is temporarily unavailable. Please try again later or use Crypto Cards.', [], 503);
+        }
+
+        if (isset($response['status']) && $response['status'] === true) {
             // Debit from Quidax USDT
             $quidaxTransfer = $quidaxService->transferToEscrow($user->quidax_id, $usdtToDeduct, 'usdt', 'Payscribe card issuing');
             if (!isset($quidaxTransfer['status']) || $quidaxTransfer['status'] !== 'success') {
@@ -108,12 +149,16 @@ class PayscribeCreateCardController extends Controller
                 'transaction' => 'processing',
             ];
             $this->mail($user, 'VIRTUAL_CARD_APPLY', $params);
-        }
 
-        if (isset($response['status']) && $response['status'] === true) {
             return Response::successResponse('Card created successfully', $response);
         }
-        return Response::errorResponse($response['description'] ?? $response['message'] ?? 'Failed to create card', $response['errors'] ?? []);
+
+        $errorMessage = $response['description'] ?? $response['message'] ?? 'Failed to create card';
+        if (preg_match('/(available at the moment|no available|not available)/i', $errorMessage)) {
+            $errorMessage = ucfirst($brand ?: 'Virtual') . ' card creation is temporarily unavailable from the provider network. Please check back later or use Crypto Cards.';
+        }
+
+        return Response::errorResponse($errorMessage, $response['errors'] ?? [], 400);
     }
 
 

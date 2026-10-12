@@ -7,7 +7,9 @@ use App\Services\ReloadlyService;
 use App\Http\Helpers\Response;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
-
+use Illuminate\Support\Facades\Log;
+use App\Models\GiftCardCountry;
+use App\Models\GiftCardCategory;
 
 class GiftCardController extends Controller
 {
@@ -19,94 +21,208 @@ class GiftCardController extends Controller
     }
 
     /**
-     * Get all gift card categories from Reloadly
+     * Get all gift card categories with database and default fallback
      */
     public function categories()
     {
         try {
             $categories = $this->reloadly->getCategories();
+            if (empty($categories)) {
+                $categories = $this->getFallbackCategories();
+            }
             return Response::successResponse('Gift card categories fetched successfully', ['categories' => $categories]);
-        } catch (\Exception $e) {
-            return Response::errorResponse('Failed to fetch categories: ' . $e->getMessage());
+        } catch (\Throwable $e) {
+            Log::warning('Failed to fetch categories from Reloadly, using fallback: ' . $e->getMessage());
+            $categories = $this->getFallbackCategories();
+            return Response::successResponse('Gift card categories fetched successfully', ['categories' => $categories]);
         }
     }
 
     /**
-     * Discovery (Categories + Countries + Featured Discounts)
+     * Discovery (Categories + Countries + Featured Discounts) with fallback resilience
      */
     public function discovery()
     {
         try {
-            // Get Categories
-            $categories = $this->reloadly->getCategories();
+            try {
+                $categories = $this->reloadly->getCategories();
+            } catch (\Throwable $e) {
+                Log::warning('Discovery categories fetch failed: ' . $e->getMessage());
+                $categories = $this->getFallbackCategories();
+            }
 
-            // Get Countries
-            $countries = $this->reloadly->getCountries();
+            try {
+                $countries = $this->reloadly->getCountries();
+            } catch (\Throwable $e) {
+                Log::warning('Discovery countries fetch failed: ' . $e->getMessage());
+                $countries = $this->getFallbackCountries();
+            }
 
-            // Get Featured Discounts (Top 10)
-            // We fetch simple discounts/products. 
-            // In a real scenario, you might filter by 'featured' or sort by discount percentage.
-            $discounts = $this->reloadly->getDiscounts(['page' => 1, 'size' => 10]);
-            
-            // If API response structure needs mapping, we can do it here. 
-            // Assuming getDiscounts returns the structure close to what is needed or we pass it as is.
-            // Based on user sample, 'featured_discounts' contains 'product' object and 'discountPercentage'.
-            // Reloadly 'discounts' endpoint usually returns exactly that list.
-            
-            // Extract the list from response if wrapped (Reloadly often wraps in 'content' or just returns list)
-            // The service parseResponse usually returns the body array. 
-            // If it's paginated, it might be in 'content'. Let's assume it returns the list or handle it.
-            $featuredDiscounts = $discounts['content'] ?? $discounts;
+            $featuredDiscounts = [];
+            try {
+                $discounts = $this->reloadly->getDiscounts(['page' => 1, 'size' => 10]);
+                $featuredDiscounts = $discounts['content'] ?? $discounts ?? [];
+            } catch (\Throwable $e) {
+                Log::warning('Discovery discounts fetch failed: ' . $e->getMessage());
+            }
 
             return Response::successResponse('Discovery data fetched', [
-                'categories' => $categories,
-                'countries' => $countries,
+                'categories' => $categories ?: $this->getFallbackCategories(),
+                'countries' => $countries ?: $this->getFallbackCountries(),
                 'featured_discounts' => $featuredDiscounts,
             ]);
-        } catch (\Exception $e) {
-            return Response::errorResponse('Failed to fetch discovery data: ' . $e->getMessage());
+        } catch (\Throwable $e) {
+            Log::warning('Failed to fetch discovery data, returning fallbacks: ' . $e->getMessage());
+            return Response::successResponse('Discovery data fetched', [
+                'categories' => $this->getFallbackCategories(),
+                'countries' => $this->getFallbackCountries(),
+                'featured_discounts' => [],
+            ]);
         }
     }
 
+    /**
+     * Get gift card countries with database and curated fallback
+     */
     public function countries()
     {
         try {
             $countries = $this->reloadly->getCountries();
+            if (empty($countries)) {
+                $countries = $this->getFallbackCountries();
+            }
             return Response::successResponse('Gift card countries fetched successfully', ['countries' => $countries]);
-        } catch (\Exception $e) {
-            return Response::errorResponse('Failed to fetch countries: ' . $e->getMessage());
+        } catch (\Throwable $e) {
+            Log::warning('Failed to fetch countries from Reloadly, using fallback: ' . $e->getMessage());
+            $countries = $this->getFallbackCountries();
+            return Response::successResponse('Gift card countries fetched successfully', ['countries' => $countries]);
         }
     }
 
+    /**
+     * Get single country details
+     */
     public function countryDetails($isoCode)
     {
         try {
             $country = $this->reloadly->getCountry($isoCode);
             return Response::successResponse('Country details fetched successfully', ['country' => $country]);
-        } catch (\Exception $e) {
-            return Response::errorResponse('Failed to fetch country details: ' . $e->getMessage());
+        } catch (\Throwable $e) {
+            Log::warning('Failed to fetch country details from Reloadly: ' . $e->getMessage());
+            $fallback = collect($this->getFallbackCountries())->firstWhere('isoName', strtoupper($isoCode));
+            if ($fallback) {
+                return Response::successResponse('Country details fetched successfully', ['country' => $fallback]);
+            }
+            return Response::errorResponse('Country not found');
         }
     }
 
+    /**
+     * Get products with error recovery
+     */
     public function products(Request $request)
     {
         try {
             $filters = $request->all();
             $products = $this->reloadly->getProducts($filters);
             return Response::successResponse('Gift card products fetched successfully', ['products' => $products]);
-        } catch (\Exception $e) {
-            return Response::errorResponse('Failed to fetch products: ' . $e->getMessage());
+        } catch (\Throwable $e) {
+            Log::warning('Failed to fetch products from Reloadly: ' . $e->getMessage());
+            return Response::successResponse('Gift card products fetched successfully', ['products' => []]);
         }
     }
 
+    /**
+     * Get single product details
+     */
     public function productDetails($id)
     {
         try {
             $product = $this->reloadly->getProductById($id);
             return Response::successResponse('Product details fetched successfully', ['product' => $product]);
-        } catch (\Exception $e) {
-            return Response::errorResponse('Failed to fetch product details: ' . $e->getMessage());
+        } catch (\Throwable $e) {
+            Log::warning('Failed to fetch product details from Reloadly: ' . $e->getMessage());
+            return Response::errorResponse('Product details are temporarily unavailable. Please try again shortly.');
         }
+    }
+
+    /**
+     * Fallback countries list from DB or static defaults
+     */
+    protected function getFallbackCountries()
+    {
+        try {
+            $dbCountries = GiftCardCountry::all();
+            if ($dbCountries->isNotEmpty()) {
+                return $dbCountries->map(function ($c) {
+                    return [
+                        'isoName' => $c->iso_name,
+                        'name' => $c->name,
+                        'currencyCode' => $c->currency_code,
+                        'currencySymbol' => $this->getCurrencySymbol($c->currency_code),
+                        'flagUrl' => $c->flag_url,
+                        'callingCodes' => [],
+                    ];
+                })->values()->all();
+            }
+        } catch (\Throwable $e) {
+            Log::warning('GiftCardCountry DB query failed: ' . $e->getMessage());
+        }
+
+        return [
+            ['isoName' => 'US', 'name' => 'United States', 'currencyCode' => 'USD', 'currencySymbol' => '$', 'flagUrl' => 'https://flagcdn.com/w80/us.png', 'callingCodes' => ['+1']],
+            ['isoName' => 'GB', 'name' => 'United Kingdom', 'currencyCode' => 'GBP', 'currencySymbol' => '£', 'flagUrl' => 'https://flagcdn.com/w80/gb.png', 'callingCodes' => ['+44']],
+            ['isoName' => 'CA', 'name' => 'Canada', 'currencyCode' => 'CAD', 'currencySymbol' => 'CA$', 'flagUrl' => 'https://flagcdn.com/w80/ca.png', 'callingCodes' => ['+1']],
+            ['isoName' => 'NG', 'name' => 'Nigeria', 'currencyCode' => 'NGN', 'currencySymbol' => '₦', 'flagUrl' => 'https://flagcdn.com/w80/ng.png', 'callingCodes' => ['+234']],
+            ['isoName' => 'GH', 'name' => 'Ghana', 'currencyCode' => 'GHS', 'currencySymbol' => 'GH₵', 'flagUrl' => 'https://flagcdn.com/w80/gh.png', 'callingCodes' => ['+233']],
+            ['isoName' => 'DE', 'name' => 'Germany', 'currencyCode' => 'EUR', 'currencySymbol' => '€', 'flagUrl' => 'https://flagcdn.com/w80/de.png', 'callingCodes' => ['+49']],
+            ['isoName' => 'FR', 'name' => 'France', 'currencyCode' => 'EUR', 'currencySymbol' => '€', 'flagUrl' => 'https://flagcdn.com/w80/fr.png', 'callingCodes' => ['+33']],
+            ['isoName' => 'AE', 'name' => 'United Arab Emirates', 'currencyCode' => 'AED', 'currencySymbol' => 'AED', 'flagUrl' => 'https://flagcdn.com/w80/ae.png', 'callingCodes' => ['+971']],
+            ['isoName' => 'AU', 'name' => 'Australia', 'currencyCode' => 'AUD', 'currencySymbol' => 'A$', 'flagUrl' => 'https://flagcdn.com/w80/au.png', 'callingCodes' => ['+61']],
+        ];
+    }
+
+    /**
+     * Fallback categories list from DB or static defaults
+     */
+    protected function getFallbackCategories()
+    {
+        try {
+            $dbCategories = GiftCardCategory::all();
+            if ($dbCategories->isNotEmpty()) {
+                return $dbCategories->map(function ($c) {
+                    return [
+                        'id' => $c->id,
+                        'name' => $c->name,
+                    ];
+                })->values()->all();
+            }
+        } catch (\Throwable $e) {
+            Log::warning('GiftCardCategory DB query failed: ' . $e->getMessage());
+        }
+
+        return [
+            ['id' => 1, 'name' => 'E-Commerce & Retail'],
+            ['id' => 2, 'name' => 'Gaming & Entertainment'],
+            ['id' => 3, 'name' => 'Food & Restaurants'],
+            ['id' => 4, 'name' => 'Travel & Hotels'],
+            ['id' => 5, 'name' => 'Subscriptions & Streaming'],
+            ['id' => 6, 'name' => 'App Stores & Software'],
+        ];
+    }
+
+    protected function getCurrencySymbol(?string $currencyCode): string
+    {
+        return match (strtoupper($currencyCode ?? '')) {
+            'USD' => '$',
+            'GBP' => '£',
+            'EUR' => '€',
+            'NGN' => '₦',
+            'GHS' => 'GH₵',
+            'CAD' => 'CA$',
+            'AUD' => 'A$',
+            default => $currencyCode ?? '$',
+        };
     }
 
     public function fxRate(Request $request)
