@@ -39,11 +39,15 @@ class PayscribeTopupCardController extends Controller
             $quidaxBalance = 0;
             
             if (isset($quidaxWalletResponse['status']) && $quidaxWalletResponse['status'] === 'success') {
-                $quidaxBalance = $quidaxWalletResponse['data']['balance'] ?? 0;
+                $walletData = $quidaxWalletResponse['data'] ?? [];
+                if (isset($walletData[0]) && is_array($walletData[0])) {
+                    $walletData = $walletData[0];
+                }
+                $quidaxBalance = (float) ($walletData['balance'] ?? 0);
             }
 
             if ($quidaxBalance < $usdtToDeduct) {
-                return Response::errorResponse('Insufficient USDT balance to perform this topup. Required: ' . round($usdtToDeduct, 2) . ' USDT');
+                return Response::errorResponse('Insufficient USDT balance to perform this topup. Required: ' . round($usdtToDeduct, 2) . ' USDT, Available: ' . round($quidaxBalance, 2) . ' USDT');
             }
 
             // 2. Debit from Quidax USDT and transfer to Escrow FIRST before hitting the card provider

@@ -1711,6 +1711,96 @@ public function fund(Request $request, int $id): JsonResponse
         return $this->unauthenticated();
     }
 
+    $user = auth()->user() ?? \App\Models\User::find($userId);
+    if (!$user) {
+        return $this->unauthenticated();
+    }
+
+    $amount = (float) $request->input('amount');
+
+    /*
+    |--------------------------------------------------------------------------
+    | Validate Card Existence & Active Status
+    |--------------------------------------------------------------------------
+    */
+
+    $cardRecord = \App\Models\CryptoCardsModel::where('id', $id)
+        ->orWhere('card_provider_id', $id)
+        ->first();
+
+    if (!$cardRecord) {
+        $cardRecord = $this->cardService->getCard($userId, $id);
+    }
+
+    if (!$cardRecord) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Card not found.',
+        ], 404);
+    }
+
+    if ($cardRecord->card_status !== 'active' || $cardRecord->is_deleted) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Only active cards can be funded.',
+        ], 422);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Verify User USDT Balance
+    | A user with zero or insufficient USDT balance must not be allowed to fund.
+    |--------------------------------------------------------------------------
+    */
+
+    $quidaxBalance = 0.0;
+    $quidaxService = app(\App\Services\QuidaxService::class);
+
+    if ($user->quidax_id) {
+        try {
+            $quidaxWalletResponse = $quidaxService->fetchUserWallet($user->quidax_id, 'usdt');
+            $walletData = $quidaxWalletResponse['data'] ?? null;
+            if (is_array($walletData)) {
+                if (isset($walletData[0]) && is_array($walletData[0])) {
+                    $walletData = $walletData[0];
+                }
+                /** @var \App\Services\QuidaxSpendableBalanceService $spendableService */
+                $spendableService = app(\App\Services\QuidaxSpendableBalanceService::class);
+                $augmentedWallet = $spendableService->augmentWalletPayload(
+                    $user,
+                    $walletData,
+                    'usdt'
+                );
+                $quidaxBalance = (float) ($augmentedWallet['available_balance'] ?? $augmentedWallet['balance'] ?? 0);
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Error fetching Quidax balance for crypto card funding', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    $localWallet = \App\Models\UserWallet::where('user_id', $user->id)
+        ->where(function ($query) {
+            $query->where('currency_code', 'USDT')
+                ->orWhere('currency_code', 'usdt')
+                ->orWhere('quote_currency_code', 'USDT')
+                ->orWhere('quote_currency_code', 'usdt')
+                ->orWhereHas('currency', fn ($c) => $c->where('code', 'USDT')->orWhere('code', 'usdt'));
+        })
+        ->first();
+
+    $localBalance = $localWallet ? (float) $localWallet->balance : 0.0;
+    $availableUsdt = max($quidaxBalance, $localBalance);
+
+    if ($availableUsdt <= 0 || bccomp((string) $availableUsdt, (string) $amount, 8) < 0) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Insufficient USDT balance to fund this card. Required: ' . number_format($amount, 2, '.', '') . ' USDT, Available: ' . number_format($availableUsdt, 2, '.', '') . ' USDT.',
+        ], 400);
+    }
+
     /*
     |--------------------------------------------------------------------------
     | Transfer configured card funding fee based on card type
@@ -1718,9 +1808,6 @@ public function fund(Request $request, int $id): JsonResponse
     |--------------------------------------------------------------------------
     */
 
-    $cardRecord = \App\Models\CryptoCardsModel::where('id', $id)
-        ->orWhere('card_provider_id', $id)
-        ->first();
     $fundingChargeType = ($cardRecord && (
         $cardRecord->card_type === 'physical' ||
         ($cardRecord->type ?? null) === 'physical'
@@ -1752,11 +1839,49 @@ public function fund(Request $request, int $id): JsonResponse
 
     /*
     |--------------------------------------------------------------------------
-    | Fund card
+    | Debit / Lock USDT from Wallet
     |--------------------------------------------------------------------------
     */
 
-    $amount = (float) $request->input('amount');
+    if ($user->quidax_id && $quidaxBalance >= $amount) {
+        try {
+            $escrowTransfer = $quidaxService->transferToEscrow(
+                $user->quidax_id,
+                $amount,
+                'usdt',
+                'Crypto card funding lock: ' . $reference
+            );
+            $escrowStatus = strtolower((string) ($escrowTransfer['status'] ?? ''));
+            if ($escrowStatus === 'error' || $escrowStatus === 'failed') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to deduct USDT from your Quidax wallet: ' . ($escrowTransfer['message'] ?? 'Transfer failed'),
+                ], 400);
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Failed to transfer USDT to escrow for card funding', [
+                'user_id' => $user->id,
+                'card_id' => $id,
+                'amount' => $amount,
+                'error' => $e->getMessage(),
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to deduct USDT from your crypto wallet: ' . $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    if ($localWallet) {
+        $localWallet->balance = max(0, (float) bcsub((string) $localWallet->balance, (string) $amount, 8));
+        $localWallet->save();
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Fund card
+    |--------------------------------------------------------------------------
+    */
 
     $result = $this->cardService->fundCard(
         userId: $userId,
@@ -1768,6 +1893,8 @@ public function fund(Request $request, int $id): JsonResponse
             'channel'          => $request->input('channel', 'platform'),
             'metadata'         => $request->input('metadata'),
             'master_reference' => $reference,
+            'usdt_debited'     => true,
+            'available_usdt'   => $availableUsdt,
         ]
     );
 

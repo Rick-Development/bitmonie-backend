@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\API;
+namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Helpers\Payscribe\CardIssusing\CreateCardHelper;
@@ -72,13 +72,16 @@ class PayscribeCreateCardController extends Controller
 
         $quidaxService = new \App\Services\QuidaxService();
         $quidaxWalletResponse = $quidaxService->fetchUserWallet($user->quidax_id, 'usdt');
-        $quidaxBalance = 0;
+        $walletData = $quidaxWalletResponse['data'] ?? [];
+        if (isset($walletData[0]) && is_array($walletData[0])) {
+            $walletData = $walletData[0];
+        }
         if (isset($quidaxWalletResponse['status']) && $quidaxWalletResponse['status'] === 'success') {
-            $quidaxBalance = $quidaxWalletResponse['data']['balance'];
+            $quidaxBalance = (float) ($walletData['balance'] ?? 0);
         }
 
         if ($quidaxBalance < $usdtToDeduct) {
-            // return Response::errorResponse('Insufficient USDT balance to perform this action. Required: ' . round($usdtToDeduct, 2) . ' USDT');
+            return Response::errorResponse('Insufficient USDT balance to perform this action. Required: ' . round($usdtToDeduct, 2) . ' USDT, Available: ' . round($quidaxBalance, 2) . ' USDT');
         }
 
         $data['customer_id'] = auth()->user()->payscribe_customer_id;
@@ -91,10 +94,10 @@ class PayscribeCreateCardController extends Controller
 
         if ($response['status'] === true) {
             // Debit from Quidax USDT
-            // $quidaxTransfer = $quidaxService->transferToEscrow($user->quidax_id, $usdtToDeduct, 'usdt');
-            // if (!isset($quidaxTransfer['status']) || $quidaxTransfer['status'] !== 'success') {
-            //     return Response::errorResponse('Failed to deduct USDT from your Quidax wallet');
-            // }
+            $quidaxTransfer = $quidaxService->transferToEscrow($user->quidax_id, $usdtToDeduct, 'usdt', 'Payscribe card issuing');
+            if (!isset($quidaxTransfer['status']) || $quidaxTransfer['status'] !== 'success') {
+                return Response::errorResponse('Failed to deduct USDT from your Quidax wallet');
+            }
 
             // Create a transaction record for the card issuing
             $this->cardIssuingTransaction($data, $response, $usdtToDeduct);

@@ -4,10 +4,14 @@ namespace App\Http\Controllers\Api\V1\User;
 
 use App\Http\Controllers\Controller;
 use App\Models\KycVerification;
+use App\Models\OrderTransaction;
+use App\Models\UserWallet;
+use App\Models\Admin\Currency;
 use App\Services\CryptoCardService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Throwable;
 use App\Models\CryptoCardOrder;
@@ -16,7 +20,7 @@ use Illuminate\Support\Str;
 use App\Models\CryptoCardSetup;
 use Illuminate\Validation\Rule;
 use App\Services\QuidaxService;
- use App\Services\CryptoTransactionService;
+use App\Services\CryptoTransactionService;
 
 class CryptoCards extends Controller
 {
@@ -154,7 +158,7 @@ protected function formatCard($card): array
     {
         $validator = Validator::make($request->all(), [
             'provider' => ['required', 'string', 'in:sudo'],
-            'type' => ['required', 'string', 'in:individual,company'],
+            'type' => ['nullable', 'string', 'in:individual,company'],
             'name' => ['nullable', 'string', 'max:255'],
             'phoneNumber' => ['nullable', 'string', 'max:30'],
             'emailAddress' => ['nullable', 'email', 'max:255'],
@@ -191,28 +195,11 @@ protected function formatCard($card): array
             return $this->unauthenticated();
         }
 
+        $user = auth()->user();
         $provider = strtolower(trim((string) $request->input('provider')));
 
-        // Get latest verified KYC
-        $kyc = KycVerification::where('user_id', $userId)
-            ->where('status', 'verified')
-            ->latest('id')
-            ->first();
-
-        $kycData = [];
-        if ($kyc) {
-            $kycData = $kyc->data;
-            if (is_string($kycData)) {
-                $decoded = json_decode($kycData, true);
-                if (json_last_error() === JSON_ERROR_NONE) {
-                    $kycData = $decoded;
-                }
-            }
-            if (!is_array($kycData)) {
-                $kycData = [];
-            }
-        }
-
+        // Get latest verified KYC data
+        $kycData = $user->getVerifiedKycData();
         $providerResponse = Arr::get($kycData, 'verification_result.providerResponse');
         if (!is_array($providerResponse)) {
             $providerResponse = Arr::get($kycData, 'providerResponse', []);
@@ -225,13 +212,23 @@ protected function formatCard($card): array
         $requestIndividual = is_array($payload['individual'] ?? null) ? $payload['individual'] : [];
         $requestAddress = is_array($payload['billingAddress'] ?? null) ? $payload['billingAddress'] : [];
 
-        // Individual
-        $firstName = $requestIndividual['firstName'] ?? Arr::get($providerResponse, 'firstName');
-        $lastName = $requestIndividual['lastName'] ?? Arr::get($providerResponse, 'lastName');
-        $otherNames = $requestIndividual['otherNames'] ?? Arr::get($providerResponse, 'otherNames');
+        // Individual: use request, fallback to verified KYC, fallback to User model
+        $firstName = $requestIndividual['firstName']
+            ?? Arr::get($providerResponse, 'firstName')
+            ?? $user->firstname;
+
+        $lastName = $requestIndividual['lastName']
+            ?? Arr::get($providerResponse, 'lastName')
+            ?? $user->lastname;
+
+        $otherNames = $requestIndividual['otherNames']
+            ?? Arr::get($providerResponse, 'otherNames')
+            ?? null;
+
         $dob = $requestIndividual['dob']
             ?? Arr::get($providerResponse, 'dateOfBirth')
-            ?? Arr::get($providerResponse, 'dob');
+            ?? Arr::get($providerResponse, 'dob')
+            ?? $user->birthdate;
 
         if ($dob) {
             try {
@@ -244,8 +241,19 @@ protected function formatCard($card): array
 
         $identityType = Arr::get($requestIndividual, 'identity.type') ?? 'BVN';
         $identityNumber = Arr::get($requestIndividual, 'identity.number')
+            ?? $user->getVerifiedBvn()
             ?? Arr::get($providerResponse, 'bvn')
             ?? Arr::get($kycData, 'bvn');
+
+        if (empty($identityNumber)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'BVN is required. Please verify your BVN or provide a valid BVN.',
+                'errors' => [
+                    'individual.identity.number' => ['BVN is required for unverified users.'],
+                ],
+            ], 422);
+        }
 
         $individual = [
             'firstName' => $firstName,
@@ -264,26 +272,36 @@ protected function formatCard($card): array
             ];
         }
 
-        // Billing Address
+        // Billing Address: use request, fallback to KYC, fallback to User address
+        $userAddress = (array) ($user->address ?? []);
         $addressLine1 = $requestAddress['line1']
             ?? Arr::get($providerResponse, 'residentialAddress')
-            ?? Arr::get($providerResponse, 'address');
+            ?? Arr::get($providerResponse, 'address')
+            ?? ($userAddress['address'] ?? 'Lagos');
+
         $addressLine2 = $requestAddress['line2'] ?? null;
+
         $city = $requestAddress['city']
             ?? Arr::get($providerResponse, 'city')
-            ?? Arr::get($providerResponse, 'lgaOfResidence');
+            ?? Arr::get($providerResponse, 'lgaOfResidence')
+            ?? ($userAddress['city'] ?? 'Lagos');
+
         $state = $requestAddress['state']
             ?? Arr::get($providerResponse, 'state')
-            ?? Arr::get($providerResponse, 'stateOfResidence');
+            ?? Arr::get($providerResponse, 'stateOfResidence')
+            ?? ($userAddress['state'] ?? 'Lagos');
+
         $postalCode = $requestAddress['postalCode']
             ?? Arr::get($providerResponse, 'postalCode')
             ?? Arr::get($providerResponse, 'postal_code')
-            ?? Arr::get($kycData, 'postalCode');
+            ?? Arr::get($kycData, 'postalCode')
+            ?? ($userAddress['zip'] ?? '100001');
+
         $country = $requestAddress['country']
             ?? Arr::get($providerResponse, 'country')
-            ?? 'NG';
+            ?? ($userAddress['country'] ?? 'NG');
 
-        // Customer
+        // Customer Details
         $name = $payload['name']
             ?? Arr::get($providerResponse, 'fullName')
             ?? Arr::get($providerResponse, 'nameOnCard');
@@ -291,13 +309,17 @@ protected function formatCard($card): array
         if (!$name) {
             $name = trim(implode(' ', array_filter([$firstName, $otherNames, $lastName])));
         }
+        if (!$name) {
+            $name = $user->fullname ?? ($user->firstname . ' ' . $user->lastname);
+        }
 
         $phoneNumber = $payload['phoneNumber']
+            ?? $user->full_mobile
+            ?? $user->mobile
             ?? Arr::get($providerResponse, 'phoneNumber1')
-            ?? Arr::get($providerResponse, 'phoneNumber')
-            ?? Arr::get($providerResponse, 'phone');
+            ?? Arr::get($providerResponse, 'phoneNumber');
 
-        $emailAddress = $payload['emailAddress'] ?? Arr::get($providerResponse, 'email');
+        $emailAddress = $payload['emailAddress'] ?? $user->email ?? Arr::get($providerResponse, 'email');
         $status = $payload['status'] ?? 'active';
         $type = $payload['type'] ?? 'individual';
 
@@ -532,9 +554,9 @@ public function createCard(Request $request): JsonResponse
 {
   
     $validator = Validator::make($request->all(), [
-        'provider' => ['required', 'string', 'in:sudo'],
+        'provider' => ['nullable', 'string', 'in:sudo'],
         'type' => ['required', 'string', 'in:virtual,physical'],
-        'currency' => ['required', 'string', 'in:USDT,usdt'],
+        'currency' => ['required', 'string', 'in:USDT,usdt,NGN,ngn,USD,usd'],
         'status' => ['nullable', 'string', 'in:active,inactive'],
         'brand' => ['nullable', 'string', 'max:100'],
         'debitAccountId' => ['nullable', 'string'],
@@ -564,12 +586,14 @@ public function createCard(Request $request): JsonResponse
 
     /*
     |--------------------------------------------------------------------------
-    | Charge card issuance fee FIRST
+    | Charge card issuance fee FIRST based on card type
     | (This already records the charge in CryptoTransactionService)
     |--------------------------------------------------------------------------
     */
 
-    $charge = $this->transferCardCharge('card_issuance_fee');
+    $cardType = $request->input('type', 'virtual');
+    $issuanceChargeType = ($cardType === 'physical') ? 'physical_card_fee' : 'virtual_card_issuance_fee';
+    $charge = $this->transferCardCharge($issuanceChargeType);
     
 
     if (!$charge['success']) {
@@ -591,6 +615,8 @@ public function createCard(Request $request): JsonResponse
 
     $request->merge([
         'currency' => 'NGN',
+        'status' => $request->input('status', 'active'),
+        'brand' => $request->input('brand', 'Visa'),
     ]);
 
     $result = $this->cardService->createCard(
@@ -1685,14 +1711,110 @@ public function fund(Request $request, int $id): JsonResponse
         return $this->unauthenticated();
     }
 
+    $user = auth()->user() ?? \App\Models\User::find($userId);
+    if (!$user) {
+        return $this->unauthenticated();
+    }
+
+    $amount = (float) $request->input('amount');
+
     /*
     |--------------------------------------------------------------------------
-    | Transfer configured card funding fee
+    | Validate Card Existence & Active Status
+    |--------------------------------------------------------------------------
+    */
+
+    $cardRecord = \App\Models\CryptoCardsModel::where('id', $id)
+        ->orWhere('card_provider_id', $id)
+        ->first();
+
+    if (!$cardRecord) {
+        $cardRecord = $this->cardService->getCard($userId, $id);
+    }
+
+    if (!$cardRecord) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Card not found.',
+        ], 404);
+    }
+
+    if ($cardRecord->card_status !== 'active' || $cardRecord->is_deleted) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Only active cards can be funded.',
+        ], 422);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Verify User USDT Balance
+    | A user with zero or insufficient USDT balance must not be allowed to fund.
+    |--------------------------------------------------------------------------
+    */
+
+    $quidaxBalance = 0.0;
+    $quidaxService = app(\App\Services\QuidaxService::class);
+
+    if ($user->quidax_id) {
+        try {
+            $quidaxWalletResponse = $quidaxService->fetchUserWallet($user->quidax_id, 'usdt');
+            $walletData = $quidaxWalletResponse['data'] ?? null;
+            if (is_array($walletData)) {
+                if (isset($walletData[0]) && is_array($walletData[0])) {
+                    $walletData = $walletData[0];
+                }
+                /** @var \App\Services\QuidaxSpendableBalanceService $spendableService */
+                $spendableService = app(\App\Services\QuidaxSpendableBalanceService::class);
+                $augmentedWallet = $spendableService->augmentWalletPayload(
+                    $user,
+                    $walletData,
+                    'usdt'
+                );
+                $quidaxBalance = (float) ($augmentedWallet['available_balance'] ?? $augmentedWallet['balance'] ?? 0);
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Error fetching Quidax balance for crypto card funding', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    $localWallet = \App\Models\UserWallet::where('user_id', $user->id)
+        ->where(function ($query) {
+            $query->where('currency_code', 'USDT')
+                ->orWhere('currency_code', 'usdt')
+                ->orWhere('quote_currency_code', 'USDT')
+                ->orWhere('quote_currency_code', 'usdt')
+                ->orWhereHas('currency', fn ($c) => $c->where('code', 'USDT')->orWhere('code', 'usdt'));
+        })
+        ->first();
+
+    $localBalance = $localWallet ? (float) $localWallet->balance : 0.0;
+    $availableUsdt = max($quidaxBalance, $localBalance);
+
+    if ($availableUsdt <= 0 || bccomp((string) $availableUsdt, (string) $amount, 8) < 0) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Insufficient USDT balance to fund this card. Required: ' . number_format($amount, 2, '.', '') . ' USDT, Available: ' . number_format($availableUsdt, 2, '.', '') . ' USDT.',
+        ], 400);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Transfer configured card funding fee based on card type
     | (This already records the charge in CryptoTransactionService)
     |--------------------------------------------------------------------------
     */
 
-    $charge = $this->transferCardCharge('card_funding_fee');
+    $fundingChargeType = ($cardRecord && (
+        $cardRecord->card_type === 'physical' ||
+        ($cardRecord->type ?? null) === 'physical'
+    ))
+        ? 'physical_card_funding_fee'
+        : 'virtual_card_funding_fee';
+    $charge = $this->transferCardCharge($fundingChargeType);
 
     if (!$charge['success']) {
         return $this->serviceResponse($charge);
@@ -1717,11 +1839,49 @@ public function fund(Request $request, int $id): JsonResponse
 
     /*
     |--------------------------------------------------------------------------
-    | Fund card
+    | Debit / Lock USDT from Wallet
     |--------------------------------------------------------------------------
     */
 
-    $amount = (float) $request->input('amount');
+    if ($user->quidax_id && $quidaxBalance >= $amount) {
+        try {
+            $escrowTransfer = $quidaxService->transferToEscrow(
+                $user->quidax_id,
+                $amount,
+                'usdt',
+                'Crypto card funding lock: ' . $reference
+            );
+            $escrowStatus = strtolower((string) ($escrowTransfer['status'] ?? ''));
+            if ($escrowStatus === 'error' || $escrowStatus === 'failed') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to deduct USDT from your Quidax wallet: ' . ($escrowTransfer['message'] ?? 'Transfer failed'),
+                ], 400);
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Failed to transfer USDT to escrow for card funding', [
+                'user_id' => $user->id,
+                'card_id' => $id,
+                'amount' => $amount,
+                'error' => $e->getMessage(),
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to deduct USDT from your crypto wallet: ' . $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    if ($localWallet) {
+        $localWallet->balance = max(0, (float) bcsub((string) $localWallet->balance, (string) $amount, 8));
+        $localWallet->save();
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Fund card
+    |--------------------------------------------------------------------------
+    */
 
     $result = $this->cardService->fundCard(
         userId: $userId,
@@ -1733,6 +1893,8 @@ public function fund(Request $request, int $id): JsonResponse
             'channel'          => $request->input('channel', 'platform'),
             'metadata'         => $request->input('metadata'),
             'master_reference' => $reference,
+            'usdt_debited'     => true,
+            'available_usdt'   => $availableUsdt,
         ]
     );
 
@@ -2226,306 +2388,337 @@ public function transfer(Request $request): JsonResponse
 
     /**
      * Get all configured crypto card charges before creation/order.
-     * Includes physical card fee, issuance fee, monthly maintenance fee, and funding fee.
+     * Includes physical and virtual card fees (issuance/order, funding, and monthly maintenance).
      * GET /api/v1/user/crypto-cards/charges
      */
     public function charges(): JsonResponse
     {
         $setup = CryptoCardSetup::query()->first();
 
-        $physicalCardFee = $setup ? (string) $setup->physical_card_fee : '0.00';
-        $cardIssuanceFee = $setup ? (string) $setup->card_issuance_fee : '0.00';
-        $monthlyMaintenanceFee = $setup ? (string) $setup->monthly_card_maintenance_fee : '0.00';
-        $cardFundingFee = $setup ? (string) $setup->card_funding_fee : '0.00';
+        $virtualIssuanceFee = $setup ? number_format($setup->virtual_issuance_fee, 2, '.', '') : '0.00';
+        $virtualFundingFee = $setup ? number_format($setup->virtual_funding_fee, 2, '.', '') : '0.00';
+        $virtualMaintenanceFee = $setup ? number_format($setup->virtual_maintenance_fee, 2, '.', '') : '0.00';
+
+        $physicalOrderFee = $setup ? number_format($setup->physical_order_fee, 2, '.', '') : '0.00';
+        $physicalFundingFee = $setup ? number_format($setup->physical_funding_fee, 2, '.', '') : '0.00';
+        $physicalMaintenanceFee = $setup ? number_format($setup->physical_maintenance_fee, 2, '.', '') : '0.00';
 
         return response()->json([
             'success' => true,
             'message' => 'Crypto card charges retrieved successfully.',
             'data' => [
                 'currency' => 'USDT',
-                'physical_card_fee' => $physicalCardFee,
-                'card_issuance_fee' => $cardIssuanceFee,
-                'monthly_card_maintenance_fee' => $monthlyMaintenanceFee,
-                'card_funding_fee' => $cardFundingFee,
+                'virtual_card' => [
+                    'card_issuance_fee' => $virtualIssuanceFee,
+                    'card_funding_fee' => $virtualFundingFee,
+                    'monthly_card_maintenance_fee' => $virtualMaintenanceFee,
+                ],
+                'physical_card' => [
+                    'physical_card_fee' => $physicalOrderFee,
+                    'card_funding_fee' => $physicalFundingFee,
+                    'monthly_card_maintenance_fee' => $physicalMaintenanceFee,
+                ],
+                // Legacy top-level keys for backward compatibility
+                'physical_card_fee' => $physicalOrderFee,
+                'card_issuance_fee' => $virtualIssuanceFee,
+                'monthly_card_maintenance_fee' => $virtualMaintenanceFee,
+                'card_funding_fee' => $virtualFundingFee,
                 'charges' => [
+                    [
+                        'key' => 'virtual_card_issuance_fee',
+                        'name' => 'Virtual Card Issuance Fee',
+                        'amount' => $virtualIssuanceFee,
+                        'currency' => 'USDT',
+                        'description' => 'Fee charged upon issuing a virtual crypto card.',
+                    ],
+                    [
+                        'key' => 'virtual_card_funding_fee',
+                        'name' => 'Virtual Card Funding Fee',
+                        'amount' => $virtualFundingFee,
+                        'currency' => 'USDT',
+                        'description' => 'Fee charged when topping up or funding a virtual crypto card.',
+                    ],
+                    [
+                        'key' => 'virtual_monthly_card_maintenance_fee',
+                        'name' => 'Virtual Card Monthly Maintenance Fee',
+                        'amount' => $virtualMaintenanceFee,
+                        'currency' => 'USDT',
+                        'description' => 'Monthly fee charged for virtual crypto card maintenance.',
+                    ],
                     [
                         'key' => 'physical_card_fee',
                         'name' => 'Physical Card Order Fee',
-                        'amount' => $physicalCardFee,
+                        'amount' => $physicalOrderFee,
                         'currency' => 'USDT',
-                        'description' => 'Fee charged when ordering a physical crypto card.',
+                        'description' => 'Fee charged when ordering or issuing a physical crypto card.',
                     ],
                     [
-                        'key' => 'card_issuance_fee',
-                        'name' => 'Card Issuance Fee',
-                        'amount' => $cardIssuanceFee,
+                        'key' => 'physical_card_funding_fee',
+                        'name' => 'Physical Card Funding Fee',
+                        'amount' => $physicalFundingFee,
                         'currency' => 'USDT',
-                        'description' => 'Fee charged upon issuing a virtual or physical crypto card.',
+                        'description' => 'Fee charged when topping up or funding a physical crypto card.',
                     ],
                     [
-                        'key' => 'monthly_card_maintenance_fee',
-                        'name' => 'Monthly Card Maintenance Fee',
-                        'amount' => $monthlyMaintenanceFee,
+                        'key' => 'physical_monthly_card_maintenance_fee',
+                        'name' => 'Physical Card Monthly Maintenance Fee',
+                        'amount' => $physicalMaintenanceFee,
                         'currency' => 'USDT',
-                        'description' => 'Monthly fee charged for crypto card maintenance.',
-                    ],
-                    [
-                        'key' => 'card_funding_fee',
-                        'name' => 'Card Funding Fee',
-                        'amount' => $cardFundingFee,
-                        'currency' => 'USDT',
-                        'description' => 'Fee charged when topping up or funding a crypto card.',
+                        'description' => 'Monthly fee charged for physical crypto card maintenance.',
                     ],
                 ],
             ],
         ]);
     }
 
-public function getCharge(string $charge): JsonResponse
-{
-$validator = Validator::make(
-['charge' => $charge],
-[
-'charge' => [
-'required',
-'string',
-Rule::in([
-'physical_card_fee',//when orderign a card
-'card_issuance_fee',//when issueing a card
-'card_funding_fee',//when funding a card
-'monthly_card_maintenance_fee',//to be used by job on autodebit 
-]),
-],
-]
-);
+    public function getCharge(string $charge): JsonResponse
+    {
+        $validator = Validator::make(
+            ['charge' => $charge],
+            [
+                'charge' => [
+                    'required',
+                    'string',
+                    Rule::in([
+                        'physical_card_fee',
+                        'physical_card_funding_fee',
+                        'physical_monthly_card_maintenance_fee',
+                        'virtual_card_issuance_fee',
+                        'virtual_card_funding_fee',
+                        'virtual_monthly_card_maintenance_fee',
+                        'card_issuance_fee',
+                        'card_funding_fee',
+                        'monthly_card_maintenance_fee',
+                    ]),
+                ],
+            ]
+        );
 
-if ($validator->fails()) {
-    return response()->json([
-        'success' => false,
-        'message' => 'Invalid charge type.',
-        'errors' => $validator->errors(),
-    ], 422);
-}
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid charge type.',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
 
-$setup = CryptoCardSetup::query()->first();
+        $setup = CryptoCardSetup::query()->first() ?: new CryptoCardSetup();
 
-if (!$setup) {
-    return response()->json([
-        'success' => false,
-        'message' => 'Crypto card charge configuration not found.',
-    ], 404);
-}
+        $amount = match ($charge) {
+            'virtual_card_issuance_fee', 'card_issuance_fee' => $setup->virtual_issuance_fee,
+            'virtual_card_funding_fee', 'card_funding_fee' => $setup->virtual_funding_fee,
+            'virtual_monthly_card_maintenance_fee', 'monthly_card_maintenance_fee' => $setup->virtual_maintenance_fee,
+            'physical_card_fee' => $setup->physical_order_fee,
+            'physical_card_funding_fee' => $setup->physical_funding_fee,
+            'physical_monthly_card_maintenance_fee' => $setup->physical_maintenance_fee,
+            default => (float) ($setup->{$charge} ?? 0),
+        };
 
-return response()->json([
-    'success' => true,
-    'charge_type' => $charge,
-    'amount' => $setup->{$charge},
-]);
-
-}
-//creata a method that trnafers the selceted account from sub account to main accouunt call it in the respective endpoints
-//trnsfer funds selected charge in usd from usdt wallet to master account
-
-/**
- * Transfer a configured crypto-card charge from the user's
- * Quidax sub-account to the platform/main Quidax account.
- */
-protected function transferCardCharge(string $chargeType): array
-{
-    // this must be saved in transaction log before card funding
-    $user = auth()->user();
-
-    if (!$user) {
-        return [
-            'success' => false,
-            'message' => 'Unauthenticated.',
-            'statusCode' => 401,
-        ];
-    }
-
-    if (empty($user->quidax_id)) {
-        return [
-            'success' => false,
-            'message' => 'User does not have a Quidax account.',
-            'statusCode' => 422,
-        ];
-    }
-
-    $allowedCharges = [
-        'physical_card_fee',
-        'card_issuance_fee',
-        'card_funding_fee',
-        'monthly_card_maintenance_fee',
-    ];
-
-    if (!in_array($chargeType, $allowedCharges, true)) {
-        return [
-            'success' => false,
-            'message' => 'Invalid crypto card charge type.',
-            'statusCode' => 422,
-        ];
-    }
-
-    $setup = CryptoCardSetup::query()->first();
-
-    if (!$setup) {
-        return [
-            'success' => false,
-            'message' => 'Crypto card charge configuration not found.',
-            'statusCode' => 404,
-        ];
-    }
-
-    $amount = $setup->{$chargeType} ?? 0;
-
-    if (!is_numeric($amount)) {
-        return [
-            'success' => false,
-            'message' => 'Invalid configured crypto card charge.',
-            'statusCode' => 422,
-        ];
-    }
-
-    $amount = number_format((float) $amount, 2, '.', '');
-
-    /*
-     * No charge configured.
-     */
-    if (bccomp($amount, '0', 2) <= 0) {
-        return [
+        return response()->json([
             'success' => true,
-            'charged' => false,
-            'amount' => '0.00',
-            'currency' => 'USDT',
-            'charge_type' => $chargeType,
-            'reference' => null,
-            'response' => null,
-            'message' => 'No charge configured.',
-        ];
+            'charge_type' => $charge,
+            'amount' => number_format((float) $amount, 2, '.', ''),
+        ]);
     }
 
-    $reference = 'CARD-' .
-        strtoupper($chargeType) .
-        '-' .
-        Str::uuid()->toString();
+    /**
+     * Transfer a configured crypto-card charge from the user's
+     * fiat (NGN) account to the platform.
+     */
+    protected function transferCardCharge(string $chargeType): array
+    {
+        $user = auth()->user();
 
-    $note = match ($chargeType) {
-        'physical_card_fee' =>
-            'Crypto card physical card fee',
+        if (!$user) {
+            return [
+                'success' => false,
+                'message' => 'Unauthenticated.',
+                'statusCode' => 401,
+            ];
+        }
 
-        'card_issuance_fee' =>
-            'Crypto card issuance fee',
+        $allowedCharges = [
+            'physical_card_fee',
+            'physical_card_funding_fee',
+            'physical_monthly_card_maintenance_fee',
+            'virtual_card_issuance_fee',
+            'virtual_card_funding_fee',
+            'virtual_monthly_card_maintenance_fee',
+            'card_issuance_fee',
+            'card_funding_fee',
+            'monthly_card_maintenance_fee',
+        ];
 
-        'card_funding_fee' =>
-            'Crypto card funding fee',
+        if (!in_array($chargeType, $allowedCharges, true)) {
+            return [
+                'success' => false,
+                'message' => 'Invalid crypto card charge type.',
+                'statusCode' => 422,
+            ];
+        }
 
-        'monthly_card_maintenance_fee' =>
-            'Crypto card monthly maintenance fee',
+        $setup = CryptoCardSetup::query()->first() ?: new CryptoCardSetup();
 
-        default =>
-            'Crypto card charge',
-    };
+        $amount = match ($chargeType) {
+            'virtual_card_issuance_fee', 'card_issuance_fee' => $setup->virtual_issuance_fee,
+            'virtual_card_funding_fee', 'card_funding_fee' => $setup->virtual_funding_fee,
+            'virtual_monthly_card_maintenance_fee', 'monthly_card_maintenance_fee' => $setup->virtual_maintenance_fee,
+            'physical_card_fee' => $setup->physical_order_fee,
+            'physical_card_funding_fee' => $setup->physical_funding_fee,
+            'physical_monthly_card_maintenance_fee' => $setup->physical_maintenance_fee,
+            default => (float) ($setup->{$chargeType} ?? 0),
+        };
+
+        if (!is_numeric($amount)) {
+            return [
+                'success' => false,
+                'message' => 'Invalid configured crypto card charge.',
+                'statusCode' => 422,
+            ];
+        }
+
+        $amount = number_format((float) $amount, 2, '.', '');
+
+        /*
+         * No charge configured.
+         */
+        if (bccomp($amount, '0', 2) <= 0) {
+            return [
+                'success' => true,
+                'charged' => false,
+                'amount' => '0.00',
+                'ngn_amount' => '0.00',
+                'currency' => 'NGN',
+                'charge_type' => $chargeType,
+                'reference' => null,
+                'response' => null,
+                'message' => 'No charge configured.',
+            ];
+        }
+
+        $reference = 'CARD-' .
+            strtoupper($chargeType) .
+            '-' .
+            Str::uuid()->toString();
+
+        $note = match ($chargeType) {
+            'physical_card_fee' =>
+                'Crypto physical card order/issuance fee',
+
+            'physical_card_funding_fee' =>
+                'Crypto physical card funding fee',
+
+            'physical_monthly_card_maintenance_fee' =>
+                'Crypto physical card monthly maintenance fee',
+
+            'virtual_card_issuance_fee', 'card_issuance_fee' =>
+                'Crypto virtual card issuance fee',
+
+            'virtual_card_funding_fee', 'card_funding_fee' =>
+                'Crypto virtual card funding fee',
+
+            'virtual_monthly_card_maintenance_fee', 'monthly_card_maintenance_fee' =>
+                'Crypto virtual card monthly maintenance fee',
+
+            default =>
+                'Crypto card charge',
+        };
+
+    // Calculate NGN fee using exchange rate
+    $ngnCurrency = Currency::where('code', 'NGN')->first();
+    $rate = (float) ($ngnCurrency?->rate ?? 1500);
+    $ngnAmount = bcmul((string) $amount, (string) $rate, 2);
 
     try {
-        // Proper internal transfer: sub-account → main account
-        $response = $this->quidaxService->transferFromSubToMain(
-            $user->quidax_id,
-            $amount,
-            'usdt',
-            $reference,
-            $note
-        );
+        $result = DB::transaction(function () use ($user, $ngnAmount, $amount, $chargeType, $reference, $note) {
+            $wallet = UserWallet::where('user_id', $user->id)
+                ->where('currency_code', 'NGN')
+                ->lockForUpdate()
+                ->first();
+
+            if (!$wallet) {
+                throw new \RuntimeException('NGN fiat wallet not found for user.');
+            }
+
+            if (bccomp((string) $wallet->balance, (string) $ngnAmount, 2) < 0) {
+                throw new \RuntimeException("Insufficient fiat balance to cover the card fee. Required: ₦" . number_format((float)$ngnAmount, 2) . ", Available: ₦" . number_format((float)$wallet->balance, 2));
+            }
+
+            $wallet->balance = bcsub((string) $wallet->balance, (string) $ngnAmount, 2);
+            $wallet->save();
+
+            OrderTransaction::create([
+                'user_wallet_id' => $wallet->id,
+                'type' => 'debit',
+                'amount' => $ngnAmount,
+                'balance_after' => $wallet->balance,
+                'reference' => $reference,
+                'metadata' => [
+                    'source' => 'crypto_card',
+                    'charge_type' => $chargeType,
+                    'configured_fee' => $amount,
+                    'ngn_amount' => $ngnAmount,
+                    'note' => $note,
+                ],
+            ]);
+
+            return [
+                'wallet' => $wallet,
+                'ngn_amount' => $ngnAmount,
+            ];
+        });
+
+        // Record in CryptoTransactionService for unified history
+        try {
+            $this->cryptoTransactionService->create([
+                'internal_trx_type'   => $chargeType,
+                'internal_trx_ref_id' => null,
+                'transaction_type'    => 'debit',
+                'sender_address'      => 'FIAT_WALLET',
+                'receiver_address'    => 'PLATFORM_REVENUE',
+                'amount'              => $ngnAmount,
+                'asset'               => 'NGN',
+                'txn_hash'            => $reference,
+                'status'              => 'done',
+                'callback_response'   => ['reference' => $reference, 'amount' => $amount, 'ngn_amount' => $ngnAmount],
+            ]);
+        } catch (Throwable $e) {
+            Log::warning('CryptoTransactionService log warning: ' . $e->getMessage());
+        }
+
+        Log::info('Crypto card fiat charge deducted successfully.', [
+            'user_id'     => $user->id,
+            'charge_type' => $chargeType,
+            'amount'      => $amount,
+            'ngn_amount'  => $ngnAmount,
+            'currency'    => 'NGN',
+            'reference'   => $reference,
+        ]);
+
+        return [
+            'success' => true,
+            'charged' => true,
+            'charge_type' => $chargeType,
+            'amount' => $amount,
+            'ngn_amount' => $ngnAmount,
+            'currency' => 'NGN',
+            'reference' => $reference,
+            'message' => 'Card charge deducted successfully from fiat account.',
+        ];
     } catch (Throwable $e) {
-        Log::error('Crypto card charge transfer failed.', [
+        Log::error('Crypto card fiat charge deduction failed.', [
             'user_id' => $user->id,
             'charge_type' => $chargeType,
             'amount' => $amount,
-            'reference' => $reference,
             'error' => $e->getMessage(),
         ]);
 
         return [
             'success' => false,
-            'message' => 'Unable to transfer crypto card charge.',
+            'message' => $e->getMessage() ?: 'Unable to process crypto card charge from fiat account.',
             'statusCode' => 422,
         ];
     }
-
-    if (
-        !is_array($response)
-        || ($response['status'] ?? null) !== 'success'
-    ) {
-        Log::error('Crypto card charge transfer rejected by Quidax.', [
-            'user_id' => $user->id,
-            'charge_type' => $chargeType,
-            'amount' => $amount,
-            'reference' => $reference,
-            'response' => $response,
-        ]);
-
-        return [
-            'success' => false,
-            'message' => $response['message']
-                ?? 'Crypto card charge transfer failed.',
-            'statusCode' => 422,
-            'response' => $response,
-        ];
-    }
-
-    // ---------------------------------------------------------------
-    // Record the charge in CryptoTransactionService
-    // ---------------------------------------------------------------
-    try {
-        $data = $response['data'] ?? [];
-
-        $this->cryptoTransactionService->create([
-            'internal_trx_type'   => $chargeType,
-            'internal_trx_ref_id' => null,
-            'transaction_type'    => 'debit',
-            'sender_address'      => $data['wallet']['deposit_address'] ?? null,
-            'receiver_address'    => $data['recipient']['details']['address'] ?? null,
-            'amount'              => $data['amount'] ?? $amount,
-            'asset'               => strtoupper($data['currency'] ?? 'USDT'),
-            'txn_hash'            => $data['txid'] ?? $data['txId'] ?? null,
-            'status'              => $data['status'] ?? 'done',
-            'callback_response'   => $response,
-        ]);
-    } catch (Throwable $e) {
-        Log::error('Failed to save crypto card charge transaction.', [
-            'user_id'     => $user->id,
-            'charge_type' => $chargeType,
-            'amount'      => $amount,
-            'reference'   => $reference,
-            'error'       => $e->getMessage(),
-        ]);
-
-        return [
-            'success' => false,
-            'message' => 'Charge was transferred but could not be recorded. Please contact support.',
-            'statusCode' => 500,
-            'response' => $response,
-        ];
-    }
-
-    Log::info('Crypto card charge transferred successfully.', [
-        'user_id'     => $user->id,
-        'charge_type' => $chargeType,
-        'amount'      => $amount,
-        'currency'    => 'USDT',
-        'reference'   => $reference,
-        'quidax_id'   => $data['id'] ?? null,
-        'type'        => $data['type'] ?? null, // should be "internal_transfer"
-    ]);
-
-    return [
-        'success' => true,
-        'charged' => true,
-        'charge_type' => $chargeType,
-        'amount' => $amount,
-        'currency' => 'USDT',
-        'reference' => $reference,
-        'response' => $response,
-    ];
 }
 
 

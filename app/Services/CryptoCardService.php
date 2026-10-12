@@ -2092,6 +2092,54 @@ public function getCardTransactions(
             ];
         }
 
+        if (!($context['usdt_debited'] ?? false)) {
+            $user = \App\Models\User::find($userId);
+            if ($user) {
+                $quidaxBalance = 0.0;
+                if ($user->quidax_id) {
+                    try {
+                        $quidaxService = app(\App\Services\QuidaxService::class);
+                        $quidaxWalletResponse = $quidaxService->fetchUserWallet($user->quidax_id, 'usdt');
+                        $walletData = $quidaxWalletResponse['data'] ?? null;
+                        if (is_array($walletData)) {
+                            if (isset($walletData[0]) && is_array($walletData[0])) {
+                                $walletData = $walletData[0];
+                            }
+                            /** @var \App\Services\QuidaxSpendableBalanceService $spendableService */
+                            $spendableService = app(\App\Services\QuidaxSpendableBalanceService::class);
+                            $augmentedWallet = $spendableService->augmentWalletPayload(
+                                $user,
+                                $walletData,
+                                'usdt'
+                            );
+                            $quidaxBalance = (float) ($augmentedWallet['available_balance'] ?? $augmentedWallet['balance'] ?? 0);
+                        }
+                    } catch (\Throwable $e) {}
+                }
+
+                $localWallet = \App\Models\UserWallet::where('user_id', $user->id)
+                    ->where(function ($query) {
+                        $query->where('currency_code', 'USDT')
+                            ->orWhere('currency_code', 'usdt')
+                            ->orWhere('quote_currency_code', 'USDT')
+                            ->orWhere('quote_currency_code', 'usdt')
+                            ->orWhereHas('currency', fn ($c) => $c->where('code', 'USDT')->orWhere('code', 'usdt'));
+                    })
+                    ->first();
+
+                $localBalance = $localWallet ? (float) $localWallet->balance : 0.0;
+                $availableUsdt = max($quidaxBalance, $localBalance);
+
+                if ($availableUsdt <= 0 || bccomp((string) $availableUsdt, (string) $amount, 8) < 0) {
+                    return [
+                        'success' => false,
+                        'message' => 'Insufficient USDT balance to fund this card. Required: ' . number_format($amount, 2, '.', '') . ' USDT, Available: ' . number_format($availableUsdt, 2, '.', '') . ' USDT.',
+                        'statusCode' => 400,
+                    ];
+                }
+            }
+        }
+
         try {
             $transaction = null;
             $escrow = null;
