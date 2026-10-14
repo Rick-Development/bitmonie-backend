@@ -64,6 +64,14 @@ class SavingsNotification extends Notification implements ShouldQueue
         $displayAmount = "{$currencySymbol} {$formattedAmount}";
         $timestamp = Carbon::now()->format('d M Y, h:i A');
 
+        if (strtolower($this->action) === 'failed') {
+            return (new MailMessage)
+                ->subject("Bitmonie - {$this->planType} Scheduled Contribution Failed")
+                ->greeting("Hello {$name},")
+                ->line("Your scheduled **{$this->planType}** contribution of **{$displayAmount}** could not be collected on {$timestamp}.")
+                ->line('No money was taken from your wallet and no fee was charged. Please make sure your wallet is funded; your next scheduled contribution will run as planned.');
+        }
+
         return (new MailMessage)
             ->subject("Bitmonie - {$this->planType} {$formattedAction} Confirmation")
             ->greeting("Hello {$name},")
@@ -85,6 +93,19 @@ class SavingsNotification extends Notification implements ShouldQueue
     {
         $decimals = ($this->currency === 'USDT') ? 8 : 2;
         $formattedAmount = number_format((float) $this->amount, $decimals, '.', ',');
+
+        if (strtolower($this->action) === 'failed') {
+            return [
+                'title'     => 'Bitmonie Savings Contribution Failed',
+                'message'   => "Your scheduled {$this->planType} contribution of {$formattedAmount} {$this->currency} could not be collected. No fee was charged.",
+                'amount'    => $this->amount,
+                'currency'  => $this->currency,
+                'plan_type' => $this->planType,
+                'action'    => $this->action,
+                'reference' => $this->reference,
+                'type'      => 'SAVINGS_FAILED',
+            ];
+        }
 
         return [
             'title'     => "Bitmonie Savings " . ucfirst($this->action),

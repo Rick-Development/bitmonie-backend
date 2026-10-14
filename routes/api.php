@@ -71,14 +71,66 @@ Route::middleware('auth:api')->prefix('referral/commission')->group(function () 
     Route::post('withdraw', [\App\Http\Controllers\Api\V1\User\ReferralCommissionController::class, 'withdraw']);
 });
 
-// Savings (Piggyvest) Routes
+// Savings Routes (Flexi / Auto / Target on the unified ledger; SafeLock + EduSave unchanged)
 Route::middleware('auth:api')->prefix('v1/savings')->group(function () {
-    // Flex
-    Route::prefix('flex')->group(function () {
-        Route::get('/', [\App\Http\Controllers\Api\Savings\FlexController::class, 'index']);
-        Route::post('deposit', [\App\Http\Controllers\Api\Savings\FlexController::class, 'deposit']);
-        Route::post('withdraw', [\App\Http\Controllers\Api\Savings\FlexController::class, 'withdraw']);
-        Route::get('history', [\App\Http\Controllers\Api\Savings\FlexController::class, 'history']);
+    // Flexi Save (unified savings ledger)
+    Route::prefix('flexi')->group(function () {
+        $c = \App\Http\Controllers\Api\Savings\FlexiSaveController::class;
+        Route::get('/', [$c, 'show']);
+        Route::get('transactions', [$c, 'transactions']);
+        Route::middleware('throttle:savings-money')->group(function () use ($c) {
+            Route::post('deposit', [$c, 'deposit']);
+            Route::post('withdraw', [$c, 'withdraw']);
+            Route::post('transfer', [$c, 'transfer']);
+        });
+    });
+
+    // Shared transaction lookups + internal transfers
+    Route::get('transactions', [\App\Http\Controllers\Api\Savings\SavingsTransactionController::class, 'index']);
+    Route::get('transactions/{reference}', [\App\Http\Controllers\Api\Savings\SavingsTransactionController::class, 'show']);
+    Route::get('transactions/{reference}/status', [\App\Http\Controllers\Api\Savings\SavingsTransactionController::class, 'status']);
+    Route::post('transfers', [\App\Http\Controllers\Api\Savings\SavingsTransactionController::class, 'transfer'])->middleware('throttle:savings-money');
+
+    // Auto Save
+    Route::prefix('auto')->group(function () {
+        $c = \App\Http\Controllers\Api\Savings\AutoSaveController::class;
+        Route::get('/', [$c, 'index']);
+        Route::post('/', [$c, 'store']);
+        Route::get('{id}', [$c, 'show'])->whereNumber('id');
+        Route::patch('{id}', [$c, 'update'])->whereNumber('id');
+        Route::post('{id}/pause', [$c, 'pause'])->whereNumber('id');
+        Route::post('{id}/resume', [$c, 'resume'])->whereNumber('id');
+        Route::post('{id}/cancel', [$c, 'cancel'])->whereNumber('id');
+        Route::get('{id}/executions', [$c, 'executions'])->whereNumber('id');
+        Route::get('{id}/transactions', [$c, 'transactions'])->whereNumber('id');
+        Route::middleware('throttle:savings-money')->group(function () use ($c) {
+            Route::post('{id}/contribute', [$c, 'contribute'])->whereNumber('id');
+            Route::post('{id}/withdraw', [$c, 'withdraw'])->whereNumber('id');
+        });
+    });
+
+    // Target Savings
+    Route::prefix('targets')->group(function () {
+        $c = \App\Http\Controllers\Api\Savings\TargetSavingsController::class;
+        Route::get('/', [$c, 'index']);
+        Route::post('/', [$c, 'store']);
+        Route::get('{id}', [$c, 'show'])->whereNumber('id');
+        Route::patch('{id}', [$c, 'update'])->whereNumber('id');
+        Route::get('{id}/progress', [$c, 'progress'])->whereNumber('id');
+        Route::get('{id}/transactions', [$c, 'transactions'])->whereNumber('id');
+        Route::get('{id}/closure-quote', [$c, 'closureQuote'])->whereNumber('id');
+        Route::post('{id}/pause', [$c, 'pause'])->whereNumber('id');
+        Route::post('{id}/resume', [$c, 'resume'])->whereNumber('id');
+        Route::post('{id}/complete', [$c, 'complete'])->whereNumber('id');
+        Route::put('{id}/schedule', [$c, 'setSchedule'])->whereNumber('id');
+        Route::post('{id}/schedule/pause', [$c, 'pauseSchedule'])->whereNumber('id');
+        Route::post('{id}/schedule/resume', [$c, 'resumeSchedule'])->whereNumber('id');
+        Route::delete('{id}/schedule', [$c, 'cancelSchedule'])->whereNumber('id');
+        Route::middleware('throttle:savings-money')->group(function () use ($c) {
+            Route::post('{id}/contribute', [$c, 'contribute'])->whereNumber('id');
+            Route::post('{id}/cancel', [$c, 'cancel'])->whereNumber('id');
+            Route::post('{id}/withdraw', [$c, 'withdraw'])->whereNumber('id');
+        });
     });
 
     // SafeLock
@@ -89,15 +141,6 @@ Route::middleware('auth:api')->prefix('v1/savings')->group(function () {
         Route::post('withdraw', [\App\Http\Controllers\Api\Savings\SafeLockController::class, 'withdraw']);
         Route::post('break', [\App\Http\Controllers\Api\Savings\SafeLockController::class, 'break']);
         Route::get('history', [\App\Http\Controllers\Api\Savings\SafeLockController::class, 'history']);
-    });
-
-    // Target Savings
-    Route::prefix('target')->group(function () {
-        Route::get('/', [\App\Http\Controllers\Api\Savings\TargetController::class, 'index']);
-        Route::post('create', [\App\Http\Controllers\Api\Savings\TargetController::class, 'create']);
-        Route::post('quick-save', [\App\Http\Controllers\Api\Savings\TargetController::class, 'quickSave']);
-        Route::post('break', [\App\Http\Controllers\Api\Savings\TargetController::class, 'break']);
-        Route::get('history', [\App\Http\Controllers\Api\Savings\TargetController::class, 'history']);
     });
 
     // EduSave

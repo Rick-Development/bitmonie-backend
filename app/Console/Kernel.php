@@ -23,12 +23,26 @@ class Kernel extends ConsoleKernel
                  ->withoutOverlapping(120)
                  ->appendOutputTo(storage_path('logs/savings-scheduler.log'));
 
-        // Target Auto-Save - Daily (the service handles internal frequency check)
-        $schedule->command('savings:auto-save')
-                 ->daily()
-                 ->timezone('Africa/Lagos')
-                 ->withoutOverlapping();
+        // Unified savings: persistent scheduled contributions (Auto Save + Target schedules).
+        $schedule->command('savings:run-due')
+                 ->everyMinute()
+                 ->withoutOverlapping(10)
+                 ->appendOutputTo(storage_path('logs/savings-scheduler.log'));
 
+        $schedule->command('savings:expire-targets')
+                 ->hourly()
+                 ->withoutOverlapping(30);
+
+        // Flexi interest for the previous day; idempotent per account/day.
+        $schedule->command('savings:flexi-interest')
+                 ->dailyAt('00:30')
+                 ->timezone('Africa/Lagos')
+                 ->withoutOverlapping(120);
+
+        $schedule->command('savings:reconcile')
+                 ->dailyAt('03:00')
+                 ->timezone('Africa/Lagos')
+                 ->appendOutputTo(storage_path('logs/savings-reconciliation.log'));
         // EduSave Payouts - Daily
         $schedule->command('edusave:process-payouts')->daily();
 

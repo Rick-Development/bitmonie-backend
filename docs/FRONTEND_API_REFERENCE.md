@@ -418,26 +418,54 @@ Authorization: Bearer <access_token>
 
 ## 5. Piggyvest-Style Savings & Wealth Module
 
+All core savings operations run on an immutable double-entry ledger with transactional safety and idempotency support (`Idempotency-Key` header or request body field).
+
 ### Products Available:
-1. **Flex Savings:** High-liquidity flexible savings wallet with daily interest accrual and instant free withdrawals.
-2. **SafeLock (Locked Savings):** Lock funds for fixed durations (30, 90, 180, 365 days) for higher guaranteed interest (up to 15% p.a.). Early break subject to a fee/interest forfeiture.
-3. **Target Savings:** Group or solo goal-oriented savings (e.g. Rent, Vacation, Wedding) with automated schedule deductions.
-4. **USDT EasyEarn:** Crypto stablecoin savings earning interest paid daily in USDT.
+1. **Flexi Save (`flexi`):** Flexible savings with instant deposits, free withdrawals back to your Naira wallet, and optional transfers to other savings accounts. Accrues daily interest (10% p.a.).
+2. **Auto Save (`auto`):** Automated recurring savings (daily, weekly, or monthly) with fixed scheduled contributions and manual top-ups/withdrawals.
+3. **Target Savings (`target`):** Goal-oriented savings with target amounts, optional automated recurring deductions, target maturity dates, progress tracking, and lock protection. Early cancellation before target date incurs an acknowledged 2% penalty.
+4. **SafeLock (Locked Savings):** Fixed term vaults (30–365 days).
+5. **USDT EasyEarn:** Crypto stablecoin savings earning interest in USDT.
 
 ---
 
-### Endpoints
+### Endpoints: Flexi Save
 
-#### 1. Flex Savings - Deposit Funds
-- **Method & Path:** `POST /api/v1/savings/flex/deposit`
+#### 1. Get Flexi Save Details
+- **Method & Path:** `GET /api/v1/savings/flexi`
 - **Auth Required:** Yes
+
+**Success Response (`200 OK`):**
+```json
+{
+  "status": "success",
+  "message": "Flexi Save fetched.",
+  "data": {
+    "account": {
+      "id": 1,
+      "product_type": "flexi",
+      "name": "Flexi Save",
+      "balance": "55000.00",
+      "currency": "NGN",
+      "status": "active",
+      "interest_rate_pa": "10.00",
+      "total_interest_earned": "120.45"
+    }
+  }
+}
+```
+
+#### 2. Flexi Save - Deposit Funds
+- **Method & Path:** `POST /api/v1/savings/flexi/deposit`
+- **Auth Required:** Yes
+- **Rate Limit:** 20/min
 
 **Request Body:**
 ```json
 {
   "amount": 20000,
-  "source": "main_wallet",
-  "pin": "1234"
+  "source": "wallet",
+  "idempotency_key": "optional-unique-uuid-or-key"
 }
 ```
 
@@ -445,35 +473,34 @@ Authorization: Bearer <access_token>
 ```json
 {
   "status": "success",
-  "message": "₦20,000 deposited to Flex Savings successfully.",
+  "message": "Deposit posted successfully.",
   "data": {
-    "flex_balance": "55000.00",
-    "interest_rate_pa": 10.5,
-    "accrued_interest": "120.45"
+    "account": {
+      "id": 1,
+      "product_type": "flexi",
+      "balance": "75000.00"
+    },
+    "entry": {
+      "reference": "SAV-DEP-98127391",
+      "type": "deposit",
+      "amount": "20000.00",
+      "status": "posted"
+    }
   }
 }
 ```
 
-**Error Response (`400 Bad Request`):**
-```json
-{
-  "status": "error",
-  "message": "Insufficient balance in your Main Wallet."
-}
-```
-
----
-
-#### 2. Flex Savings - Withdraw Funds
-- **Method & Path:** `POST /api/v1/savings/flex/withdraw`
+#### 3. Flexi Save - Withdraw Funds
+- **Method & Path:** `POST /api/v1/savings/flexi/withdraw`
 - **Auth Required:** Yes
+- **Rate Limit:** 20/min
 
 **Request Body:**
 ```json
 {
   "amount": 10000,
-  "destination": "main_wallet",
-  "pin": "1234"
+  "destination": "wallet",
+  "idempotency_key": "optional-unique-uuid-or-key"
 }
 ```
 
@@ -481,13 +508,108 @@ Authorization: Bearer <access_token>
 ```json
 {
   "status": "success",
-  "message": "₦10,000 moved to Main Wallet.",
+  "message": "Withdrawal posted successfully.",
   "data": {
-    "flex_balance": "45000.00",
-    "main_wallet_balance": "60000.00"
+    "account": {
+      "id": 1,
+      "product_type": "flexi",
+      "balance": "65000.00"
+    },
+    "entry": {
+      "reference": "SAV-WTH-88127311",
+      "type": "withdrawal",
+      "amount": "10000.00"
+    }
   }
 }
 ```
+
+#### 4. Flexi Save - Internal Transfer to Target or Auto Save
+- **Method & Path:** `POST /api/v1/savings/flexi/transfer`
+- **Auth Required:** Yes
+
+**Request Body:**
+```json
+{
+  "destination_account_id": 5,
+  "amount": 5000,
+  "idempotency_key": "optional-unique-key"
+}
+```
+
+---
+
+### Endpoints: Auto Save
+
+#### 1. List Auto Save Accounts
+- **Method & Path:** `GET /api/v1/savings/auto`
+- **Auth Required:** Yes
+
+#### 2. Create Auto Save Plan
+- **Method & Path:** `POST /api/v1/savings/auto`
+- **Auth Required:** Yes
+
+**Request Body:**
+```json
+{
+  "name": "Emergency Fund",
+  "amount": 5000,
+  "frequency": "weekly",
+  "day_of_week": 1,
+  "time_of_day": "08:00",
+  "start_date": "2026-11-01",
+  "target_amount": 200000,
+  "initial_deposit": 10000
+}
+```
+
+#### 3. Pause / Resume / Cancel Auto Save Plan
+- `POST /api/v1/savings/auto/{id}/pause`
+- `POST /api/v1/savings/auto/{id}/resume`
+- `POST /api/v1/savings/auto/{id}/cancel`
+
+#### 4. Manual Contribute & Withdraw
+- `POST /api/v1/savings/auto/{id}/contribute` (`{"amount": 5000}`)
+- `POST /api/v1/savings/auto/{id}/withdraw` (`{"amount": 5000, "destination": "wallet"}`)
+
+---
+
+### Endpoints: Target Savings
+
+#### 1. List / Create Target
+- **Method & Path:** `GET /api/v1/savings/targets`
+- **Method & Path:** `POST /api/v1/savings/targets`
+
+**Request Body:**
+```json
+{
+  "name": "December Trip to Kigali",
+  "target_amount": 300000,
+  "target_date": "2026-12-20",
+  "category": "vacation",
+  "auto_save": true,
+  "frequency": "weekly",
+  "schedule_amount": 25000,
+  "initial_deposit": 50000
+}
+```
+
+#### 2. Target Progress & Early Closure Quote
+- `GET /api/v1/savings/targets/{id}/progress`
+- `GET /api/v1/savings/targets/{id}/closure-quote`
+
+#### 3. Target Contribute, Withdraw (at maturity) & Early Cancel
+- `POST /api/v1/savings/targets/{id}/contribute` (`{"amount": 10000}`)
+- `POST /api/v1/savings/targets/{id}/withdraw` (valid when target reached or date reached)
+- `POST /api/v1/savings/targets/{id}/cancel` (`{"acknowledge_penalty": true, "reason": "Emergency"}`)
+
+---
+
+### Endpoints: Shared Transactions & Transfers
+- `GET /api/v1/savings/transactions` (query params: `product_type`, `type`, `status`, `from`, `to`, `per_page`)
+- `GET /api/v1/savings/transactions/{reference}`
+- `GET /api/v1/savings/transactions/{reference}/status`
+- `POST /api/v1/savings/transfers` (`{"source_account_id": 1, "destination_account_id": 3, "amount": 10000}`)
 
 ---
 

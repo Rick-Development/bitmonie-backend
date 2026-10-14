@@ -82,6 +82,14 @@ class RouteServiceProvider extends ServiceProvider
             return Limit::perMinute(120)->by($request->user()?->id ?: $request->ip());
         });
 
+        // Money-moving savings endpoints: per authenticated user.
+        RateLimiter::for('savings-money', function (Request $request) {
+            return [
+                Limit::perMinute(20)->by('savings:' . ($request->user()?->id ?: $request->ip())),
+                Limit::perHour(200)->by('savings-h:' . ($request->user()?->id ?: $request->ip())),
+            ];
+        });
+
         RateLimiter::for('account-deletion-request', function (Request $request) {
             return [
                 Limit::perMinute(5)->by($request->ip()),

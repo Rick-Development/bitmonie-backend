@@ -432,7 +432,80 @@ class ScrambleApiEnhancerExtension extends OperationExtension
                 'funding_crypto' => 'USDT'
             ],
 
-            // Flex & Lock Savings & EasyEarn
+            // Unified Savings: Flexi, AutoSave, TargetSavings, Transfers
+            '*savings/flexi/deposit*' => [
+                'amount' => 25000.00,
+                'source' => 'wallet',
+                'idempotency_key' => 'flexi-dep-a1b2c3d4'
+            ],
+            '*savings/flexi/withdraw*' => [
+                'amount' => 10000.00,
+                'destination' => 'wallet',
+                'idempotency_key' => 'flexi-wth-e5f6g7h8'
+            ],
+            '*savings/flexi/transfer*' => [
+                'destination_account_id' => 12,
+                'amount' => 5000.00,
+                'idempotency_key' => 'flexi-trf-i9j0k1l2'
+            ],
+            '*savings/auto' => [
+                'name' => 'Rainy Day Fund',
+                'target_amount' => 500000.00,
+                'amount' => 5000.00,
+                'frequency' => 'daily',
+                'time_of_day' => '08:00',
+                'day_of_week' => 1,
+                'day_of_month' => 1,
+                'start_date' => '2026-11-01',
+                'source' => 'wallet',
+                'initial_deposit' => 10000.00,
+                'idempotency_key' => 'auto-create-12345'
+            ],
+            '*savings/auto/*/contribute*' => [
+                'amount' => 5000.00,
+                'source' => 'wallet',
+                'idempotency_key' => 'auto-contrib-98765'
+            ],
+            '*savings/auto/*/withdraw*' => [
+                'amount' => 5000.00,
+                'destination' => 'wallet',
+                'idempotency_key' => 'auto-wth-45678'
+            ],
+            '*savings/targets' => [
+                'name' => 'December Trip to Kigali',
+                'target_amount' => 300000.00,
+                'target_date' => '2026-12-20',
+                'description' => 'Flight & lodging savings',
+                'category' => 'vacation',
+                'auto_save' => true,
+                'frequency' => 'weekly',
+                'schedule_amount' => 25000.00,
+                'day_of_week' => 1,
+                'time_of_day' => '09:00',
+                'initial_deposit' => 50000.00,
+                'idempotency_key' => 'target-create-abcde'
+            ],
+            '*savings/targets/*/contribute*' => [
+                'amount' => 15000.00,
+                'source' => 'wallet',
+                'idempotency_key' => 'target-contrib-12345'
+            ],
+            '*savings/targets/*/withdraw*' => [
+                'amount' => 20000.00,
+                'destination' => 'wallet',
+                'idempotency_key' => 'target-wth-67890'
+            ],
+            '*savings/targets/*/cancel*' => [
+                'acknowledge_penalty' => true,
+                'reason' => 'Emergency expenses',
+                'idempotency_key' => 'target-cancel-99999'
+            ],
+            '*savings/transfers*' => [
+                'source_account_id' => 5,
+                'destination_account_id' => 8,
+                'amount' => 15000.00,
+                'idempotency_key' => 'trf-acc-to-acc-1111'
+            ],
             '*savings/deposit*' => [
                 'currency' => 'NGN',
                 'amount' => 25000.00,
@@ -724,6 +797,77 @@ class ScrambleApiEnhancerExtension extends OperationExtension
                         'postal_code' => '10001',
                         'country' => 'USA'
                     ]
+                ],
+                'type' => 'success'
+            ],
+
+            // Unified Savings (Flexi, AutoSave, TargetSavings)
+            '*savings/flexi*' => [
+                'status' => 'success',
+                'message' => 'Operation successful.',
+                'data' => [
+                    'account' => [
+                        'id' => 1,
+                        'product_type' => 'flexi',
+                        'name' => 'Flexi Save',
+                        'balance' => '75000.00',
+                        'currency' => 'NGN',
+                        'status' => 'active',
+                        'interest_rate_pa' => '10.00',
+                        'total_interest_earned' => '245.50'
+                    ]
+                ],
+                'type' => 'success'
+            ],
+            '*savings/auto*' => [
+                'status' => 'success',
+                'message' => 'Operation successful.',
+                'data' => [
+                    'account' => [
+                        'id' => 2,
+                        'product_type' => 'auto',
+                        'name' => 'Emergency Fund',
+                        'balance' => '50000.00',
+                        'target_amount' => '200000.00',
+                        'status' => 'active',
+                        'schedule' => [
+                            'frequency' => 'monthly',
+                            'amount' => '10000.00',
+                            'next_run_at' => '2026-11-01T08:00:00Z',
+                            'status' => 'active'
+                        ]
+                    ]
+                ],
+                'type' => 'success'
+            ],
+            '*savings/targets*' => [
+                'status' => 'success',
+                'message' => 'Operation successful.',
+                'data' => [
+                    'account' => [
+                        'id' => 3,
+                        'product_type' => 'target',
+                        'name' => 'Vacation in Zanzibar',
+                        'balance' => '150000.00',
+                        'target_amount' => '500000.00',
+                        'target_date' => '2026-12-15',
+                        'status' => 'active',
+                        'progress_percentage' => 30.0,
+                        'is_locked' => true,
+                        'early_closure_fee_rate' => 0.02
+                    ]
+                ],
+                'type' => 'success'
+            ],
+            '*savings/transfers*' => [
+                'status' => 'success',
+                'message' => 'Transfer completed successfully.',
+                'data' => [
+                    'reference' => 'SAV-TRF-66000001',
+                    'amount' => '15000.00',
+                    'source_account_id' => 5,
+                    'destination_account_id' => 8,
+                    'status' => 'posted'
                 ],
                 'type' => 'success'
             ],

@@ -14,7 +14,11 @@ class DispatchAutosavePercentageDeductions
             return;
         }
 
-        if (($transaction->metadata['source'] ?? null) === 'autosave') {
+        if (($transaction->metadata['source'] ?? null) === 'autosave' || ($transaction->metadata['source'] ?? null) === 'savings') {
+            return;
+        }
+
+        if (!\Illuminate\Support\Facades\Schema::hasTable('autosave_plans')) {
             return;
         }
 

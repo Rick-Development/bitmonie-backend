@@ -56,6 +56,14 @@ class SavingsService
 
     protected function processFlexInterest(?int $userId = null): array
     {
+        // Retired: Flexi Save lives in the unified savings ledger and accrues
+        // interest through `savings:flexi-interest` (idempotent per account/day).
+        // The legacy flex_savings table is an archive and must not accrue.
+        return ['count' => 0, 'interest' => '0'];
+    }
+
+    protected function legacyProcessFlexInterest(?int $userId = null): array
+    {
         $today = now()->startOfDay();
         $query = FlexSavings::where('status', true)
             ->where('balance', '>', 0)
@@ -454,13 +462,17 @@ class SavingsService
      */
     public function getUserSavingsPortfolio(int $userId): array
     {
-        $flexBalance = FlexSavings::where('user_id', $userId)->where('status', true)->sum('balance') ?? 0;
+        $sum = fn (string $product, array $statuses) => (string) \App\Models\SavingsAccount::where('user_id', $userId)
+            ->where('product', $product)->whereIn('status', $statuses)->sum('balance');
+
+        $flexBalance = $sum('FLEXI', ['ACTIVE']);
+        $autoBalance = $sum('AUTO', ['ACTIVE', 'CANCELLED']);
         $safeLockBalance = SafeLock::where('user_id', $userId)->where('status', 'active')->sum('amount') ?? 0;
-        $targetBalance = TargetSavings::where('user_id', $userId)->where('status', 'active')->sum('current_amount') ?? 0;
+        $targetBalance = $sum('TARGET', ['ACTIVE', 'PAUSED', 'COMPLETED', 'EXPIRED']);
 
         $totalNgn = bcadd(
-            bcadd((string) $flexBalance, (string) $safeLockBalance, 2),
-            (string) $targetBalance,
+            bcadd(bcadd($flexBalance, $autoBalance, 2), (string) $safeLockBalance, 2),
+            $targetBalance,
             2
         );
 

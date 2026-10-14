@@ -19,7 +19,7 @@ class SystemMaintenanceApi
     public function handle(Request $request, Closure $next)
     {
         $system_maintenance = AdminSystemMaintenance::first();
-        if( $system_maintenance->status == 1){
+        if( $system_maintenance && $system_maintenance->status == 1){
             $data =[
                 'base_url'      => url("/"),
                 'image_path'    => files_asset_path_basename("error-images"),
