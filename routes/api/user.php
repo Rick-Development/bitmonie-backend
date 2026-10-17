@@ -495,6 +495,8 @@ Route::prefix("user")->name("api.user.")->group(function () {
             Route::get('savings/{id}', 'show');
             Route::post('terminate/{id}', 'terminate');
             Route::get('investment/{id}', 'show');
+            Route::get('withdrawal-info/{id}', 'withdrawalInfo');
+            Route::post('withdraw/{id}', 'withdraw');
             Route::post('withdraw-interest/{id}', 'withdrawInterest');
             Route::post('withdraw-principal/{id}', 'withdrawPrincipal');
             Route::post('top-up/{id}', 'topUp');

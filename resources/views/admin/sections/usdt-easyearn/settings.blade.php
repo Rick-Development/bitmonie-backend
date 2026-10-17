@@ -32,10 +32,25 @@
                         @csrf
                         @method('PUT')
                         <div class="row">
-                            <div class="col-xl-12 col-lg-12 form-group">
+                            <div class="col-xl-6 col-lg-6 form-group">
                                 <label>{{ __("Monthly Interest Rate (%)") }}*</label>
                                 <input type="number" step="0.01" name="current_monthly_rate" class="form--control" value="{{ $settings->current_monthly_rate }}" required>
-                                <small class="text--info">{{ __("Enter rate between 5.00 and 10.00") }}</small>
+                                <small class="text--info">{{ __("Standard monthly return rate") }}</small>
+                            </div>
+                            <div class="col-xl-6 col-lg-6 form-group">
+                                <label>{{ __("Base Vault APY (%)") }}*</label>
+                                <input type="number" step="0.01" name="base_apy" class="form--control" value="{{ $settings->base_apy ?? 15.00 }}" required>
+                                <small class="text--info">{{ __("Vault base APY e.g. 15.00") }}</small>
+                            </div>
+                            <div class="col-xl-6 col-lg-6 form-group">
+                                <label>{{ __("PowerBonus Multiplier (X)") }}*</label>
+                                <input type="number" step="0.01" name="power_bonus_multiplier" class="form--control" value="{{ $settings->power_bonus_multiplier ?? 2.00 }}" required>
+                                <small class="text--info">{{ __("PowerBonus multiplier if held to maturity (e.g. 2.00)") }}</small>
+                            </div>
+                            <div class="col-xl-6 col-lg-6 form-group">
+                                <label>{{ __("Early Withdrawal Penalty Fee (%)") }}*</label>
+                                <input type="number" step="0.01" name="early_withdrawal_penalty_percent" class="form--control" value="{{ $settings->early_withdrawal_penalty_percent ?? 5.00 }}" required min="0" max="100">
+                                <small class="text--info">{{ __("Deducted from principal on early withdrawal") }}</small>
                             </div>
                             <div class="col-xl-6 col-lg-6 form-group">
                                 <label>{{ __("Minimum Investment (USDT)") }}*</label>
@@ -46,10 +61,17 @@
                                 <input type="number" step="0.01" name="max_investment" class="form--control" value="{{ $settings->max_investment }}">
                                 <small class="text--info">{{ __("Leave empty for unlimited") }}</small>
                             </div>
-                            <div class="col-xl-12 col-lg-12 form-group">
+                            <div class="col-xl-6 col-lg-6 form-group">
                                 <label>{{ __("Payout Day (1-28)") }}*</label>
                                 <input type="number" name="payout_day" class="form--control" value="{{ $settings->payout_day }}" required min="1" max="28">
-                                <small class="text--info">{{ __("The day of the month when interest is eligible for credit") }}</small>
+                                <small class="text--info">{{ __("Day of month when interest is eligible for credit") }}</small>
+                            </div>
+                            <div class="col-xl-6 col-lg-6 form-group">
+                                <label>{{ __("Early Withdrawal Allowed") }}*</label>
+                                <select name="early_withdrawal_enabled" class="form--control">
+                                    <option value="1" {{ ($settings->early_withdrawal_enabled ?? true) ? 'selected' : '' }}>{{ __("Enabled (Option B)") }}</option>
+                                    <option value="0" {{ !($settings->early_withdrawal_enabled ?? true) ? 'selected' : '' }}>{{ __("Disabled (Strict Lock)") }}</option>
+                                </select>
                             </div>
                             <div class="col-xl-6 col-lg-6 form-group">
                                 <label>{{ __("Status") }}*</label>

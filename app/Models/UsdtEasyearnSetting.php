@@ -16,6 +16,10 @@ class UsdtEasyearnSetting extends Model
         'is_active',
         'payout_day',
         'auto_credit_enabled',
+        'early_withdrawal_enabled',
+        'early_withdrawal_penalty_percent',
+        'base_apy',
+        'power_bonus_multiplier',
     ];
 
     protected $casts = [
@@ -24,6 +28,10 @@ class UsdtEasyearnSetting extends Model
         'max_investment' => 'decimal:8',
         'is_active' => 'boolean',
         'auto_credit_enabled' => 'boolean',
+        'early_withdrawal_enabled' => 'boolean',
+        'early_withdrawal_penalty_percent' => 'decimal:2',
+        'base_apy' => 'decimal:2',
+        'power_bonus_multiplier' => 'decimal:2',
     ];
 
     public $timestamps = false;
@@ -39,6 +47,10 @@ class UsdtEasyearnSetting extends Model
             'is_active' => true,
             'payout_day' => 10,
             'auto_credit_enabled' => false,
+            'early_withdrawal_enabled' => true,
+            'early_withdrawal_penalty_percent' => 5.00,
+            'base_apy' => 15.00,
+            'power_bonus_multiplier' => 2.00,
         ]);
     }
 

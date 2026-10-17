@@ -43,23 +43,32 @@ class UsdtEasyearnController extends Controller
                 }
             }
 
+            $baseApy = (string) ($settings->base_apy ?? 15.00);
+            $powerBonusMultiplier = (string) ($settings->power_bonus_multiplier ?? 2.00);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Product information retrieved successfully',
                 'data' => [
                     'current_monthly_rate' => $settings->current_monthly_rate,
+                    'base_apy' => $baseApy,
+                    'power_bonus_multiplier' => $powerBonusMultiplier,
                     'min_investment' => $settings->min_investment,
                     'max_investment' => $settings->max_investment,
                     'available_balance' => $availableBalance,
                     'is_active' => $settings->is_active,
                     'payout_day' => $settings->payout_day,
                     'duration_months' => 12,
+                    'early_withdrawal_enabled' => (bool) $settings->early_withdrawal_enabled,
+                    'early_withdrawal_penalty_percent' => (string) ($settings->early_withdrawal_penalty_percent ?? '5.00'),
                     'features' => [
                         'auto_compound' => true,
                         'monthly_withdrawal' => true,
                         'fixed_duration' => '12 months',
                         'standard_monthly_rate' => $settings->current_monthly_rate . '%',
-                        'compounding_annual_rate' => '200%',
+                        'base_vault_apy' => $baseApy . '%',
+                        'power_bonus' => "{$powerBonusMultiplier}X at maturity",
+                        'compounding_annual_rate' => "{$baseApy}% APY + {$powerBonusMultiplier}X PowerBonus",
                     ]
                 ]
             ]);
@@ -229,6 +238,101 @@ class UsdtEasyearnController extends Controller
     }
 
     /**
+     * Get withdrawal details (available amount, penalty losses, maturity date)
+     * GET /api/v1/usdt-easyearn/withdrawal-info/{id}
+     */
+    public function withdrawalInfo(Request $request, $id)
+    {
+        try {
+            $user = $request->user();
+            $investment = UsdtEasyearnInvestment::byUser($user->id)->findOrFail($id);
+            $breakdown = $this->usdtearnService->calculateWithdrawalBreakdown($investment);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Withdrawal information retrieved successfully',
+                'data' => array_merge([
+                    'investment_id' => $investment->id,
+                    'principal_amount' => $investment->amount,
+                    'status' => $investment->status,
+                ], $breakdown)
+            ]);
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'error_code' => 'NOT_FOUND',
+                'message' => 'Savings plan not found'
+            ], 404);
+        } catch (Exception $e) {
+            return response()->json([
+                'success' => false,
+                'error_code' => 'SERVER_ERROR',
+                'message' => $e->getMessage()
+            ], 400);
+        }
+    }
+
+    /**
+     * Withdraw from plan (Option B: early withdrawal with penalty or full withdrawal at maturity)
+     * POST /api/v1/usdt-easyearn/withdraw/{id}
+     */
+    public function withdraw(Request $request, $id)
+    {
+        $validator = Validator::make($request->all(), [
+            'amount' => 'nullable|numeric|min:0.00000001',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'error_code' => 'VALIDATION_FAILED',
+                'message' => 'Validation failed',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        try {
+            $user = $request->user();
+            $investment = UsdtEasyearnInvestment::byUser($user->id)->findOrFail($id);
+
+            $requestedAmount = $request->has('amount') && $request->amount !== null
+                ? (float) $request->amount
+                : null;
+
+            $result = $this->usdtearnService->withdraw($investment, $requestedAmount);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Withdrawal completed successfully. USDT has been credited to your wallet.',
+                'data' => $result
+            ]);
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'error_code' => 'NOT_FOUND',
+                'message' => 'Savings plan not found'
+            ], 404);
+        } catch (Exception $e) {
+            $msg = $e->getMessage();
+            $code = 'WITHDRAWAL_FAILED';
+
+            if (str_contains($msg, 'PLAN_LOCKED') || str_contains($msg, 'Early withdrawal is currently locked')) {
+                $code = 'PLAN_LOCKED';
+                $msg = 'Early withdrawal is locked for this plan until maturity.';
+            } elseif (str_contains($msg, 'AMOUNT_EXCEEDS_AVAILABLE') || str_contains($msg, 'exceeds available')) {
+                $code = 'AMOUNT_EXCEEDS_AVAILABLE';
+                $msg = 'The withdrawal amount exceeds your available balance.';
+            }
+
+            return response()->json([
+                'success' => false,
+                'error_code' => $code,
+                'message' => $msg
+            ], 400);
+        }
+    }
+
+    /**
      * Withdraw principal at maturity
      * POST /api/v1/usdt-easyearn/withdraw-principal/{id}
      */
@@ -254,6 +358,7 @@ class UsdtEasyearnController extends Controller
         } catch (Exception $e) {
             return response()->json([
                 'success' => false,
+                'error_code' => 'PLAN_LOCKED',
                 'message' => $e->getMessage()
             ], 400);
         }

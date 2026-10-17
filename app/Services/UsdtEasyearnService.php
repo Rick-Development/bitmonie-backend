@@ -810,57 +810,310 @@ public function withdrawInterest(
     public function getInvestmentSummary(
         UsdtEasyearnInvestment $investment
     ): array {
+        $settings = UsdtEasyearnSetting::getSettings();
+        $isMatured = $investment->isMatured();
+        $baseApy = (string) ($settings->base_apy ?? 15.00);
+        $powerBonusMultiplier = (string) ($settings->power_bonus_multiplier ?? 2.00);
+        $powerBonusApplies = (bool) $investment->auto_compound;
+
+        $effectiveTotalInterest = $investment->getEffectiveTotalInterestEarned();
+        $uncreditedAccruedInterest = $investment->calculateAccruedInterest();
+
+        $rateLabel = $powerBonusApplies
+            ? "{$baseApy}% APY + {$powerBonusMultiplier}X PowerBonus at maturity"
+            : $investment->interest_rate . '% Monthly';
+
+        $withdrawalInfo = $this->calculateWithdrawalBreakdown($investment);
+
         return [
             'id' => $investment->id,
             'amount' => $investment->amount,
             'interest_rate' => $investment->interest_rate,
+            'base_apy' => $baseApy,
+            'power_bonus_applies' => $powerBonusApplies,
+            'power_bonus_multiplier' => $powerBonusMultiplier,
             'auto_compound' => $investment->auto_compound,
+            'rate_label' => $rateLabel,
 
-            'rate_label' =>
-                $investment->auto_compound
-                    ? '200% Annual Compounding'
-                    : $investment->interest_rate . '% Monthly',
-
-            'start_date' =>
-                $investment->start_date->format('Y-m-d'),
-
-            'end_date' =>
-                $investment->end_date->format('Y-m-d'),
-
+            'start_date' => $investment->start_date ? $investment->start_date->format('Y-m-d') : null,
+            'end_date' => $investment->end_date ? $investment->end_date->format('Y-m-d') : null,
             'status' => $investment->status,
 
-            'total_interest_earned' =>
-                $investment->total_interest_earned,
+            'total_interest_earned' => $effectiveTotalInterest,
+            'accrued_interest' => $effectiveTotalInterest,
+            'uncredited_accrued_interest' => $uncreditedAccruedInterest,
+            'credited_interest' => (string) ($investment->total_interest_earned ?? '0'),
 
-            'withdrawable_interest' =>
-                $investment->getTotalWithdrawableInterest(),
+            'withdrawable_interest' => $investment->getTotalWithdrawableInterest(),
+            'withdrawable_at_maturity' => $investment->getTotalWithdrawableAtMaturity(),
+            'daily_display' => $this->calculateDailyDisplay($investment),
+            'months_completed' => $investment->getMonthsCompleted(),
+            'days_remaining' => $investment->getDaysRemaining(),
+            'is_matured' => $isMatured,
 
-            'withdrawable_at_maturity' =>
-                $investment->getTotalWithdrawableAtMaturity(),
+            'can_withdraw_interest' => $investment->canWithdrawInterest(),
+            'can_withdraw_principal' => $investment->canWithdrawPrincipal(),
 
-            'daily_display' =>
-                $this->calculateDailyDisplay($investment),
-
-            'months_completed' =>
-                $investment->getMonthsCompleted(),
-
-            'days_remaining' =>
-                $investment->getDaysRemaining(),
-
-            'is_matured' =>
-                $investment->isMatured(),
-
-            'can_withdraw_interest' =>
-                $investment->canWithdrawInterest(),
-
-            'can_withdraw_principal' =>
-                $investment->canWithdrawPrincipal(),
+            'withdrawal' => $withdrawalInfo,
         ];
     }
 
  
 
-public function terminate(
+    /**
+     * Calculate withdrawal breakdown and losses (Option B: early withdrawal penalties / full maturity).
+     */
+    public function calculateWithdrawalBreakdown(UsdtEasyearnInvestment $investment): array
+    {
+        $settings = UsdtEasyearnSetting::getSettings();
+        $isMatured = $investment->isMatured();
+        $earlyWithdrawalEnabled = (bool) $settings->early_withdrawal_enabled;
+        $penaltyPercent = (string) ($settings->early_withdrawal_penalty_percent ?? '5.00');
+
+        $currentAmount = (string) $investment->amount;
+        $totalEarned = $investment->getEffectiveTotalInterestEarned();
+
+        if ($investment->status !== 'active') {
+            return [
+                'can_withdraw' => false,
+                'available_amount_now' => '0.00000000',
+                'principal_available_date' => $investment->end_date ? $investment->end_date->format('Y-m-d') : null,
+                'is_early_withdrawal' => false,
+                'forfeited_interest' => '0.00000000',
+                'forfeited_power_bonus' => false,
+                'penalty_percent' => '0.00',
+                'penalty_fee_amount' => '0.00000000',
+                'net_payout_amount' => '0.00000000',
+                'reason' => "Plan is {$investment->status}",
+            ];
+        }
+
+        if ($isMatured) {
+            $withdrawableAmount = $investment->getTotalWithdrawableAtMaturity();
+            return [
+                'can_withdraw' => true,
+                'available_amount_now' => $withdrawableAmount,
+                'principal_available_date' => Carbon::now()->format('Y-m-d'),
+                'is_early_withdrawal' => false,
+                'forfeited_interest' => '0.00000000',
+                'forfeited_power_bonus' => false,
+                'penalty_percent' => '0.00',
+                'penalty_fee_amount' => '0.00000000',
+                'net_payout_amount' => $withdrawableAmount,
+                'reason' => null,
+            ];
+        }
+
+        // Early withdrawal before maturity
+        if (!$earlyWithdrawalEnabled) {
+            return [
+                'can_withdraw' => false,
+                'available_amount_now' => '0.00000000',
+                'principal_available_date' => $investment->end_date ? $investment->end_date->format('Y-m-d') : null,
+                'is_early_withdrawal' => true,
+                'forfeited_interest' => $totalEarned,
+                'forfeited_power_bonus' => (bool) $investment->auto_compound,
+                'penalty_percent' => $penaltyPercent,
+                'penalty_fee_amount' => '0.00000000',
+                'net_payout_amount' => '0.00000000',
+                'reason' => 'Early withdrawal is currently locked by admin settings.',
+            ];
+        }
+
+        // Option B: Early withdrawal loses interest, loses 2X PowerBonus, and incurs penalty fee
+        $penaltyRate = bcdiv($penaltyPercent, '100', 8);
+        $penaltyFee = bcmul($currentAmount, $penaltyRate, 8);
+        $netPayout = bcsub($currentAmount, $penaltyFee, 8);
+        if (bccomp($netPayout, '0', 8) < 0) {
+            $netPayout = '0.00000000';
+        }
+
+        return [
+            'can_withdraw' => true,
+            'available_amount_now' => $currentAmount,
+            'principal_available_date' => $investment->end_date ? $investment->end_date->format('Y-m-d') : null,
+            'is_early_withdrawal' => true,
+            'forfeited_interest' => $totalEarned,
+            'forfeited_power_bonus' => (bool) $investment->auto_compound,
+            'penalty_percent' => $penaltyPercent,
+            'penalty_fee_amount' => $penaltyFee,
+            'net_payout_amount' => $netPayout,
+            'reason' => null,
+        ];
+    }
+
+    /**
+     * Withdraw from an EasyEarn plan (supporting partial & full withdrawal, following Option B).
+     */
+    public function withdraw(
+        UsdtEasyearnInvestment $investment,
+        ?float $requestedAmount = null
+    ): array {
+        if ($investment->status !== 'active') {
+            throw new Exception('Investment is not active.');
+        }
+
+        $user = $investment->user;
+        if (!$user || !$user->quidax_id) {
+            throw new Exception('Quidax account not found. Please complete your account setup.');
+        }
+
+        $breakdown = $this->calculateWithdrawalBreakdown($investment);
+        if (!$breakdown['can_withdraw']) {
+            throw new Exception($breakdown['reason'] ?? 'PLAN_LOCKED');
+        }
+
+        $currentPrincipal = (string) $investment->amount;
+        $isFullWithdrawal = false;
+
+        if ($requestedAmount === null || bccomp((string) $requestedAmount, $currentPrincipal, 8) >= 0) {
+            $isFullWithdrawal = true;
+            $amountToWithdraw = $currentPrincipal;
+        } else {
+            if ($requestedAmount <= 0) {
+                throw new Exception('Withdrawal amount must be greater than zero.');
+            }
+            if (bccomp((string) $requestedAmount, $currentPrincipal, 8) > 0) {
+                throw new Exception('AMOUNT_EXCEEDS_AVAILABLE');
+            }
+            $amountToWithdraw = (string) $requestedAmount;
+        }
+
+        $isMatured = $investment->isMatured();
+        $penaltyPercent = (string) ($breakdown['penalty_percent'] ?? '0.00');
+        $penaltyFee = '0.00000000';
+        $forfeitedInterest = '0.00000000';
+
+        if (!$isMatured) {
+            // Early withdrawal penalty
+            $penaltyRate = bcdiv($penaltyPercent, '100', 8);
+            $penaltyFee = bcmul($amountToWithdraw, $penaltyRate, 8);
+            if ($isFullWithdrawal) {
+                $forfeitedInterest = $investment->getEffectiveTotalInterestEarned();
+            }
+        }
+
+        $netPayout = bcsub($amountToWithdraw, $penaltyFee, 8);
+        if (bccomp($netPayout, '0', 8) <= 0) {
+            throw new Exception('Net withdrawal amount after penalty must be greater than zero.');
+        }
+
+        return DB::transaction(function () use (
+            $investment,
+            $user,
+            $amountToWithdraw,
+            $penaltyFee,
+            $netPayout,
+            $forfeitedInterest,
+            $isFullWithdrawal,
+            $isMatured
+        ) {
+            $easyearnWallet = $this->getOrCreateEasyearnWallet($user);
+            $quidaxService = new QuidaxService();
+            $uniqueRef = 'usdteasyearn:withdraw:' . $investment->id . ':' . Str::uuid();
+
+            // 1. Send net payout USDT to user's Quidax account
+            try {
+                $fundResponse = $quidaxService->fundSubAccount(
+                    $user->quidax_id,
+                    $netPayout,
+                    'usdt',
+                    $uniqueRef,
+                    "EasyEarn withdrawal - Plan #{$investment->id}"
+                );
+
+                if (
+                    !is_array($fundResponse)
+                    || ($fundResponse['status'] ?? null) !== 'success'
+                    || !is_array($fundResponse['data'] ?? null)
+                    || empty($fundResponse['data']['id'])
+                ) {
+                    Log::channel('easyearn_usdt')->error('USDT EasyEarn Withdrawal Payout Failed', [
+                        'user_id' => $user->id,
+                        'investment_id' => $investment->id,
+                        'net_payout' => $netPayout,
+                        'response' => $fundResponse,
+                    ]);
+
+                    throw new Exception('Failed to transfer USDT to wallet. Please try again.');
+                }
+            } catch (Exception $e) {
+                Log::channel('easyearn_usdt')->error('USDT EasyEarn Payout Error', [
+                    'user_id' => $user->id,
+                    'investment_id' => $investment->id,
+                    'error' => $e->getMessage(),
+                ]);
+                throw new Exception('Failed to credit USDT withdrawal: ' . $e->getMessage());
+            }
+
+            // 2. Unlock/reduce locked balance in EasyEarn wallet
+            $easyearnWallet->unlockAmount($amountToWithdraw);
+
+            // 3. Record in ledger
+            try {
+                $trx_id = generateTrxString('transactions', 'trx_id', 'EEW-', 14);
+                \App\Models\Transaction::create([
+                    'user_type' => 'USER',
+                    'user_id' => $user->id,
+                    'type' => \App\Constants\PaymentGatewayConst::TYPEMONEYOUT,
+                    'trx_id' => $trx_id,
+                    'request_amount' => $amountToWithdraw,
+                    'payable' => $amountToWithdraw,
+                    'available_balance' => $easyearnWallet->balance,
+                    'remark' => "EasyEarn withdrawal - Plan #{$investment->id}",
+                    'details' => [
+                        'investment_id' => $investment->id,
+                        'penalty_fee' => $penaltyFee,
+                        'net_payout' => $netPayout,
+                        'forfeited_interest' => $forfeitedInterest,
+                        'quidax_ref' => $uniqueRef,
+                        'is_early' => !$isMatured,
+                    ],
+                    'status' => \App\Constants\PaymentGatewayConst::STATUSSUCCESS,
+                    'attribute' => \App\Constants\PaymentGatewayConst::RECEIVED,
+                    'created_at' => now(),
+                ]);
+            } catch (\Throwable $e) {
+                Log::warning('EasyEarn withdrawal transaction log fallback', ['error' => $e->getMessage()]);
+            }
+
+            // 4. Update investment record
+            if ($isFullWithdrawal) {
+                $newStatus = $isMatured ? 'completed' : 'terminated';
+                $investment->update([
+                    'amount' => '0.00000000',
+                    'status' => $newStatus,
+                    'total_interest_earned' => $isMatured ? $investment->total_interest_earned : '0.00000000',
+                ]);
+            } else {
+                $remainingAmount = bcsub((string) $investment->amount, $amountToWithdraw, 8);
+                $investment->update([
+                    'amount' => $remainingAmount,
+                ]);
+            }
+
+            Log::channel('easyearn_usdt')->info('USDT EasyEarn Withdrawal Processed', [
+                'investment_id' => $investment->id,
+                'user_id' => $user->id,
+                'amount_withdrawn' => $amountToWithdraw,
+                'penalty_fee' => $penaltyFee,
+                'net_payout' => $netPayout,
+                'is_full' => $isFullWithdrawal,
+                'status' => $investment->status,
+            ]);
+
+            return [
+                'investment' => $this->getInvestmentSummary($investment->fresh()),
+                'withdrawn_amount' => $amountToWithdraw,
+                'penalty_fee' => $penaltyFee,
+                'net_payout' => $netPayout,
+                'forfeited_interest' => $forfeitedInterest,
+                'is_full_withdrawal' => $isFullWithdrawal,
+            ];
+        });
+    }
+
+    public function terminate(
     UsdtEasyearnInvestment $investment
 ): UsdtEasyearnInvestment {
     if ($investment->status !== 'active') {

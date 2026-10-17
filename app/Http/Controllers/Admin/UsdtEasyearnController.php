@@ -147,12 +147,16 @@ class UsdtEasyearnController extends Controller
     public function updateSettings(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'current_monthly_rate' => 'required|numeric|min:5|max:10',
+            'current_monthly_rate' => 'required|numeric|min:1|max:50',
+            'base_apy' => 'nullable|numeric|min:1|max:100',
+            'power_bonus_multiplier' => 'nullable|numeric|min:1|max:10',
             'min_investment' => 'required|numeric|min:1',
             'max_investment' => 'nullable|numeric|min:1',
             'payout_day' => 'required|integer|min:1|max:28',
             'is_active' => 'boolean',
             'auto_credit_enabled' => 'boolean',
+            'early_withdrawal_enabled' => 'boolean',
+            'early_withdrawal_penalty_percent' => 'required|numeric|min:0|max:100',
         ]);
 
         if ($validator->fails()) {
@@ -160,15 +164,43 @@ class UsdtEasyearnController extends Controller
         }
 
         try {
+            $admin = auth()->guard('admin')->user();
             $settings = UsdtEasyearnSetting::getSettings();
-            $settings->update($request->only([
+            $oldValues = $settings->toArray();
+
+            $updateData = $request->only([
                 'current_monthly_rate',
+                'base_apy',
+                'power_bonus_multiplier',
                 'min_investment',
                 'max_investment',
                 'payout_day',
                 'is_active',
                 'auto_credit_enabled',
-            ]));
+                'early_withdrawal_enabled',
+                'early_withdrawal_penalty_percent',
+            ]);
+
+            $settings->update($updateData);
+
+            \Illuminate\Support\Facades\Log::channel('easyearn_usdt')->info('Admin updated USDT EasyEarn settings', [
+                'admin_id' => $admin?->id,
+                'admin_name' => $admin?->name ?? 'Admin',
+                'old' => $oldValues,
+                'new' => $updateData,
+            ]);
+
+            try {
+                if ($admin) {
+                    \App\Models\Admin\AdminNotification::create([
+                        'admin_id' => $admin->id,
+                        'type' => 'USDT_EASYEARN_SETTINGS_UPDATE',
+                        'message' => "USDT EasyEarn settings updated by {$admin->name}: monthly rate={$settings->current_monthly_rate}%, early_withdrawal=" . ($settings->early_withdrawal_enabled ? 'enabled' : 'disabled') . ", penalty={$settings->early_withdrawal_penalty_percent}%",
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                // Ignore notification table issues
+            }
 
             return back()->with(['success' => ['Settings updated successfully']]);
         } catch (Exception $e) {

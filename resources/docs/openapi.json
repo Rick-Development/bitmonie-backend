@@ -19146,6 +19146,427 @@
                     }
                 }
             }
+        },
+        "/api/v1/savings/products": {
+            "get": {
+                "tags": [
+                    "Savings - Products"
+                ],
+                "summary": "List all savings products with balances and allowed actions for Quick Save, Transfer, and Withdraw",
+                "description": "Returns each user savings product (Flexi Save, AutoSave, Target Savings, SafeLock, USDT EasyEarn) with balance, interest earned, and actionable permissions with limits/reasons.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Savings products fetched successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Savings products retrieved successfully."
+                                        },
+                                        "type": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "products": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "id": {
+                                                                "type": "integer",
+                                                                "nullable": true,
+                                                                "example": 1
+                                                            },
+                                                            "product_key": {
+                                                                "type": "string",
+                                                                "example": "FLEXI"
+                                                            },
+                                                            "name": {
+                                                                "type": "string",
+                                                                "example": "Flexi Save"
+                                                            },
+                                                            "type": {
+                                                                "type": "string",
+                                                                "example": "flexible"
+                                                            },
+                                                            "currency": {
+                                                                "type": "string",
+                                                                "example": "NGN"
+                                                            },
+                                                            "balance": {
+                                                                "type": "string",
+                                                                "example": "850000.00"
+                                                            },
+                                                            "available_balance": {
+                                                                "type": "string",
+                                                                "example": "850000.00"
+                                                            },
+                                                            "interest_earned": {
+                                                                "type": "string",
+                                                                "example": "14520.50"
+                                                            },
+                                                            "status": {
+                                                                "type": "string",
+                                                                "example": "ACTIVE"
+                                                            },
+                                                            "actions": {
+                                                                "type": "object",
+                                                                "properties": {
+                                                                    "save": {
+                                                                        "type": "object",
+                                                                        "properties": {
+                                                                            "allowed": {
+                                                                                "type": "boolean",
+                                                                                "example": true
+                                                                            },
+                                                                            "min_amount": {
+                                                                                "type": "string",
+                                                                                "example": "100.00"
+                                                                            },
+                                                                            "max_amount": {
+                                                                                "type": "string",
+                                                                                "example": "5000000.00"
+                                                                            },
+                                                                            "reason": {
+                                                                                "type": "string",
+                                                                                "nullable": true,
+                                                                                "example": null
+                                                                            },
+                                                                            "available_date": {
+                                                                                "type": "string",
+                                                                                "nullable": true,
+                                                                                "example": null
+                                                                            }
+                                                                        }
+                                                                    },
+                                                                    "withdraw": {
+                                                                        "type": "object",
+                                                                        "properties": {
+                                                                            "allowed": {
+                                                                                "type": "boolean",
+                                                                                "example": true
+                                                                            },
+                                                                            "min_amount": {
+                                                                                "type": "string",
+                                                                                "example": "100.00"
+                                                                            },
+                                                                            "max_amount": {
+                                                                                "type": "string",
+                                                                                "example": "850000.00"
+                                                                            },
+                                                                            "reason": {
+                                                                                "type": "string",
+                                                                                "nullable": true,
+                                                                                "example": null
+                                                                            },
+                                                                            "available_date": {
+                                                                                "type": "string",
+                                                                                "nullable": true,
+                                                                                "example": null
+                                                                            }
+                                                                        }
+                                                                    },
+                                                                    "transfer": {
+                                                                        "type": "object",
+                                                                        "properties": {
+                                                                            "allowed": {
+                                                                                "type": "boolean",
+                                                                                "example": true
+                                                                            },
+                                                                            "min_amount": {
+                                                                                "type": "string",
+                                                                                "example": "100.00"
+                                                                            },
+                                                                            "max_amount": {
+                                                                                "type": "string",
+                                                                                "example": "850000.00"
+                                                                            },
+                                                                            "reason": {
+                                                                                "type": "string",
+                                                                                "nullable": true,
+                                                                                "example": null
+                                                                            },
+                                                                            "available_date": {
+                                                                                "type": "string",
+                                                                                "nullable": true,
+                                                                                "example": null
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/savings/summary": {
+            "get": {
+                "tags": [
+                    "Savings - Products"
+                ],
+                "summary": "Get savings products summary with balances and allowed actions",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Summary retrieved successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/paths/~1api~1v1~1savings~1products/get/responses/200/content/application~1json/schema"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/usdt-easyearn/withdrawal-info/{id}": {
+            "get": {
+                "tags": [
+                    "Savings & Vaults"
+                ],
+                "summary": "Get USDT EasyEarn Withdrawal Details and Losses (Option B)",
+                "description": "Returns available withdrawal amount, maturity date, early withdrawal status, and breakdown of lost interest, PowerBonus, and penalty fees.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "description": "EasyEarn Investment Plan ID",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Withdrawal info retrieved successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Withdrawal information retrieved successfully"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "investment_id": {
+                                                    "type": "integer",
+                                                    "example": 9
+                                                },
+                                                "principal_amount": {
+                                                    "type": "string",
+                                                    "example": "1000.00000000"
+                                                },
+                                                "status": {
+                                                    "type": "string",
+                                                    "example": "active"
+                                                },
+                                                "can_withdraw": {
+                                                    "type": "boolean",
+                                                    "example": true
+                                                },
+                                                "available_amount_now": {
+                                                    "type": "string",
+                                                    "example": "1000.00000000"
+                                                },
+                                                "principal_available_date": {
+                                                    "type": "string",
+                                                    "example": "2027-09-24"
+                                                },
+                                                "is_early_withdrawal": {
+                                                    "type": "boolean",
+                                                    "example": true
+                                                },
+                                                "forfeited_interest": {
+                                                    "type": "string",
+                                                    "example": "76.66666659"
+                                                },
+                                                "forfeited_power_bonus": {
+                                                    "type": "boolean",
+                                                    "example": true
+                                                },
+                                                "penalty_percent": {
+                                                    "type": "string",
+                                                    "example": "5.00"
+                                                },
+                                                "penalty_fee_amount": {
+                                                    "type": "string",
+                                                    "example": "50.00000000"
+                                                },
+                                                "net_payout_amount": {
+                                                    "type": "string",
+                                                    "example": "950.00000000"
+                                                },
+                                                "reason": {
+                                                    "type": "string",
+                                                    "nullable": true,
+                                                    "example": null
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Savings plan not found"
+                    }
+                }
+            }
+        },
+        "/api/v1/usdt-easyearn/withdraw/{id}": {
+            "post": {
+                "tags": [
+                    "Savings & Vaults"
+                ],
+                "summary": "Withdraw from USDT EasyEarn Plan (Option B)",
+                "description": "Executes partial or full withdrawal from a USDT EasyEarn plan according to confirmed Option B rules. Credits net USDT back to user wallet via Quidax and logs in transactions ledger.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "description": "EasyEarn Investment Plan ID",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "amount": {
+                                        "type": "number",
+                                        "description": "Partial amount to withdraw. Omit or pass full principal for complete withdrawal.",
+                                        "example": 500
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Withdrawal completed successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Withdrawal completed successfully. USDT has been credited to your wallet."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "withdrawn_amount": {
+                                                    "type": "string",
+                                                    "example": "1000.00000000"
+                                                },
+                                                "penalty_fee": {
+                                                    "type": "string",
+                                                    "example": "50.00000000"
+                                                },
+                                                "net_payout": {
+                                                    "type": "string",
+                                                    "example": "950.00000000"
+                                                },
+                                                "forfeited_interest": {
+                                                    "type": "string",
+                                                    "example": "76.66666659"
+                                                },
+                                                "is_full_withdrawal": {
+                                                    "type": "boolean",
+                                                    "example": true
+                                                },
+                                                "investment": {
+                                                    "type": "object"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Business validation error (e.g. PLAN_LOCKED, AMOUNT_EXCEEDS_AVAILABLE)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": false
+                                        },
+                                        "error_code": {
+                                            "type": "string",
+                                            "example": "AMOUNT_EXCEEDS_AVAILABLE"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "The withdrawal amount exceeds your available balance."
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

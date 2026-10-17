@@ -71,6 +71,34 @@ class UsdtEasyearnInvestment extends Model
     }
 
     /**
+     * Calculate uncredited accrued interest earned so far since last credit date or start date.
+     */
+    public function calculateAccruedInterest(): string
+    {
+        if ($this->status !== 'active') {
+            return '0.00000000';
+        }
+
+        $days = $this->dailyCreditDays();
+        if ($days <= 0) {
+            return '0.00000000';
+        }
+
+        return $this->calculateDailyInterest($days);
+    }
+
+    /**
+     * Get real-time cumulative interest earned (credited + pending uncredited daily accrual).
+     */
+    public function getEffectiveTotalInterestEarned(): string
+    {
+        $credited = (string) ($this->total_interest_earned ?? '0');
+        $uncredited = $this->calculateAccruedInterest();
+
+        return bcadd($credited, $uncredited, 8);
+    }
+
+    /**
      * Check if user can withdraw interest
      */
     public function canWithdrawInterest()
@@ -78,19 +106,27 @@ class UsdtEasyearnInvestment extends Model
         // Can only withdraw if:
         // 1. Investment is active
         // 2. Auto-compound is disabled
-        // 3. Has accumulated interest
+        // 3. Has accumulated interest (either credited or live accrued)
         return $this->status === 'active' 
             && !$this->auto_compound 
-            && bccomp($this->total_interest_earned, 0, 8) > 0;
+            && bccomp($this->getEffectiveTotalInterestEarned(), 0, 8) > 0;
     }
 
     /**
-     * Check if user can withdraw principal
+     * Check if user can withdraw principal (Option B allows early withdrawal with penalty or at maturity)
      */
     public function canWithdrawPrincipal()
     {
-        // Can only withdraw principal if investment has matured
-        return $this->isMatured();
+        $settings = UsdtEasyearnSetting::getSettings();
+        if ($this->status !== 'active') {
+            return false;
+        }
+
+        if ($this->isMatured()) {
+            return true;
+        }
+
+        return (bool) $settings->early_withdrawal_enabled;
     }
 
     /**
@@ -101,24 +137,21 @@ class UsdtEasyearnInvestment extends Model
         if ($this->auto_compound) {
             return '0.00000000';
         }
-        return $this->total_interest_earned;
+        return $this->getEffectiveTotalInterestEarned();
     }
 
     /**
      * Get total withdrawable amount at maturity
      */
-   public function getTotalWithdrawableAtMaturity()
-{
-    if ($this->auto_compound) {
-        // amount already includes compounded interest
+    public function getTotalWithdrawableAtMaturity()
+    {
+        if ($this->auto_compound) {
+            // amount already includes compounded interest
+            return $this->amount;
+        }
+
         return $this->amount;
     }
-
-    // non-compound: principal only (interest withdrawn separately)
-    // If you want to pay any leftover interest too:
-    // return bcadd($this->amount, $this->total_interest_earned, 8);
-    return $this->amount;
-}
 
     /**
      * Check if investment has matured

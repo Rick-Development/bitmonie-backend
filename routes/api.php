@@ -85,6 +85,10 @@ Route::middleware('auth:api')->prefix('v1/savings')->group(function () {
         });
     });
 
+    // Savings products list & summary (balances & allowed actions for Quick Save, Transfer, Withdraw)
+    Route::get('products', [\App\Http\Controllers\Api\Savings\SavingsProductsController::class, 'index']);
+    Route::get('summary', [\App\Http\Controllers\Api\Savings\SavingsProductsController::class, 'index']);
+
     // Shared transaction lookups + internal transfers
     Route::get('transactions', [\App\Http\Controllers\Api\Savings\SavingsTransactionController::class, 'index']);
     Route::get('transactions/{reference}', [\App\Http\Controllers\Api\Savings\SavingsTransactionController::class, 'show']);
@@ -231,6 +235,8 @@ Route::middleware(['auth:api', 'verification.guard.api'])->prefix('v1/usdt-easye
     Route::post('save', [\App\Http\Controllers\Api\V1\User\UsdtEasyearnController::class, 'invest']);
     Route::get('investment/{id}', [\App\Http\Controllers\Api\V1\User\UsdtEasyearnController::class, 'show']);
     Route::get('savings/{id}', [\App\Http\Controllers\Api\V1\User\UsdtEasyearnController::class, 'show']);
+    Route::get('withdrawal-info/{id}', [\App\Http\Controllers\Api\V1\User\UsdtEasyearnController::class, 'withdrawalInfo']);
+    Route::post('withdraw/{id}', [\App\Http\Controllers\Api\V1\User\UsdtEasyearnController::class, 'withdraw']);
     Route::post('withdraw-interest/{id}', [\App\Http\Controllers\Api\V1\User\UsdtEasyearnController::class, 'withdrawInterest']);
     Route::post('withdraw-principal/{id}', [\App\Http\Controllers\Api\V1\User\UsdtEasyearnController::class, 'withdrawPrincipal']);
     Route::post('top-up/{id}', [\App\Http\Controllers\Api\V1\User\UsdtEasyearnController::class, 'topUp']);
