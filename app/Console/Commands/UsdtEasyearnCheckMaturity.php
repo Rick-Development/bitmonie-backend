@@ -21,7 +21,15 @@ class UsdtEasyearnCheckMaturity extends Command
      *
      * @var string
      */
-    protected $description = 'Check for matured USDT EasyEarn investments and notify users';
+    protected $description = 'Check for matured USDT EasyEarn investments, credit PowerBonus, and notify users';
+
+    protected $easyearnService;
+
+    public function __construct(\App\Services\UsdtEasyearnService $easyearnService)
+    {
+        parent::__construct();
+        $this->easyearnService = $easyearnService;
+    }
 
     /**
      * Execute the console command.
@@ -44,20 +52,23 @@ class UsdtEasyearnCheckMaturity extends Command
 
         foreach ($maturedInvestments as $investment) {
             try {
-                // Send notification to user
-                // Note: Notification class will be created separately
-                // $investment->user->notify(new \App\Notifications\UsdtEasyearnInvestmentMatured($investment));
+                // If auto_compound investment has not received PowerBonus yet, credit it
+                if ($investment->auto_compound && $investment->power_bonus_credited_at === null) {
+                    $result = $this->easyearnService->processMaturity($investment);
+                    $this->info("Processed maturity PowerBonus for investment #{$investment->id}: {$result['message']}");
+                }
 
-                $this->info("Notified user {$investment->user->email} about matured investment #{$investment->id}");
+                $this->info("Matured investment #{$investment->id} processed for user {$investment->user->email}");
                 
                 Log::info('USDT EasyEarn Investment Matured', [
                     'investment_id' => $investment->id,
                     'user_id' => $investment->user_id,
-                    'amount' => $investment->amount
+                    'amount' => $investment->amount,
+                    'power_bonus_amount' => $investment->power_bonus_amount,
                 ]);
             } catch (\Exception $e) {
-                $this->error("Failed to notify user for investment #{$investment->id}: {$e->getMessage()}");
-                Log::error("Failed to notify matured investment", [
+                $this->error("Failed to process matured investment #{$investment->id}: {$e->getMessage()}");
+                Log::error("Failed to process matured investment", [
                     'investment_id' => $investment->id,
                     'error' => $e->getMessage()
                 ]);

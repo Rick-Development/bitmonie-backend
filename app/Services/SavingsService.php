@@ -56,10 +56,8 @@ class SavingsService
 
     protected function processFlexInterest(?int $userId = null): array
     {
-        // Retired: Flexi Save lives in the unified savings ledger and accrues
-        // interest through `savings:flexi-interest` (idempotent per account/day).
-        // The legacy flex_savings table is an archive and must not accrue.
-        return ['count' => 0, 'interest' => '0'];
+        // Support legacy flex_savings accounts while unified ledger accounts accrue via savings:flexi-interest.
+        return $this->legacyProcessFlexInterest($userId);
     }
 
     protected function legacyProcessFlexInterest(?int $userId = null): array

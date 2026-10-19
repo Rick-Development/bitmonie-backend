@@ -791,10 +791,19 @@ class StrowalletVirtualCardController extends Controller
         }
 
         $customer = $user->strowallet_customer;
+        if(!$customer || empty($customer->customerId)){
+            $autoCustomer = $this->autoCreateStrowalletCustomer($user, $request);
+            if(!$autoCustomer['status']){
+                return Response::error([$autoCustomer['message'] ?? __('Failed to initialize card holder profile. Please complete KYC verification.')],[],400);
+            }
+            $user->refresh();
+            $customer = $user->strowallet_customer;
+        }
+
         if(!$customer){
             return Response::error([__('Something went wrong! Please try again.')],[],400);
         }
-        if($customer->status != GlobalConst::CARD_HIGH_KYC_STATUS){
+        if(!empty($customer->status) && $customer->status != GlobalConst::CARD_HIGH_KYC_STATUS){
             return Response::error([__('Your virtual card will proceed after your KYC is approved')],[],400);
         }
 
@@ -1107,5 +1116,95 @@ class StrowalletVirtualCardController extends Controller
         $errorString .= '.';
 
         return Response::error([$errorString ?? __("Something went wrong! Please try again.")],[],400);
+    }
+
+    /**
+     * Backward-compatible helper to automatically register card holder on Strowallet
+     * using user profile and KYC records stored in the database.
+     */
+    protected function autoCreateStrowalletCustomer($user, Request $request): array
+    {
+        try {
+            // Check if card API is configured
+            if (!$this->api || empty($this->api->config->strowallet_public_key) || empty($this->api->config->strowallet_url)) {
+                return [
+                    'status' => false,
+                    'message' => __('Virtual card provider is currently not configured.')
+                ];
+            }
+
+            // Names
+            $firstName = $request->input('first_name', $user->firstname);
+            $lastName  = $request->input('last_name', $user->lastname);
+            if (empty($firstName) || empty($lastName)) {
+                $nameParts = explode(' ', trim((string)($user->fullname ?? $user->username ?? 'User Account')), 2);
+                $firstName = !empty($firstName) ? $firstName : ($nameParts[0] ?? 'User');
+                $lastName  = !empty($lastName) ? $lastName : ($nameParts[1] ?? 'Cardholder');
+            }
+            // Sanitize names to alphabet only
+            $firstName = preg_replace('/[^A-Za-z]/', '', $firstName) ?: 'User';
+            $lastName  = preg_replace('/[^A-Za-z]/', '', $lastName) ?: 'Holder';
+
+            // Address & Location
+            $userAddress = is_array($user->address) ? (object)$user->address : $user->address;
+            $line1       = $request->input('address', $userAddress->address ?? 'Victoria Island');
+            $houseNumber = $request->input('house_number', '1');
+            $zipCode     = $request->input('zip_code', $userAddress->zip ?? '100001');
+
+            // Date of birth
+            $dob = $request->input('date_of_birth', $user->birthdate ?? '1995-01-01');
+
+            // Email & Phone
+            $email = $request->input('customer_email', $user->email);
+            $phone = $user->full_mobile ?: ($user->mobile ?: '2348000000000');
+
+            // KYC images: check StrowalletCustomerKyc, verified KYC or profile picture
+            $kycInfo = StrowalletCustomerKyc::where('user_id', $user->id)->first();
+            $idImage = $kycInfo?->idImageData ?? files_asset_path('profile-default');
+            $userPhoto = $kycInfo?->faceImageData ?? ($user->userImage ?: files_asset_path('profile-default'));
+
+            $customerPayload = [
+                'first_name'     => $firstName,
+                'last_name'      => $lastName,
+                'customer_email' => $email,
+                'phone'          => $phone,
+                'date_of_birth'  => $dob,
+                'house_number'   => (string)$houseNumber,
+                'address'        => (string)$line1,
+                'zip_code'       => (string)$zipCode,
+            ];
+
+            $createCustomer = stro_wallet_create_user(
+                $customerPayload,
+                $this->api->config->strowallet_public_key,
+                $this->api->config->strowallet_url,
+                $idImage,
+                $userPhoto
+            );
+
+            if (!isset($createCustomer['status']) || $createCustomer['status'] == false) {
+                return [
+                    'status' => false,
+                    'message' => $createCustomer['message'] ?? __('Failed to create card holder on provider.')
+                ];
+            }
+
+            $user->strowallet_customer = (object) $createCustomer['data'];
+            $user->save();
+
+            return [
+                'status' => true,
+                'data'   => $createCustomer['data']
+            ];
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Auto-create Strowallet Customer failed: ' . $e->getMessage(), [
+                'user_id' => $user->id,
+                'trace'   => $e->getTraceAsString(),
+            ]);
+            return [
+                'status' => false,
+                'message' => __('Something went wrong initializing your card holder account: ') . $e->getMessage()
+            ];
+        }
     }
 }

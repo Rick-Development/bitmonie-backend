@@ -110,12 +110,16 @@ class UsdtEasyearnService
             $startDate = Carbon::now();
             $endDate = $startDate->copy()->addMonths(12);
 
+            $powerBonusMultiplier = (string) ($settings->power_bonus_multiplier ?? 2.00);
+
             $investment = UsdtEasyearnInvestment::create([
                 'user_id' => $user->id,
                 'amount' => $amount,
+                'initial_deposit_amount' => $amount,
                 'duration_months' => 12,
                 'interest_rate' => $settings->current_monthly_rate,
                 'auto_compound' => $autoCompound,
+                'power_bonus_multiplier' => $autoCompound ? $powerBonusMultiplier : 1.00,
                 'start_date' => $startDate,
                 'end_date' => $endDate,
                 'status' => 'active',
@@ -565,6 +569,101 @@ public function withdrawInterest(
     }
 
     /**
+     * Process maturity for an investment: credit 2X PowerBonus if applicable.
+     */
+    public function processMaturity(UsdtEasyearnInvestment $investment): array
+    {
+        if ($investment->status !== 'active') {
+            return [
+                'success' => false,
+                'message' => 'Investment is not active.',
+            ];
+        }
+
+        if (!$investment->isMatured()) {
+            return [
+                'success' => false,
+                'message' => 'Investment has not yet matured.',
+            ];
+        }
+
+        if (!$investment->auto_compound) {
+            return [
+                'success' => true,
+                'message' => 'Non-auto-compound investment matured. No PowerBonus applicable.',
+                'power_bonus' => '0.00000000',
+            ];
+        }
+
+        if ($investment->power_bonus_credited_at !== null) {
+            return [
+                'success' => true,
+                'message' => 'PowerBonus already credited for this investment.',
+                'power_bonus' => (string) $investment->power_bonus_amount,
+            ];
+        }
+
+        $powerBonus = $investment->calculatePowerBonus();
+
+        DB::transaction(function () use ($investment, $powerBonus) {
+            $user = $investment->user;
+            $wallet = $this->getOrCreateEasyearnWallet($user);
+
+            if (bccomp($powerBonus, '0', 8) > 0) {
+                // Lock the bonus into the user's EasyEarn wallet
+                $wallet->update([
+                    'locked_balance' => bcadd((string) $wallet->locked_balance, (string) $powerBonus, 8),
+                ]);
+
+                // Create interest credit record for ledger audit
+                UsdtEasyearnInterestCredit::create([
+                    'investment_id' => $investment->id,
+                    'amount' => $powerBonus,
+                    'credit_date' => Carbon::now()->startOfDay(),
+                    'credited_by' => null,
+                    'transaction_id' => null,
+                ]);
+            }
+
+            $newAmount = bcadd((string) $investment->amount, (string) $powerBonus, 8);
+            $newTotalInterest = bcadd((string) $investment->total_interest_earned, (string) $powerBonus, 8);
+
+            $investment->update([
+                'amount' => $newAmount,
+                'total_interest_earned' => $newTotalInterest,
+                'power_bonus_amount' => $powerBonus,
+                'power_bonus_credited_at' => Carbon::now(),
+            ]);
+
+            Log::channel('easyearn_usdt')->info('USDT EasyEarn PowerBonus Credited at Maturity', [
+                'investment_id' => $investment->id,
+                'user_id' => $user->id,
+                'power_bonus_amount' => $powerBonus,
+                'new_total_amount' => $newAmount,
+            ]);
+        });
+
+        $investment->refresh();
+
+        $this->sendEasyEarnNotification(
+            $investment->user,
+            'EASY_EARN_POWER_BONUS_CREDITED',
+            [
+                'investment_id' => $investment->id,
+                'power_bonus' => $powerBonus,
+                'total_amount' => $investment->amount,
+                'asset' => 'USDT',
+            ]
+        );
+
+        return [
+            'success' => true,
+            'message' => 'PowerBonus credited successfully.',
+            'power_bonus' => $powerBonus,
+        ];
+    }
+
+    /**
      * Withdraw principal at maturity.
      */
     public function withdrawPrincipal(
@@ -580,6 +679,12 @@ public function withdrawInterest(
             throw new Exception(
                 'Investment is not active.'
             );
+        }
+
+        // Ensure maturity PowerBonus is credited if not yet done
+        if ($investment->auto_compound && $investment->power_bonus_credited_at === null) {
+            $this->processMaturity($investment);
+            $investment->refresh();
         }
 
         $withdrawableAmount =
@@ -639,10 +744,11 @@ public function withdrawInterest(
                 }
 
                 $easyearnWallet->unlockAmount(
-                    $investment->amount
+                    $withdrawableAmount
                 );
 
                 $investment->update([
+                    'amount' => '0.00000000',
                     'status' => 'completed',
                 ]);
 
@@ -850,6 +956,11 @@ public function withdrawInterest(
             'months_completed' => $investment->getMonthsCompleted(),
             'days_remaining' => $investment->getDaysRemaining(),
             'is_matured' => $isMatured,
+
+            'estimated_power_bonus' => $investment->calculatePowerBonus(),
+            'pending_power_bonus' => $investment->calculatePendingPowerBonus(),
+            'power_bonus_amount' => (string) ($investment->power_bonus_amount ?? '0.00000000'),
+            'power_bonus_credited_at' => $investment->power_bonus_credited_at ? $investment->power_bonus_credited_at->toIso8601String() : null,
 
             'can_withdraw_interest' => $investment->canWithdrawInterest(),
             'can_withdraw_principal' => $investment->canWithdrawPrincipal(),

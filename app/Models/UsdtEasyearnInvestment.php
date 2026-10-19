@@ -13,21 +13,30 @@ class UsdtEasyearnInvestment extends Model
     protected $fillable = [
         'user_id',
         'amount',
+        'initial_deposit_amount',
         'duration_months',
         'interest_rate',
         'auto_compound',
+        'power_bonus_multiplier',
         'start_date',
         'end_date',
         'status',
         'total_interest_earned',
+        'power_bonus_amount',
+        'power_bonus_credited_at',
         'last_interest_credit_date',
     ];
 
     protected $casts = [
         'amount' => 'decimal:8',
+        'initial_deposit_amount' => 'decimal:8',
+        'duration_months' => 'integer',
         'interest_rate' => 'decimal:2',
-        'total_interest_earned' => 'decimal:8',
         'auto_compound' => 'boolean',
+        'power_bonus_multiplier' => 'decimal:2',
+        'total_interest_earned' => 'decimal:8',
+        'power_bonus_amount' => 'decimal:8',
+        'power_bonus_credited_at' => 'datetime',
         'start_date' => 'date',
         'end_date' => 'date',
         'last_interest_credit_date' => 'date',
@@ -141,16 +150,49 @@ class UsdtEasyearnInvestment extends Model
     }
 
     /**
+     * Calculate 2X PowerBonus amount based on total interest earned and configured multiplier.
+     * (e.g. at 2.0X multiplier, bonus = (2.0 - 1.0) * interest = 100% bonus matching interest).
+     */
+    public function calculatePowerBonus(): string
+    {
+        if (!$this->auto_compound) {
+            return '0.00000000';
+        }
+
+        $multiplier = (string) ($this->power_bonus_multiplier ?? 2.00);
+        $bonusFactor = bcsub($multiplier, '1.00', 4);
+        if (bccomp($bonusFactor, '0', 4) <= 0) {
+            return '0.00000000';
+        }
+
+        $interest = $this->getEffectiveTotalInterestEarned();
+        return bcmul($interest, $bonusFactor, 8);
+    }
+
+    /**
+     * Get pending (uncredited) PowerBonus amount.
+     */
+    public function calculatePendingPowerBonus(): string
+    {
+        if (!$this->auto_compound || $this->power_bonus_credited_at !== null) {
+            return '0.00000000';
+        }
+
+        return $this->calculatePowerBonus();
+    }
+
+    /**
      * Get total withdrawable amount at maturity
      */
     public function getTotalWithdrawableAtMaturity()
     {
         if ($this->auto_compound) {
-            // amount already includes compounded interest
-            return $this->amount;
+            // If PowerBonus has not yet been processed into the investment amount, include it
+            $pendingBonus = $this->calculatePendingPowerBonus();
+            return bcadd((string) $this->amount, $pendingBonus, 8);
         }
 
-        return $this->amount;
+        return (string) $this->amount;
     }
 
     /**
