@@ -584,6 +584,30 @@ public function createCard(Request $request): JsonResponse
         return $this->unauthenticated();
     }
 
+    $provider = $this->providerFromRequest($request);
+
+    // Resolve or automatically create card holder if missing
+    $cardHolderId = $request->integer('cardHolderId');
+    $holder = null;
+    if ($cardHolderId > 0) {
+        $holder = $this->cardService->getCardHolder($userId, $provider);
+        if (!$holder || (int) $holder->id !== $cardHolderId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Card holder does not belong to the authenticated user.',
+            ], 403);
+        }
+    } else {
+        $holder = $this->cardService->getCardHolder($userId, $provider);
+        if (!$holder || !$holder->hasProvider($provider) || !$holder->getProviderCustomerId($provider)) {
+            $autoHolderResult = $this->autoCreateCardHolder($userId, $provider, $request);
+            if (!$autoHolderResult['success']) {
+                return response()->json($autoHolderResult, $autoHolderResult['statusCode'] ?? 422);
+            }
+            $holder = $autoHolderResult['data']['holder'] ?? null;
+        }
+    }
+
     /*
     |--------------------------------------------------------------------------
     | Charge card issuance fee FIRST based on card type
@@ -594,24 +618,10 @@ public function createCard(Request $request): JsonResponse
     $cardType = $request->input('type', 'virtual');
     $issuanceChargeType = ($cardType === 'physical') ? 'physical_card_fee' : 'virtual_card_issuance_fee';
     $charge = $this->transferCardCharge($issuanceChargeType);
-    
 
     if (!$charge['success']) {
         return $this->serviceResponse($charge);
     }
-
-    $cardHolderId = $request->integer('cardHolderId');
-    if ($cardHolderId > 0) {
-        $holder = $this->cardService->getCardHolder($userId);
-        if (!$holder || (int) $holder->id !== $cardHolderId) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Card holder does not belong to the authenticated user.',
-            ], 403);
-        }
-    }
-
-    $provider = $this->providerFromRequest($request);
 
     $request->merge([
         'currency' => 'NGN',
@@ -2721,5 +2731,182 @@ public function transfer(Request $request): JsonResponse
     }
 }
 
+/**
+ * Automatically create a card holder for the authenticated user using profile & verified KYC data.
+ */
+protected function autoCreateCardHolder(int $userId, string $provider, Request $request): array
+{
+    $user = auth()->user() ?? User::find($userId);
+    if (!$user) {
+        return [
+            'success' => false,
+            'message' => 'User not found.',
+            'statusCode' => 404,
+        ];
+    }
+
+    try {
+        // Get verified KYC data if available
+        $kycData = method_exists($user, 'getVerifiedKycData') ? $user->getVerifiedKycData() : [];
+        $providerResponse = Arr::get($kycData, 'verification_result.providerResponse');
+        if (!is_array($providerResponse)) {
+            $providerResponse = Arr::get($kycData, 'providerResponse', []);
+        }
+        if (!is_array($providerResponse)) {
+            $providerResponse = [];
+        }
+
+        $requestIndividual = is_array($request->input('individual')) ? $request->input('individual') : [];
+        $requestAddress = is_array($request->input('billingAddress')) ? $request->input('billingAddress') : [];
+
+        // Names
+        $firstName = $requestIndividual['firstName']
+            ?? Arr::get($providerResponse, 'firstName')
+            ?? $user->firstname;
+
+        $lastName = $requestIndividual['lastName']
+            ?? Arr::get($providerResponse, 'lastName')
+            ?? $user->lastname;
+
+        if (empty($firstName) || empty($lastName)) {
+            $nameParts = explode(' ', trim((string)($user->fullname ?? $user->username ?? 'User Account')), 2);
+            $firstName = !empty($firstName) ? $firstName : ($nameParts[0] ?? 'User');
+            $lastName  = !empty($lastName) ? $lastName : ($nameParts[1] ?? 'Cardholder');
+        }
+
+        $otherNames = $requestIndividual['otherNames']
+            ?? Arr::get($providerResponse, 'otherNames')
+            ?? null;
+
+        // Date of birth
+        $dob = $requestIndividual['dob']
+            ?? Arr::get($providerResponse, 'dateOfBirth')
+            ?? Arr::get($providerResponse, 'dob')
+            ?? $user->birthdate;
+
+        if ($dob) {
+            try {
+                $timestamp = strtotime($dob);
+                $dob = $timestamp !== false ? date('Y-m-d', $timestamp) : null;
+            } catch (Throwable) {
+                $dob = null;
+            }
+        }
+
+        // Identity (BVN / NIN)
+        $identityType = Arr::get($requestIndividual, 'identity.type') ?? 'BVN';
+        $identityNumber = Arr::get($requestIndividual, 'identity.number')
+            ?? (method_exists($user, 'getVerifiedBvn') ? $user->getVerifiedBvn() : null)
+            ?? Arr::get($providerResponse, 'bvn')
+            ?? Arr::get($kycData, 'bvn');
+
+        $individual = [
+            'firstName' => $firstName,
+            'lastName'  => $lastName,
+        ];
+        if ($otherNames) {
+            $individual['otherNames'] = $otherNames;
+        }
+        if ($dob) {
+            $individual['dob'] = $dob;
+        }
+        if ($identityNumber) {
+            $individual['identity'] = [
+                'type'   => $identityType,
+                'number' => $identityNumber,
+            ];
+        }
+
+        // Billing address
+        $userAddress = (array) ($user->address ?? []);
+        $addressLine1 = $requestAddress['line1']
+            ?? Arr::get($providerResponse, 'residentialAddress')
+            ?? Arr::get($providerResponse, 'address')
+            ?? ($userAddress['address'] ?? 'Victoria Island');
+
+        $city = $requestAddress['city']
+            ?? Arr::get($providerResponse, 'city')
+            ?? Arr::get($providerResponse, 'lgaOfResidence')
+            ?? ($userAddress['city'] ?? 'Lagos');
+
+        $state = $requestAddress['state']
+            ?? Arr::get($providerResponse, 'state')
+            ?? Arr::get($providerResponse, 'stateOfResidence')
+            ?? ($userAddress['state'] ?? 'Lagos');
+
+        $postalCode = $requestAddress['postalCode']
+            ?? Arr::get($providerResponse, 'postalCode')
+            ?? Arr::get($providerResponse, 'postal_code')
+            ?? Arr::get($kycData, 'postalCode')
+            ?? ($userAddress['zip'] ?? '100001');
+
+        $country = $requestAddress['country']
+            ?? Arr::get($providerResponse, 'country')
+            ?? ($userAddress['country'] ?? 'NG');
+
+        // Customer Details
+        $name = $request->input('name')
+            ?? Arr::get($providerResponse, 'fullName')
+            ?? Arr::get($providerResponse, 'nameOnCard');
+
+        if (!$name) {
+            $name = trim(implode(' ', array_filter([$firstName, $otherNames, $lastName])));
+        }
+        if (!$name) {
+            $name = $user->fullname ?? ($user->firstname . ' ' . $user->lastname);
+        }
+
+        $phoneNumber = $request->input('phoneNumber')
+            ?? $user->full_mobile
+            ?? $user->mobile
+            ?? Arr::get($providerResponse, 'phoneNumber1')
+            ?? Arr::get($providerResponse, 'phoneNumber')
+            ?? '2348000000000';
+
+        $emailAddress = $request->input('emailAddress') ?? $user->email ?? Arr::get($providerResponse, 'email');
+
+        $billingAddress = [
+            'line1'      => $addressLine1,
+            'city'       => $city,
+            'state'      => $state,
+            'postalCode' => (string) $postalCode,
+            'country'    => $country,
+        ];
+        if (!empty($requestAddress['line2'])) {
+            $billingAddress['line2'] = $requestAddress['line2'];
+        }
+
+        $providerPayload = [
+            'type'           => 'individual',
+            'name'           => $name,
+            'phoneNumber'    => $phoneNumber,
+            'status'         => 'active',
+            'billingAddress' => $billingAddress,
+            'individual'     => $individual,
+        ];
+
+        if (!empty($emailAddress)) {
+            $providerPayload['emailAddress'] = $emailAddress;
+        }
+
+        return $this->cardService->createCardHolder(
+            userId: $userId,
+            provider: $provider,
+            payload: $providerPayload
+        );
+    } catch (Throwable $e) {
+        Log::error('Auto-create card holder failed in CryptoCards: ' . $e->getMessage(), [
+            'user_id'  => $userId,
+            'provider' => $provider,
+            'trace'    => $e->getTraceAsString(),
+        ]);
+
+        return [
+            'success'    => false,
+            'message'    => 'Unable to automatically create card holder: ' . $e->getMessage(),
+            'statusCode' => 500,
+        ];
+    }
+}
 
 }
