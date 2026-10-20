@@ -1859,13 +1859,23 @@ public function fund(Request $request, int $id): JsonResponse
                 $user->quidax_id,
                 $amount,
                 'usdt',
-                'Crypto card funding lock: ' . $reference
+                'Crypto card funding lock: ' . $reference,
+                $reference
             );
             $escrowStatus = strtolower((string) ($escrowTransfer['status'] ?? ''));
             if ($escrowStatus === 'error' || $escrowStatus === 'failed') {
+                \Illuminate\Support\Facades\Log::error('Card funding escrow deduction rejected by provider', [
+                    'user_id' => $user->id,
+                    'card_id' => $id,
+                    'amount'  => $amount,
+                    'reference' => $reference,
+                    'provider_response' => $escrowTransfer,
+                ]);
+
                 return response()->json([
                     'success' => false,
-                    'message' => 'Failed to deduct USDT from your Quidax wallet: ' . ($escrowTransfer['message'] ?? 'Transfer failed'),
+                    'error_code' => 'CARD_FUNDING_FAILED',
+                    'message' => "We couldn't fund your card. You have not been charged. Please try again.",
                 ], 400);
             }
         } catch (\Throwable $e) {
@@ -1873,11 +1883,13 @@ public function fund(Request $request, int $id): JsonResponse
                 'user_id' => $user->id,
                 'card_id' => $id,
                 'amount' => $amount,
+                'reference' => $reference,
                 'error' => $e->getMessage(),
             ]);
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to deduct USDT from your crypto wallet: ' . $e->getMessage(),
+                'error_code' => 'CARD_FUNDING_FAILED',
+                'message' => "We couldn't fund your card. You have not been charged. Please try again.",
             ], 400);
         }
     }

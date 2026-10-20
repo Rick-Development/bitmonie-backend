@@ -222,10 +222,13 @@ UserWallet::updateOrInsert(
             /**
              * Move funds to escrow
              */
+            $p2pEscrowRef = 'BM-P2P-AD-' . $user->id . '-' . \Illuminate\Support\Str::uuid()->toString();
             $transfer = $quidaxService->transferToEscrow(
                 $user->quidax_id,
                 $request->total_amount,
-                $asset
+                $asset,
+                'P2P ad escrow lock: ' . $p2pEscrowRef,
+                $p2pEscrowRef
             );
 
 

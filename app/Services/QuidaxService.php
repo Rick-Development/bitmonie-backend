@@ -93,28 +93,128 @@ class QuidaxService
 
 
     /**
-     * Fetch user wallets
+     * Ensure a user has a valid sub-account on Quidax, recreating it if it is missing or deleted upstream.
      */
-    public function fetchUserWallets($quidax_id)
+    public function ensureUserSubAccount(User $user, bool $forceRecreate = false): ?string
     {
-        return $this->curl->get(
+        if ($user->quidax_id && !$forceRecreate) {
+            return $user->quidax_id;
+        }
+
+        try {
+            $domainExt = env('DOMAIN_EXT', 'bitmonie.com');
+            $cleanEmail = preg_replace('/@.+$/', '@' . $domainExt, $user->email);
+            $quidax_response = $this->createSubAccount([
+                'email'      => $cleanEmail,
+                'first_name' => $user->firstname ?: 'User',
+                'last_name'  => $user->lastname ?: 'Bitmonie',
+            ]);
+
+            if (isset($quidax_response['data']['id'])) {
+                $qd = $quidax_response['data'];
+                $user->update([
+                    'quidax_id'           => $qd['id'],
+                    'quidax_sn'           => $qd['sn'] ?? null,
+                    'quidax_display_name' => $qd['display_name'] ?? null,
+                    'quidax_reference'    => $qd['reference'] ?? null,
+                ]);
+
+                Log::info('Recreated Quidax sub-account for user', [
+                    'user_id' => $user->id,
+                    'quidax_id' => $qd['id'],
+                ]);
+
+                return $qd['id'];
+            }
+        } catch (\Throwable $e) {
+            Log::error('Failed to create/heal Quidax sub-account', [
+                'user_id' => $user->id,
+                'error'   => $e->getMessage(),
+            ]);
+        }
+
+        return $user->quidax_id;
+    }
+
+    /**
+     * Check if a Quidax response indicates that the sub-account does not exist.
+     */
+    public function isSubAccountMissingResponse(array $response): bool
+    {
+        $message = strtolower((string) ($response['message'] ?? ''));
+        return str_contains($message, "doesn't exist") || str_contains($message, 'not found') || str_contains($message, 'sub-account with id');
+    }
+
+    /**
+     * Fetch user wallets (with automatic sub-account healing if missing).
+     */
+    public function fetchUserWallets($quidax_id, ?User $user = null)
+    {
+        if (!$quidax_id && $user) {
+            $quidax_id = $this->ensureUserSubAccount($user);
+        }
+
+        if (!$quidax_id) {
+            return [
+                'status'  => 'error',
+                'message' => 'Crypto account not configured.',
+                'data'    => [],
+            ];
+        }
+
+        $response = $this->curl->get(
             "v1/users/{$quidax_id}/wallets"
         );
+
+        if (is_array($response) && $this->isSubAccountMissingResponse($response) && $user) {
+            Log::warning("Sub-account {$quidax_id} not found on provider. Self-healing sub-account for user {$user->id}.");
+            $newQuidaxId = $this->ensureUserSubAccount($user, true);
+            if ($newQuidaxId && $newQuidaxId !== $quidax_id) {
+                return $this->curl->get("v1/users/{$newQuidaxId}/wallets");
+            }
+        }
+
+        return $response;
     }
 
 
     /**
-     * Fetch single wallet
+     * Fetch single wallet (with automatic sub-account healing if missing).
      */
     public function fetchUserWallet(
         $quidax_id,
-        $currency
+        $currency,
+        ?User $user = null
     ) {
+        if (!$quidax_id && $user) {
+            $quidax_id = $this->ensureUserSubAccount($user);
+        }
 
-        return $this->curl->get(
+        if (!$quidax_id) {
+            return [
+                'status'  => 'error',
+                'message' => 'Crypto account not configured.',
+                'data'    => [],
+            ];
+        }
+
+        $response = $this->curl->get(
             "v1/users/{$quidax_id}/wallets/" .
             $this->currency($currency)
         );
+
+        if (is_array($response) && $this->isSubAccountMissingResponse($response) && $user) {
+            Log::warning("Sub-account {$quidax_id} not found on provider for single wallet fetch. Self-healing for user {$user->id}.");
+            $newQuidaxId = $this->ensureUserSubAccount($user, true);
+            if ($newQuidaxId && $newQuidaxId !== $quidax_id) {
+                return $this->curl->get(
+                    "v1/users/{$newQuidaxId}/wallets/" .
+                    $this->currency($currency)
+                );
+            }
+        }
+
+        return $response;
     }
 
 
@@ -317,71 +417,45 @@ class QuidaxService
         $quidax_id,
         $amount,
         $currency,
-        ?string $transactionNote = null
+        ?string $transactionNote = null,
+        ?string $reference = null
     ) {
-
-
         $currency = $this->currency($currency);
-
 
         /*
         |--------------------------------------------------------------------------
         | Get platform wallet address
         |--------------------------------------------------------------------------
         */
-
-        $addressResponse =
-            $this->fetchPaymentAddress(
-                'me',
-                $currency
-            );
-
-
-        $escrowAddress =
-            $addressResponse['data']['address'] ?? null;
-
-
+        $addressResponse = $this->fetchPaymentAddress('me', $currency);
+        $escrowAddress = $addressResponse['data']['address'] ?? null;
 
         if (!$escrowAddress) {
-
             throw new \Exception(
                 "Unable to get platform {$currency} escrow address."
             );
         }
 
-
-
         /*
         |--------------------------------------------------------------------------
-        | Create withdrawal from user wallet
+        | Create withdrawal from user wallet into platform escrow
         |--------------------------------------------------------------------------
         */
+        $finalReference = $reference ?: ('BM-ESCROW-' . \Illuminate\Support\Str::uuid()->toString());
 
         $data = [
-
-            'currency' => $currency,
-
-            'amount' => $amount,
-
-            /*
-            Destination platform wallet
-            */
-            'fund_uid' => $escrowAddress,
-
-
-            'transaction_note' =>
-                $transactionNote ?: 'P2P escrow lock',
-
+            'currency'         => $currency,
+            'amount'           => $amount,
+            'fund_uid'         => $escrowAddress,
+            'transaction_note' => $transactionNote ?: 'Escrow lock',
+            'reference'        => $finalReference,
         ];
 
-
-
-        $response =
-            $this->create_withdrawal(
-                $quidax_id,
-                $data
-            );
-
+        $response = $this->create_withdrawal(
+            $quidax_id,
+            $data,
+            $finalReference
+        );
 
         return $response;
     }

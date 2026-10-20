@@ -32,10 +32,12 @@ class PayscribeTopupCardController extends Controller
         }
 
         $quidaxService = new \App\Services\QuidaxService();
-        
+        $referenceId = Str::uuid();
+        $referenceIdString = (string) $referenceId . '-cardtopup';
+
         try {
-            // 1. Fetch Quidax Wallet Balance
-            $quidaxWalletResponse = $quidaxService->fetchUserWallet($user->quidax_id, 'usdt');
+            // 1. Fetch Wallet Balance (with auto-healing if subaccount missing)
+            $quidaxWalletResponse = $quidaxService->fetchUserWallet($user->quidax_id, 'usdt', $user);
             $quidaxBalance = 0;
             
             if (isset($quidaxWalletResponse['status']) && $quidaxWalletResponse['status'] === 'success') {
@@ -47,13 +49,33 @@ class PayscribeTopupCardController extends Controller
             }
 
             if ($quidaxBalance < $usdtToDeduct) {
-                return Response::errorResponse('Insufficient USDT balance to perform this topup. Required: ' . round($usdtToDeduct, 2) . ' USDT, Available: ' . round($quidaxBalance, 2) . ' USDT');
+                return Response::errorResponse(
+                    "You don't have enough USDT to fund this card.",
+                    ['error_code' => 'INSUFFICIENT_BALANCE'],
+                    400
+                );
             }
 
-            // 2. Debit from Quidax USDT and transfer to Escrow FIRST before hitting the card provider
-            $quidaxTransfer = $quidaxService->transferToEscrow($user->quidax_id, $usdtToDeduct, 'usdt');
+            // 2. Debit USDT and transfer to Escrow with unique reference
+            $quidaxTransfer = $quidaxService->transferToEscrow(
+                $user->quidax_id,
+                $usdtToDeduct,
+                'usdt',
+                'Payscribe card topup: ' . $referenceIdString,
+                $referenceIdString
+            );
             if (!isset($quidaxTransfer['status']) || $quidaxTransfer['status'] !== 'success') {
-                return Response::errorResponse('Failed to deduct USDT from your Quidax wallet');
+                \Illuminate\Support\Facades\Log::error('Payscribe card topup escrow transfer failed', [
+                    'user_id' => $user->id,
+                    'reference' => $referenceIdString,
+                    'response' => $quidaxTransfer,
+                ]);
+
+                return Response::errorResponse(
+                    "We couldn't fund your card. You have not been charged. Please try again.",
+                    ['error_code' => 'CARD_FUNDING_FAILED'],
+                    400
+                );
             }
 
             // 3. Prepare payload for External Topup

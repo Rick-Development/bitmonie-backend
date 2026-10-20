@@ -53,36 +53,52 @@ class QuidaxController extends Controller
 
     public function fetchUserWallets(Request $request)
     {
-        
-        $response = $this->quidax->fetchUserWallets(auth()->user()->quidax_id);
-        
-        // \Log::info($response);
+        $user = auth()->user();
+        $response = $this->quidax->fetchUserWallets($user->quidax_id, $user);
+
         if (!$this->isSuccessfulQuidaxResponse($response) || !isset($response['data']) || !is_array($response['data'])) {
-            return Response::errorResponse($response['message'] ?? 'Failed to fetch wallets.', $response['data'] ?? $response, 400);
+            \Illuminate\Support\Facades\Log::error('Fetch wallets provider error', [
+                'user_id' => $user->id,
+                'response' => $response,
+            ]);
+
+            return Response::errorResponse(
+                'Unable to load wallet balances at this time. Please try again.',
+                ['error_code' => 'WALLET_FETCH_FAILED'],
+                400
+            );
         }
-       $exchangeRate = Cache::remember('quidax:usdtngn:last', 60, function () {
-       $ticker = $this->quidax->getTicker('usdtngn');
 
-    return data_get($ticker, 'data.usdtngn.ticker.last');
-});
+        $exchangeRate = Cache::remember('quidax:usdtngn:last', 60, function () {
+            $ticker = $this->quidax->getTicker('usdtngn');
+            return data_get($ticker, 'data.usdtngn.ticker.last');
+        });
 
+        $wallets = $this->prepareWalletListForResponse($user, $response['data'], null, $exchangeRate);
 
-        $wallets = $this->prepareWalletListForResponse(auth()->user(), $response['data'],null, $exchangeRate);
-    
-        
         return Response::success('Wallets fetch successfully!', $wallets);
     }
 
-    // fetchUserWallet($quidax_id,$currency)
     public function fetchUserWallet(Request $request)
     {
-        $response = $this->quidax->fetchUserWallet(auth()->user()->quidax_id, $request->currency);
-        // \Log::info($response);
+        $user = auth()->user();
+        $response = $this->quidax->fetchUserWallet($user->quidax_id, $request->currency, $user);
+
         if (!$this->isSuccessfulQuidaxResponse($response) || !isset($response['data']) || !is_array($response['data'])) {
-            return Response::errorResponse($response['message'] ?? 'Failed to fetch wallet.', $response['data'] ?? $response, 400);
+            \Illuminate\Support\Facades\Log::error('Fetch single wallet provider error', [
+                'user_id' => $user->id,
+                'currency' => $request->currency,
+                'response' => $response,
+            ]);
+
+            return Response::errorResponse(
+                'Unable to load wallet at this time. Please try again.',
+                ['error_code' => 'WALLET_FETCH_FAILED'],
+                400
+            );
         }
 
-        $wallets = $this->prepareWalletListForResponse(auth()->user(), $response['data'], $request->currency);
+        $wallets = $this->prepareWalletListForResponse($user, $response['data'], $request->currency);
         
         // Preserve the legacy mobile contract where a single-wallet lookup still returns a list in `data`.
         return Response::success(

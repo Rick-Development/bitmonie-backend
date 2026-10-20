@@ -67,7 +67,8 @@ class EasyEarnService
                     $user->quidax_id,
                     $amount,
                     'usdt',
-                    'EasyEarn USDT lock: ' . $reference
+                    'EasyEarn USDT lock: ' . $reference,
+                    $reference
                 );
             } catch (\Throwable $exception) {
                 throw new RuntimeException('Unable to lock USDT for EasyEarn: ' . $exception->getMessage());

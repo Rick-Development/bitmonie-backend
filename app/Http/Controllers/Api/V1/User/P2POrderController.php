@@ -684,10 +684,13 @@ private function lockCryptoSeller(int $cryptoSellerId,string $asset, string $cry
 
 
 
+    $orderEscrowRef = 'BM-P2P-ORD-' . $seller->id . '-' . \Illuminate\Support\Str::uuid()->toString();
     $transfer = $quidax->transferToEscrow(
         $seller->quidax_id,
         $cryptoAmount,
-        $assetCode
+        $assetCode,
+        'P2P order escrow lock: ' . $orderEscrowRef,
+        $orderEscrowRef
     );
 
     if (($transfer['status'] ?? '') !== 'success') {

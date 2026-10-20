@@ -68,11 +68,14 @@ class UsdtEasyearnService
             $quidaxService,
             $quidaxBalance
         ): UsdtEasyearnInvestment {
+            $escrowRef = 'EE-INVEST-' . $user->id . '-' . \Illuminate\Support\Str::uuid()->toString();
             try {
                 $withdrawalResponse = $quidaxService->transferToEscrow(
                     $user->quidax_id,
                     $amount,
-                    'usdt'
+                    'usdt',
+                    'EasyEarn investment lock: ' . $escrowRef,
+                    $escrowRef
                 );
 
                 if (!isset($withdrawalResponse['data'])) {
@@ -830,12 +833,15 @@ public function withdrawInterest(
                 $easyearnWallet,
                 $quidaxService
             ): UsdtEasyearnInvestment {
+                $topUpRef = 'EE-TOPUP-' . $user->id . '-' . $investment->id . '-' . \Illuminate\Support\Str::uuid()->toString();
                 try {
                     $withdrawalResponse =
                         $quidaxService->transferToEscrow(
                             $user->quidax_id,
                             $amount,
-                            'usdt'
+                            'usdt',
+                            'EasyEarn topup lock: ' . $topUpRef,
+                            $topUpRef
                         );
 
                     if (!isset($withdrawalResponse['data'])) {

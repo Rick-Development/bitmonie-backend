@@ -92,23 +92,7 @@ class LoginController extends Controller
         // Ensure Quidax sub-account exists
         if ($user->quidax_id == null || $user->quidax_sn == null) {
             $quidax = new \App\Services\QuidaxService();
-            $quidax_response = $quidax->createSubAccount([
-                'email'      => preg_replace('/@.+$/', '@' . env('DOMAIN_EXT', 'bitmonie.com'), $user->email),
-                'first_name' => $user->firstname,
-                'last_name'  => $user->lastname,
-            ]);
-
-            if (!isset($quidax_response['data'])) {
-                return Response::error([__('Login Failed! Could not verify account. Please try again.')], [], 500);
-            }
-
-            $qd = $quidax_response['data'];
-            $user->update([
-                'quidax_id'           => $qd['id'],
-                'quidax_sn'           => $qd['sn'],
-                'quidax_display_name' => $qd['display_name'],
-                'quidax_reference'    => $qd['reference'],
-            ]);
+            $quidax->ensureUserSubAccount($user);
         }
 
         // Ensure Payscribe customer exists
@@ -158,28 +142,10 @@ class LoginController extends Controller
             if ($user->status != GlobalConst::ACTIVE)
                 return Response::error([__("Your account is temporary banded. Please contact with system admin")]);
 
-            if($user->quidax_id == null || $user->quidax_sn == null){
-              // Call Quidax API
-            $quidax = new  QuidaxService();
-            $quidax_response = $quidax->createSubAccount([
-                'email' => preg_replace('/@.+$/', '@' . env('DOMAIN_EXT', 'bitmonie.com'), $user->email),
-                'first_name' => $user->firstname,
-                'last_name' => $user->lastname,
-            ]);
-
-            if (!isset($quidax_response['data'])) {
-                throw new \Exception("Invalid Quidax response");
+            if ($user->quidax_id == null || $user->quidax_sn == null) {
+                $quidax = new QuidaxService();
+                $quidax->ensureUserSubAccount($user);
             }
-
-            $quidax_data = $quidax_response['data'];
-
-            $user->update([
-                'quidax_id' => $quidax_data['id'],
-                'quidax_sn' => $quidax_data['sn'],
-                'quidax_display_name' => $quidax_data['display_name'],
-                'quidax_reference' => $quidax_data['reference'],
-            ]);
-        }
 
         if($user->payscribe_customer_id == null){
             // Call Payscribe API

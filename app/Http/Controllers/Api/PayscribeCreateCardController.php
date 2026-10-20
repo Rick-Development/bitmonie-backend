@@ -134,10 +134,26 @@ class PayscribeCreateCardController extends Controller
         }
 
         if (isset($response['status']) && $response['status'] === true) {
-            // Debit from Quidax USDT
-            $quidaxTransfer = $quidaxService->transferToEscrow($user->quidax_id, $usdtToDeduct, 'usdt', 'Payscribe card issuing');
+            // Debit from USDT wallet
+            $quidaxTransfer = $quidaxService->transferToEscrow(
+                $user->quidax_id,
+                $usdtToDeduct,
+                'usdt',
+                'Payscribe card issuing: ' . $referenceIdString,
+                $referenceIdString
+            );
             if (!isset($quidaxTransfer['status']) || $quidaxTransfer['status'] !== 'success') {
-                return Response::errorResponse('Failed to deduct USDT from your Quidax wallet');
+                \Illuminate\Support\Facades\Log::error('Payscribe card create escrow debit failed', [
+                    'user_id' => $user->id,
+                    'reference' => $referenceIdString,
+                    'response' => $quidaxTransfer,
+                ]);
+
+                return Response::errorResponse(
+                    "We couldn't process your card payment. You have not been charged. Please try again.",
+                    ['error_code' => 'CARD_ISSUING_PAYMENT_FAILED'],
+                    400
+                );
             }
 
             // Create a transaction record for the card issuing

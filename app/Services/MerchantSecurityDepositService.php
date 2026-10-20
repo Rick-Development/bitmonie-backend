@@ -68,12 +68,14 @@ class MerchantSecurityDepositService
 
         try {
             if ($depositAmount > 0) {
+                $merchantRef = 'BM-MERCHANT-DEP-' . $user->id . '-' . \Illuminate\Support\Str::uuid()->toString();
                 $lockResponse = $this->ensureSuccessfulProviderResponse(
                     $this->quidaxService->transferToEscrow(
                         $user->quidax_id,
                         $depositAmount,
                         'usdt',
-                        'P2P Merchant Security Deposit'
+                        'P2P Merchant Security Deposit: ' . $merchantRef,
+                        $merchantRef
                     ),
                     'Failed to lock the merchant security deposit. Please try again.'
                 );

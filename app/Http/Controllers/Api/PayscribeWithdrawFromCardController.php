@@ -37,12 +37,26 @@ class PayscribeWithdrawFromCardController extends Controller
 
         if($response['status'] === true){
             $user = auth()->user();
-            $quidaxService = new \App\Services\QuidaxService();
-            // Move USDT from Escrow back to user's Quidax Wallet
-            $quidaxTransfer = $quidaxService->fundSubAccount($user->quidax_id, $usdtToAdd, 'usdt');
+            // Move USDT from Escrow back to user's wallet
+            $withdrawalRef = 'BM-CARD-WITHDRAW-' . \Illuminate\Support\Str::uuid()->toString();
+            $quidaxTransfer = $quidaxService->fundSubAccount(
+                $user->quidax_id,
+                $usdtToAdd,
+                'usdt',
+                $withdrawalRef,
+                'Card withdrawal return'
+            );
             
             if (!isset($quidaxTransfer['status']) || $quidaxTransfer['status'] !== 'success') {
-                return Response::errorResponse('Failed to credit USDT to your Quidax wallet');
+                \Illuminate\Support\Facades\Log::error('Card withdrawal fund subaccount failed', [
+                    'user_id' => $user->id,
+                    'reference' => $withdrawalRef,
+                    'response' => $quidaxTransfer,
+                ]);
+
+                return Response::errorResponse('Failed to credit USDT to your wallet. Please contact support.', [
+                    'error_code' => 'WALLET_CREDIT_FAILED',
+                ]);
             }
 
             $this->createTransaction($data, $response, $usdtToAdd);
