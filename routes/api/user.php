@@ -628,6 +628,7 @@ Route::prefix('/crypto-cards')->group(function () {
     |--------------------------------------------------------------------------
     */
 
+    Route::post('/{id}/activate', [CryptoCards::class, 'activateCard']);
     Route::post('/{id}/send-pin', [CryptoCards::class, 'sendCardPin']);
     Route::post('/{id}/change-pin', [CryptoCards::class, 'changeCardPin']);
     Route::post('/{id}/enroll-2fa', [CryptoCards::class, 'enrollCard2FA']);

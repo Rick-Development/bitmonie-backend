@@ -712,6 +712,40 @@ public function createCard(Request $request): JsonResponse
     |--------------------------------------------------------------------------
     */
 
+    /**
+     * Activate a card (particularly physical cards).
+     * POST /api/v1/user/crypto-cards/{id}/activate
+     */
+    public function activateCard(Request $request, int $id): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'pin'   => ['nullable', 'string', 'digits:4'],
+            'last4' => ['nullable', 'string', 'digits:4'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed.',
+                'errors'  => $validator->errors(),
+            ], 422);
+        }
+
+        $userId = $this->userId();
+        if (!$userId) {
+            return $this->unauthenticated();
+        }
+
+        $result = $this->cardService->activateCard(
+            userId: $userId,
+            cardId: $id,
+            pin: $request->input('pin'),
+            last4: $request->input('last4')
+        );
+
+        return $this->serviceResponse($result);
+    }
+
     public function sendPin(int $id): JsonResponse
     {
         $userId = $this->userId();

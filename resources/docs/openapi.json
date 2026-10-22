@@ -6927,6 +6927,88 @@
                 }
             }
         },
+        "/api/user/crypto-cards/{id}/activate": {
+            "post": {
+                "tags": [
+                    "Crypto Cards"
+                ],
+                "summary": "Activate Crypto Card",
+                "description": "Activates an issued card (particularly delivered physical cards), setting its status to active on the card provider and optionally configuring the 4-digit transaction PIN for ATM and POS.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "description": "Unique card identifier (integer ID or provider card ID)",
+                        "schema": {
+                            "type": "string",
+                            "example": "12"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "pin": {
+                                        "type": "string",
+                                        "description": "Optional 4-digit transaction PIN for POS / ATM",
+                                        "example": "1234"
+                                    },
+                                    "last4": {
+                                        "type": "string",
+                                        "description": "Optional last 4 digits of the card to verify ownership",
+                                        "example": "4321"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Card activated successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Card activated successfully."
+                                        },
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Provider error or activation failed"
+                    },
+                    "404": {
+                        "description": "Card not found"
+                    },
+                    "422": {
+                        "description": "Validation failed"
+                    }
+                }
+            }
+        },
         "/api/user/crypto-cards/{id}/fund": {
             "post": {
                 "tags": [

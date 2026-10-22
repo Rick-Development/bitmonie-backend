@@ -734,6 +734,122 @@ if (!$providerSuccess) {
         }
     }
 
+    /**
+     * Activate a card (particularly physical cards that require explicit activation).
+     */
+    public function activateCard(
+        int $userId,
+        int|string $cardId,
+        ?string $pin = null,
+        ?string $last4 = null
+    ): array {
+        $card = $this->getCard($userId, $cardId);
+
+        if (!$card) {
+            return [
+                'success' => false,
+                'message' => 'Card not found.',
+                'statusCode' => 404,
+            ];
+        }
+
+        // Check if last4 was provided and matches
+        if ($last4 !== null && $card->last_4) {
+            if (trim($last4) !== trim($card->last_4)) {
+                return [
+                    'success' => false,
+                    'message' => 'The provided card digits do not match our records.',
+                    'statusCode' => 422,
+                ];
+            }
+        }
+
+        if ($card->card_status === 'active' && !$pin) {
+            return [
+                'success' => true,
+                'message' => 'Card is already active.',
+                'data' => [
+                    'card' => $card,
+                ],
+            ];
+        }
+
+        try {
+            $service = $this->resolveProvider($card->card_provider);
+
+            // 1. Update card status to active on Sudo
+            $updateResponse = $service->updateCard(
+                $card->card_provider_id,
+                ['status' => 'active']
+            );
+
+            if (!($updateResponse['success'] ?? false)) {
+                Log::error('Provider card activation failed', [
+                    'user_id' => $userId,
+                    'card_id' => $cardId,
+                    'response' => $updateResponse,
+                ]);
+
+                return [
+                    'success' => false,
+                    'message' => $updateResponse['message'] ?? 'Unable to activate card with provider.',
+                    'statusCode' => $updateResponse['statusCode'] ?? 400,
+                ];
+            }
+
+            // 2. Set/change PIN if provided
+            if (!empty($pin)) {
+                $pinResponse = $service->changeCardPin(
+                    $card->card_provider_id,
+                    ['pin' => $pin]
+                );
+
+                if (!($pinResponse['success'] ?? false)) {
+                    Log::warning('Card activated on provider but PIN setting failed', [
+                        'user_id' => $userId,
+                        'card_id' => $cardId,
+                        'response' => $pinResponse,
+                    ]);
+                }
+            }
+
+            // 3. Update local card model
+            $card->updateFromSudoResponse($updateResponse);
+            $metadata = is_array($card->metadata) ? $card->metadata : [];
+            $metadata['activated_at'] = now()->toISOString();
+            $card->card_status = 'active';
+            $card->metadata = $metadata;
+            $card->save();
+
+            Log::info('Card activated successfully', [
+                'user_id' => $userId,
+                'card_id' => $card->id,
+                'provider_id' => $card->card_provider_id,
+            ]);
+
+            return [
+                'success' => true,
+                'message' => 'Card activated successfully.',
+                'data' => [
+                    'card' => $card->fresh(),
+                ],
+            ];
+        } catch (Throwable $e) {
+            Log::error('Card activation exception', [
+                'user_id' => $userId,
+                'card_id' => $cardId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'success' => false,
+                'message' => 'An error occurred while activating your card. Please try again.',
+                'error' => $e->getMessage(),
+                'statusCode' => 500,
+            ];
+        }
+    }
+
     /*
     |--------------------------------------------------------------------------
     | PROVIDER CARDS
