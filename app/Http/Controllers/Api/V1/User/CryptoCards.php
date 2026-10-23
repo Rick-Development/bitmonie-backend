@@ -610,8 +610,7 @@ public function createCard(Request $request): JsonResponse
 
     /*
     |--------------------------------------------------------------------------
-    | Charge card issuance fee FIRST based on card type
-    | (This already records the charge in CryptoTransactionService)
+    | Charge card issuance fee AFTER holder is confirmed
     |--------------------------------------------------------------------------
     */
 
@@ -629,12 +628,19 @@ public function createCard(Request $request): JsonResponse
         'brand' => $request->input('brand', 'Visa'),
     ]);
 
+    $effectiveCardHolderId = $cardHolderId ?: ($holder?->id ?? null);
+
     $result = $this->cardService->createCard(
         userId: $userId,
         provider: $provider,
         payload: $request->except(['provider', 'cardHolderId']),
-        cardHolderId: $cardHolderId ?: null
+        cardHolderId: $effectiveCardHolderId
     );
+
+    if (!($result['success'] ?? false) && ($charge['charged'] ?? false)) {
+        // Rollback / refund card fee
+        $this->refundCardCharge($charge);
+    }
 
     return $this->serviceResponse($result, 201);
 }
@@ -2778,6 +2784,62 @@ public function transfer(Request $request): JsonResponse
 }
 
 /**
+ * Refund card fee if card creation with the provider fails.
+ */
+protected function refundCardCharge(array $charge): void
+{
+    $user = auth()->user();
+    if (!$user || empty($charge['ngn_amount'])) {
+        return;
+    }
+
+    $ngnAmount = $charge['ngn_amount'];
+    $originalRef = $charge['reference'] ?? 'unknown';
+    $refundRef = 'REFUND_' . $originalRef;
+
+    try {
+        DB::transaction(function () use ($user, $ngnAmount, $charge, $refundRef, $originalRef) {
+            $wallet = UserWallet::where('user_id', $user->id)
+                ->where('currency_code', 'NGN')
+                ->lockForUpdate()
+                ->first();
+
+            if (!$wallet) {
+                return;
+            }
+
+            $wallet->balance = bcadd((string) $wallet->balance, (string) $ngnAmount, 2);
+            $wallet->save();
+
+            OrderTransaction::create([
+                'user_wallet_id' => $wallet->id,
+                'type'           => 'credit',
+                'amount'         => $ngnAmount,
+                'balance_after'  => $wallet->balance,
+                'reference'      => $refundRef,
+                'metadata'       => [
+                    'source'             => 'crypto_card_refund',
+                    'original_reference' => $originalRef,
+                    'charge_type'        => $charge['charge_type'] ?? null,
+                    'note'               => 'Refund for failed card issuance',
+                ],
+            ]);
+        });
+
+        Log::info('Crypto card fee refunded successfully.', [
+            'user_id'    => $user->id,
+            'amount'     => $ngnAmount,
+            'refund_ref' => $refundRef,
+        ]);
+    } catch (Throwable $e) {
+        Log::error('Crypto card fee refund failed: ' . $e->getMessage(), [
+            'user_id' => $user->id,
+            'charge'  => $charge,
+        ]);
+    }
+}
+
+/**
  * Automatically create a card holder for the authenticated user using profile & verified KYC data.
  */
 protected function autoCreateCardHolder(int $userId, string $provider, Request $request): array
@@ -2805,14 +2867,17 @@ protected function autoCreateCardHolder(int $userId, string $provider, Request $
         $requestIndividual = is_array($request->input('individual')) ? $request->input('individual') : [];
         $requestAddress = is_array($request->input('billingAddress')) ? $request->input('billingAddress') : [];
 
+        // Check if there is an existing local card holder record for this user
+        $existingHolder = CryptoCardHolders::forUser($userId)->first();
+
         // Names
         $firstName = $requestIndividual['firstName']
             ?? Arr::get($providerResponse, 'firstName')
-            ?? $user->firstname;
+            ?? ($existingHolder?->first_name ?: $user->firstname);
 
         $lastName = $requestIndividual['lastName']
             ?? Arr::get($providerResponse, 'lastName')
-            ?? $user->lastname;
+            ?? ($existingHolder?->last_name ?: $user->lastname);
 
         if (empty($firstName) || empty($lastName)) {
             $nameParts = explode(' ', trim((string)($user->fullname ?? $user->username ?? 'User Account')), 2);
@@ -2822,12 +2887,14 @@ protected function autoCreateCardHolder(int $userId, string $provider, Request $
 
         $otherNames = $requestIndividual['otherNames']
             ?? Arr::get($providerResponse, 'otherNames')
+            ?? $existingHolder?->other_names
             ?? null;
 
         // Date of birth
         $dob = $requestIndividual['dob']
             ?? Arr::get($providerResponse, 'dateOfBirth')
             ?? Arr::get($providerResponse, 'dob')
+            ?? ($existingHolder?->date_of_birth ? ($existingHolder->date_of_birth instanceof \Carbon\CarbonInterface ? $existingHolder->date_of_birth->format('Y-m-d') : date('Y-m-d', strtotime((string)$existingHolder->date_of_birth))) : null)
             ?? $user->birthdate;
 
         if ($dob) {
@@ -2840,11 +2907,12 @@ protected function autoCreateCardHolder(int $userId, string $provider, Request $
         }
 
         // Identity (BVN / NIN)
-        $identityType = Arr::get($requestIndividual, 'identity.type') ?? 'BVN';
+        $identityType = Arr::get($requestIndividual, 'identity.type') ?? ($existingHolder?->identity_type ?: 'BVN');
         $identityNumber = Arr::get($requestIndividual, 'identity.number')
             ?? (method_exists($user, 'getVerifiedBvn') ? $user->getVerifiedBvn() : null)
             ?? Arr::get($providerResponse, 'bvn')
-            ?? Arr::get($kycData, 'bvn');
+            ?? Arr::get($kycData, 'bvn')
+            ?? $existingHolder?->identity_number;
 
         $individual = [
             'firstName' => $firstName,
@@ -2868,32 +2936,33 @@ protected function autoCreateCardHolder(int $userId, string $provider, Request $
         $addressLine1 = $requestAddress['line1']
             ?? Arr::get($providerResponse, 'residentialAddress')
             ?? Arr::get($providerResponse, 'address')
-            ?? ($userAddress['address'] ?? 'Victoria Island');
+            ?? ($existingHolder?->address_line1 ?: ($userAddress['address'] ?? 'Victoria Island'));
 
         $city = $requestAddress['city']
             ?? Arr::get($providerResponse, 'city')
             ?? Arr::get($providerResponse, 'lgaOfResidence')
-            ?? ($userAddress['city'] ?? 'Lagos');
+            ?? ($existingHolder?->city ?: ($userAddress['city'] ?? 'Lagos'));
 
         $state = $requestAddress['state']
             ?? Arr::get($providerResponse, 'state')
             ?? Arr::get($providerResponse, 'stateOfResidence')
-            ?? ($userAddress['state'] ?? 'Lagos');
+            ?? ($existingHolder?->state ?: ($userAddress['state'] ?? 'Lagos'));
 
         $postalCode = $requestAddress['postalCode']
             ?? Arr::get($providerResponse, 'postalCode')
             ?? Arr::get($providerResponse, 'postal_code')
             ?? Arr::get($kycData, 'postalCode')
-            ?? ($userAddress['zip'] ?? '100001');
+            ?? ($existingHolder?->postal_code ?: ($userAddress['zip'] ?? '100001'));
 
         $country = $requestAddress['country']
             ?? Arr::get($providerResponse, 'country')
-            ?? ($userAddress['country'] ?? 'NG');
+            ?? ($existingHolder?->country ?: ($userAddress['country'] ?? 'NG'));
 
         // Customer Details
         $name = $request->input('name')
             ?? Arr::get($providerResponse, 'fullName')
-            ?? Arr::get($providerResponse, 'nameOnCard');
+            ?? Arr::get($providerResponse, 'nameOnCard')
+            ?? $existingHolder?->name;
 
         if (!$name) {
             $name = trim(implode(' ', array_filter([$firstName, $otherNames, $lastName])));
@@ -2903,13 +2972,14 @@ protected function autoCreateCardHolder(int $userId, string $provider, Request $
         }
 
         $phoneNumber = $request->input('phoneNumber')
+            ?? $existingHolder?->phone_number
             ?? $user->full_mobile
             ?? $user->mobile
             ?? Arr::get($providerResponse, 'phoneNumber1')
             ?? Arr::get($providerResponse, 'phoneNumber')
             ?? '2348000000000';
 
-        $emailAddress = $request->input('emailAddress') ?? $user->email ?? Arr::get($providerResponse, 'email');
+        $emailAddress = $request->input('emailAddress') ?? $existingHolder?->email ?? $user->email ?? Arr::get($providerResponse, 'email');
 
         $billingAddress = [
             'line1'      => $addressLine1,

@@ -584,34 +584,43 @@ public function createCard(Request $request): JsonResponse
         return $this->unauthenticated();
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Charge card issuance fee FIRST based on card type
-    | (This already records the charge in CryptoTransactionService)
-    |--------------------------------------------------------------------------
-    */
+    $provider = $this->providerFromRequest($request);
 
-    $cardType = $request->input('type', 'virtual');
-    $issuanceChargeType = ($cardType === 'physical') ? 'physical_card_fee' : 'virtual_card_issuance_fee';
-    $charge = $this->transferCardCharge($issuanceChargeType);
-    
-
-    if (!$charge['success']) {
-        return $this->serviceResponse($charge);
-    }
-
+    // Resolve or automatically create card holder if missing
     $cardHolderId = $request->integer('cardHolderId');
+    $holder = null;
     if ($cardHolderId > 0) {
-        $holder = $this->cardService->getCardHolder($userId);
+        $holder = $this->cardService->getCardHolder($userId, $provider);
         if (!$holder || (int) $holder->id !== $cardHolderId) {
             return response()->json([
                 'success' => false,
                 'message' => 'Card holder does not belong to the authenticated user.',
             ], 403);
         }
+    } else {
+        $holder = $this->cardService->getCardHolder($userId, $provider);
+        if (!$holder || !$holder->hasProvider($provider) || !$holder->getProviderCustomerId($provider)) {
+            $autoHolderResult = $this->autoCreateCardHolder($userId, $provider, $request);
+            if (!$autoHolderResult['success']) {
+                return response()->json($autoHolderResult, $autoHolderResult['statusCode'] ?? 422);
+            }
+            $holder = $autoHolderResult['data']['holder'] ?? null;
+        }
     }
 
-    $provider = $this->providerFromRequest($request);
+    /*
+    |--------------------------------------------------------------------------
+    | Charge card issuance fee AFTER holder is confirmed
+    |--------------------------------------------------------------------------
+    */
+
+    $cardType = $request->input('type', 'virtual');
+    $issuanceChargeType = ($cardType === 'physical') ? 'physical_card_fee' : 'virtual_card_issuance_fee';
+    $charge = $this->transferCardCharge($issuanceChargeType);
+
+    if (!$charge['success']) {
+        return $this->serviceResponse($charge);
+    }
 
     $request->merge([
         'currency' => 'NGN',
@@ -619,12 +628,19 @@ public function createCard(Request $request): JsonResponse
         'brand' => $request->input('brand', 'Visa'),
     ]);
 
+    $effectiveCardHolderId = $cardHolderId ?: ($holder?->id ?? null);
+
     $result = $this->cardService->createCard(
         userId: $userId,
         provider: $provider,
         payload: $request->except(['provider', 'cardHolderId']),
-        cardHolderId: $cardHolderId ?: null
+        cardHolderId: $effectiveCardHolderId
     );
+
+    if (!($result['success'] ?? false) && ($charge['charged'] ?? false)) {
+        // Rollback / refund card fee
+        $this->refundCardCharge($charge);
+    }
 
     return $this->serviceResponse($result, 201);
 }
@@ -701,6 +717,40 @@ public function createCard(Request $request): JsonResponse
     | CARD OPERATIONS
     |--------------------------------------------------------------------------
     */
+
+    /**
+     * Activate a card (particularly physical cards).
+     * POST /api/v1/user/crypto-cards/{id}/activate
+     */
+    public function activateCard(Request $request, int $id): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'pin'   => ['nullable', 'string', 'digits:4'],
+            'last4' => ['nullable', 'string', 'digits:4'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed.',
+                'errors'  => $validator->errors(),
+            ], 422);
+        }
+
+        $userId = $this->userId();
+        if (!$userId) {
+            return $this->unauthenticated();
+        }
+
+        $result = $this->cardService->activateCard(
+            userId: $userId,
+            cardId: $id,
+            pin: $request->input('pin'),
+            last4: $request->input('last4')
+        );
+
+        return $this->serviceResponse($result);
+    }
 
     public function sendPin(int $id): JsonResponse
     {
@@ -1849,13 +1899,23 @@ public function fund(Request $request, int $id): JsonResponse
                 $user->quidax_id,
                 $amount,
                 'usdt',
-                'Crypto card funding lock: ' . $reference
+                'Crypto card funding lock: ' . $reference,
+                $reference
             );
             $escrowStatus = strtolower((string) ($escrowTransfer['status'] ?? ''));
             if ($escrowStatus === 'error' || $escrowStatus === 'failed') {
+                \Illuminate\Support\Facades\Log::error('Card funding escrow deduction rejected by provider', [
+                    'user_id' => $user->id,
+                    'card_id' => $id,
+                    'amount'  => $amount,
+                    'reference' => $reference,
+                    'provider_response' => $escrowTransfer,
+                ]);
+
                 return response()->json([
                     'success' => false,
-                    'message' => 'Failed to deduct USDT from your Quidax wallet: ' . ($escrowTransfer['message'] ?? 'Transfer failed'),
+                    'error_code' => 'CARD_FUNDING_FAILED',
+                    'message' => "We couldn't fund your card. You have not been charged. Please try again.",
                 ], 400);
             }
         } catch (\Throwable $e) {
@@ -1863,11 +1923,13 @@ public function fund(Request $request, int $id): JsonResponse
                 'user_id' => $user->id,
                 'card_id' => $id,
                 'amount' => $amount,
+                'reference' => $reference,
                 'error' => $e->getMessage(),
             ]);
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to deduct USDT from your crypto wallet: ' . $e->getMessage(),
+                'error_code' => 'CARD_FUNDING_FAILED',
+                'message' => "We couldn't fund your card. You have not been charged. Please try again.",
             ], 400);
         }
     }
@@ -2721,5 +2783,246 @@ public function transfer(Request $request): JsonResponse
     }
 }
 
+/**
+ * Refund card fee if card creation with the provider fails.
+ */
+protected function refundCardCharge(array $charge): void
+{
+    $user = auth()->user();
+    if (!$user || empty($charge['ngn_amount'])) {
+        return;
+    }
+
+    $ngnAmount = $charge['ngn_amount'];
+    $originalRef = $charge['reference'] ?? 'unknown';
+    $refundRef = 'REFUND_' . $originalRef;
+
+    try {
+        DB::transaction(function () use ($user, $ngnAmount, $charge, $refundRef, $originalRef) {
+            $wallet = UserWallet::where('user_id', $user->id)
+                ->where('currency_code', 'NGN')
+                ->lockForUpdate()
+                ->first();
+
+            if (!$wallet) {
+                return;
+            }
+
+            $wallet->balance = bcadd((string) $wallet->balance, (string) $ngnAmount, 2);
+            $wallet->save();
+
+            OrderTransaction::create([
+                'user_wallet_id' => $wallet->id,
+                'type'           => 'credit',
+                'amount'         => $ngnAmount,
+                'balance_after'  => $wallet->balance,
+                'reference'      => $refundRef,
+                'metadata'       => [
+                    'source'             => 'crypto_card_refund',
+                    'original_reference' => $originalRef,
+                    'charge_type'        => $charge['charge_type'] ?? null,
+                    'note'               => 'Refund for failed card issuance',
+                ],
+            ]);
+        });
+
+        Log::info('Crypto card fee refunded successfully.', [
+            'user_id'    => $user->id,
+            'amount'     => $ngnAmount,
+            'refund_ref' => $refundRef,
+        ]);
+    } catch (Throwable $e) {
+        Log::error('Crypto card fee refund failed: ' . $e->getMessage(), [
+            'user_id' => $user->id,
+            'charge'  => $charge,
+        ]);
+    }
+}
+
+/**
+ * Automatically create a card holder for the authenticated user using profile & verified KYC data.
+ */
+protected function autoCreateCardHolder(int $userId, string $provider, Request $request): array
+{
+    $user = auth()->user() ?? User::find($userId);
+    if (!$user) {
+        return [
+            'success' => false,
+            'message' => 'User not found.',
+            'statusCode' => 404,
+        ];
+    }
+
+    try {
+        // Get verified KYC data if available
+        $kycData = method_exists($user, 'getVerifiedKycData') ? $user->getVerifiedKycData() : [];
+        $providerResponse = Arr::get($kycData, 'verification_result.providerResponse');
+        if (!is_array($providerResponse)) {
+            $providerResponse = Arr::get($kycData, 'providerResponse', []);
+        }
+        if (!is_array($providerResponse)) {
+            $providerResponse = [];
+        }
+
+        $requestIndividual = is_array($request->input('individual')) ? $request->input('individual') : [];
+        $requestAddress = is_array($request->input('billingAddress')) ? $request->input('billingAddress') : [];
+
+        // Check if there is an existing local card holder record for this user
+        $existingHolder = CryptoCardHolders::forUser($userId)->first();
+
+        // Names
+        $firstName = $requestIndividual['firstName']
+            ?? Arr::get($providerResponse, 'firstName')
+            ?? ($existingHolder?->first_name ?: $user->firstname);
+
+        $lastName = $requestIndividual['lastName']
+            ?? Arr::get($providerResponse, 'lastName')
+            ?? ($existingHolder?->last_name ?: $user->lastname);
+
+        if (empty($firstName) || empty($lastName)) {
+            $nameParts = explode(' ', trim((string)($user->fullname ?? $user->username ?? 'User Account')), 2);
+            $firstName = !empty($firstName) ? $firstName : ($nameParts[0] ?? 'User');
+            $lastName  = !empty($lastName) ? $lastName : ($nameParts[1] ?? 'Cardholder');
+        }
+
+        $otherNames = $requestIndividual['otherNames']
+            ?? Arr::get($providerResponse, 'otherNames')
+            ?? $existingHolder?->other_names
+            ?? null;
+
+        // Date of birth
+        $dob = $requestIndividual['dob']
+            ?? Arr::get($providerResponse, 'dateOfBirth')
+            ?? Arr::get($providerResponse, 'dob')
+            ?? ($existingHolder?->date_of_birth ? ($existingHolder->date_of_birth instanceof \Carbon\CarbonInterface ? $existingHolder->date_of_birth->format('Y-m-d') : date('Y-m-d', strtotime((string)$existingHolder->date_of_birth))) : null)
+            ?? $user->birthdate;
+
+        if ($dob) {
+            try {
+                $timestamp = strtotime($dob);
+                $dob = $timestamp !== false ? date('Y-m-d', $timestamp) : null;
+            } catch (Throwable) {
+                $dob = null;
+            }
+        }
+
+        // Identity (BVN / NIN)
+        $identityType = Arr::get($requestIndividual, 'identity.type') ?? ($existingHolder?->identity_type ?: 'BVN');
+        $identityNumber = Arr::get($requestIndividual, 'identity.number')
+            ?? (method_exists($user, 'getVerifiedBvn') ? $user->getVerifiedBvn() : null)
+            ?? Arr::get($providerResponse, 'bvn')
+            ?? Arr::get($kycData, 'bvn')
+            ?? $existingHolder?->identity_number;
+
+        $individual = [
+            'firstName' => $firstName,
+            'lastName'  => $lastName,
+        ];
+        if ($otherNames) {
+            $individual['otherNames'] = $otherNames;
+        }
+        if ($dob) {
+            $individual['dob'] = $dob;
+        }
+        if ($identityNumber) {
+            $individual['identity'] = [
+                'type'   => $identityType,
+                'number' => $identityNumber,
+            ];
+        }
+
+        // Billing address
+        $userAddress = (array) ($user->address ?? []);
+        $addressLine1 = $requestAddress['line1']
+            ?? Arr::get($providerResponse, 'residentialAddress')
+            ?? Arr::get($providerResponse, 'address')
+            ?? ($existingHolder?->address_line1 ?: ($userAddress['address'] ?? 'Victoria Island'));
+
+        $city = $requestAddress['city']
+            ?? Arr::get($providerResponse, 'city')
+            ?? Arr::get($providerResponse, 'lgaOfResidence')
+            ?? ($existingHolder?->city ?: ($userAddress['city'] ?? 'Lagos'));
+
+        $state = $requestAddress['state']
+            ?? Arr::get($providerResponse, 'state')
+            ?? Arr::get($providerResponse, 'stateOfResidence')
+            ?? ($existingHolder?->state ?: ($userAddress['state'] ?? 'Lagos'));
+
+        $postalCode = $requestAddress['postalCode']
+            ?? Arr::get($providerResponse, 'postalCode')
+            ?? Arr::get($providerResponse, 'postal_code')
+            ?? Arr::get($kycData, 'postalCode')
+            ?? ($existingHolder?->postal_code ?: ($userAddress['zip'] ?? '100001'));
+
+        $country = $requestAddress['country']
+            ?? Arr::get($providerResponse, 'country')
+            ?? ($existingHolder?->country ?: ($userAddress['country'] ?? 'NG'));
+
+        // Customer Details
+        $name = $request->input('name')
+            ?? Arr::get($providerResponse, 'fullName')
+            ?? Arr::get($providerResponse, 'nameOnCard')
+            ?? $existingHolder?->name;
+
+        if (!$name) {
+            $name = trim(implode(' ', array_filter([$firstName, $otherNames, $lastName])));
+        }
+        if (!$name) {
+            $name = $user->fullname ?? ($user->firstname . ' ' . $user->lastname);
+        }
+
+        $phoneNumber = $request->input('phoneNumber')
+            ?? $existingHolder?->phone_number
+            ?? $user->full_mobile
+            ?? $user->mobile
+            ?? Arr::get($providerResponse, 'phoneNumber1')
+            ?? Arr::get($providerResponse, 'phoneNumber')
+            ?? '2348000000000';
+
+        $emailAddress = $request->input('emailAddress') ?? $existingHolder?->email ?? $user->email ?? Arr::get($providerResponse, 'email');
+
+        $billingAddress = [
+            'line1'      => $addressLine1,
+            'city'       => $city,
+            'state'      => $state,
+            'postalCode' => (string) $postalCode,
+            'country'    => $country,
+        ];
+        if (!empty($requestAddress['line2'])) {
+            $billingAddress['line2'] = $requestAddress['line2'];
+        }
+
+        $providerPayload = [
+            'type'           => 'individual',
+            'name'           => $name,
+            'phoneNumber'    => $phoneNumber,
+            'status'         => 'active',
+            'billingAddress' => $billingAddress,
+            'individual'     => $individual,
+        ];
+
+        if (!empty($emailAddress)) {
+            $providerPayload['emailAddress'] = $emailAddress;
+        }
+
+        return $this->cardService->createCardHolder(
+            userId: $userId,
+            provider: $provider,
+            payload: $providerPayload
+        );
+    } catch (Throwable $e) {
+        Log::error('Auto-create card holder failed in CryptoCards: ' . $e->getMessage(), [
+            'user_id'  => $userId,
+            'provider' => $provider,
+            'trace'    => $e->getTraceAsString(),
+        ]);
+
+        return [
+            'success'    => false,
+            'message'    => 'Unable to automatically create card holder: ' . $e->getMessage(),
+            'statusCode' => 500,
+        ];
+    }
+}
 
 }

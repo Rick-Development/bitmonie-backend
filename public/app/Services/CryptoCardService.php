@@ -337,6 +337,124 @@ class CryptoCardService
         return $holder;
     }
 
+    public function enrollHolderWithProvider(
+        CryptoCardHolders $holder,
+        string $provider
+    ): array {
+        $provider = $this->normalizeProvider($provider);
+
+        if ($holder->hasProvider($provider)) {
+            return [
+                'success' => true,
+                'holder' => $holder,
+                'provider_customer_id' => $holder->getProviderCustomerId($provider),
+            ];
+        }
+
+        try {
+            $service = $this->resolveProvider($provider);
+            $user = $holder->user ?? User::find($holder->user_id);
+
+            // Reconstruct individual payload
+            $firstName = $holder->first_name ?: ($user?->firstname ?? 'User');
+            $lastName  = $holder->last_name ?: ($user?->lastname ?? 'Cardholder');
+
+            $individual = [
+                'firstName' => $firstName,
+                'lastName'  => $lastName,
+            ];
+
+            if ($holder->other_names) {
+                $individual['otherNames'] = $holder->other_names;
+            }
+            if ($holder->date_of_birth) {
+                $individual['dob'] = $holder->date_of_birth instanceof \Carbon\CarbonInterface
+                    ? $holder->date_of_birth->format('Y-m-d')
+                    : date('Y-m-d', strtotime((string)$holder->date_of_birth));
+            }
+            if ($holder->identity_number) {
+                $individual['identity'] = [
+                    'type'   => $holder->identity_type ?: 'BVN',
+                    'number' => $holder->identity_number,
+                ];
+            }
+
+            $billingAddress = [
+                'line1'      => $holder->address_line1 ?: 'Victoria Island',
+                'city'       => $holder->city ?: 'Lagos',
+                'state'      => $holder->state ?: 'Lagos',
+                'postalCode' => (string) ($holder->postal_code ?: '100001'),
+                'country'    => $holder->country ?: 'NG',
+            ];
+            if ($holder->address_line2) {
+                $billingAddress['line2'] = $holder->address_line2;
+            }
+
+            $name = $holder->name ?: trim($firstName . ' ' . $lastName);
+            $phone = $holder->phone_number ?: ($user?->full_mobile ?: ($user?->mobile ?: '2348000000000'));
+            $email = $holder->email ?: ($user?->email ?: null);
+
+            $payload = [
+                'type'           => $holder->type ?: 'individual',
+                'name'           => $name,
+                'phoneNumber'    => $phone,
+                'status'         => 'active',
+                'billingAddress' => $billingAddress,
+                'individual'     => $individual,
+            ];
+
+            if (!empty($email)) {
+                $payload['emailAddress'] = $email;
+            }
+
+            $payload = $this->removeNullValues($payload);
+            $response = $service->createCustomer($payload);
+
+            if (!($response['success'] ?? false)) {
+                Log::warning('Self-heal: Card holder provider enrollment failed', [
+                    'holder_id'   => $holder->id,
+                    'user_id'     => $holder->user_id,
+                    'provider'    => $provider,
+                    'status_code' => $response['statusCode'] ?? null,
+                    'message'     => $response['message'] ?? null,
+                    'errors'      => $response['errors'] ?? null,
+                ]);
+
+                return [
+                    'success'    => false,
+                    'message'    => $response['message'] ?? "Unable to register card holder with {$provider}.",
+                    'statusCode' => $response['statusCode'] ?? 422,
+                ];
+            }
+
+            $syncedHolder = DB::transaction(function () use ($holder, $provider, $response) {
+                return CryptoCardHolders::syncFromProvider(
+                    userId: $holder->user_id,
+                    provider: $provider,
+                    response: $response
+                );
+            });
+
+            return [
+                'success' => true,
+                'holder'  => $syncedHolder,
+                'provider_customer_id' => $syncedHolder->getProviderCustomerId($provider),
+            ];
+        } catch (Throwable $e) {
+            Log::error('Self-heal: enrollHolderWithProvider exception', [
+                'holder_id' => $holder->id,
+                'provider'  => $provider,
+                'error'     => $e->getMessage(),
+            ]);
+
+            return [
+                'success'    => false,
+                'message'    => $e->getMessage(),
+                'statusCode' => 500,
+            ];
+        }
+    }
+
     /*
     |--------------------------------------------------------------------------
     | LOCAL CARD CREATION
@@ -365,6 +483,14 @@ class CryptoCardService
                 : CryptoCardHolders::forUser($userId)
                     ->where('status', 'active')
                     ->first();
+
+            // Self-heal: If holder exists for user but lacks this provider, enroll holder with provider
+            if ($holder && !$holder->hasProvider($provider)) {
+                $enrollResult = $this->enrollHolderWithProvider($holder, $provider);
+                if ($enrollResult['success'] ?? false) {
+                    $holder->refresh();
+                }
+            }
 
             if (!$holder) {
                 return [
@@ -730,6 +856,122 @@ if (!$providerSuccess) {
                 'success' => false,
                 'message' => 'Unable to update card.',
                 'error' => $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Activate a card (particularly physical cards that require explicit activation).
+     */
+    public function activateCard(
+        int $userId,
+        int|string $cardId,
+        ?string $pin = null,
+        ?string $last4 = null
+    ): array {
+        $card = $this->getCard($userId, $cardId);
+
+        if (!$card) {
+            return [
+                'success' => false,
+                'message' => 'Card not found.',
+                'statusCode' => 404,
+            ];
+        }
+
+        // Check if last4 was provided and matches
+        if ($last4 !== null && $card->last_4) {
+            if (trim($last4) !== trim($card->last_4)) {
+                return [
+                    'success' => false,
+                    'message' => 'The provided card digits do not match our records.',
+                    'statusCode' => 422,
+                ];
+            }
+        }
+
+        if ($card->card_status === 'active' && !$pin) {
+            return [
+                'success' => true,
+                'message' => 'Card is already active.',
+                'data' => [
+                    'card' => $card,
+                ],
+            ];
+        }
+
+        try {
+            $service = $this->resolveProvider($card->card_provider);
+
+            // 1. Update card status to active on Sudo
+            $updateResponse = $service->updateCard(
+                $card->card_provider_id,
+                ['status' => 'active']
+            );
+
+            if (!($updateResponse['success'] ?? false)) {
+                Log::error('Provider card activation failed', [
+                    'user_id' => $userId,
+                    'card_id' => $cardId,
+                    'response' => $updateResponse,
+                ]);
+
+                return [
+                    'success' => false,
+                    'message' => $updateResponse['message'] ?? 'Unable to activate card with provider.',
+                    'statusCode' => $updateResponse['statusCode'] ?? 400,
+                ];
+            }
+
+            // 2. Set/change PIN if provided
+            if (!empty($pin)) {
+                $pinResponse = $service->changeCardPin(
+                    $card->card_provider_id,
+                    ['pin' => $pin]
+                );
+
+                if (!($pinResponse['success'] ?? false)) {
+                    Log::warning('Card activated on provider but PIN setting failed', [
+                        'user_id' => $userId,
+                        'card_id' => $cardId,
+                        'response' => $pinResponse,
+                    ]);
+                }
+            }
+
+            // 3. Update local card model
+            $card->updateFromSudoResponse($updateResponse);
+            $metadata = is_array($card->metadata) ? $card->metadata : [];
+            $metadata['activated_at'] = now()->toISOString();
+            $card->card_status = 'active';
+            $card->metadata = $metadata;
+            $card->save();
+
+            Log::info('Card activated successfully', [
+                'user_id' => $userId,
+                'card_id' => $card->id,
+                'provider_id' => $card->card_provider_id,
+            ]);
+
+            return [
+                'success' => true,
+                'message' => 'Card activated successfully.',
+                'data' => [
+                    'card' => $card->fresh(),
+                ],
+            ];
+        } catch (Throwable $e) {
+            Log::error('Card activation exception', [
+                'user_id' => $userId,
+                'card_id' => $cardId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'success' => false,
+                'message' => 'An error occurred while activating your card. Please try again.',
+                'error' => $e->getMessage(),
+                'statusCode' => 500,
             ];
         }
     }
