@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Throwable;
 use App\Models\CryptoCardOrder;
+use App\Models\CryptoCardHolders;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use App\Models\CryptoCardSetup;
