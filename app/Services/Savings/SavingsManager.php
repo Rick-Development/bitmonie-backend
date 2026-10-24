@@ -11,6 +11,7 @@ use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 /**
  * Product rules for Flexi Save, Auto Save and Target Savings. Product
@@ -78,6 +79,15 @@ class SavingsManager
             ]);
             $plan = $this->schedule->createPlan($account, $settings);
             $this->audit->record('account.created', $user->id, $account->id, ['product' => 'AUTO']);
+
+            // Auto-deposit initial amount if provided or requested
+            $initialAmount = $in['initial_deposit'] ?? $in['deposit_amount'] ?? $in['amount'] ?? null;
+            if ($initialAmount !== null && Money::cmp(Money::parse($initialAmount), '0.00') > 0) {
+                $parsedAmount = Money::parse($initialAmount);
+                $key = $in['idempotency_key'] ?? ('auto-init-' . Str::uuid());
+                $this->contribute($user, $account->id, $parsedAmount, 'wallet', $key);
+                $account = $account->refresh();
+            }
 
             return ['account' => $account, 'plan' => $plan];
         });
@@ -168,6 +178,15 @@ class SavingsManager
             ]);
             $plan = $settings ? $this->schedule->createPlan($account, $settings) : null;
             $this->audit->record('account.created', $user->id, $account->id, ['product' => 'TARGET', 'target_amount' => $target]);
+
+            // Auto-deposit initial amount if provided or requested
+            $initialAmount = $in['initial_deposit'] ?? $in['deposit_amount'] ?? $in['amount'] ?? null;
+            if ($initialAmount !== null && Money::cmp(Money::parse($initialAmount), '0.00') > 0) {
+                $parsedAmount = Money::parse($initialAmount);
+                $key = $in['idempotency_key'] ?? ('target-init-' . Str::uuid());
+                $this->contribute($user, $account->id, $parsedAmount, 'wallet', $key);
+                $account = $account->refresh();
+            }
 
             return ['account' => $account, 'plan' => $plan];
         });

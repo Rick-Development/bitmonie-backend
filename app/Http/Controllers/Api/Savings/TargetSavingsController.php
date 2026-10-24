@@ -75,6 +75,8 @@ class TargetSavingsController extends Controller
             'target_amount' => ['required', 'numeric'],
             'start_date' => ['sometimes', 'date'],
             'deadline' => ['sometimes', 'nullable', 'date'],
+            'initial_deposit' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'amount' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'schedule' => ['sometimes', 'array'],
             'schedule.amount' => ['required_with:schedule', 'numeric'],
             'schedule.frequency' => ['required_with:schedule', 'in:daily,weekly,monthly,DAILY,WEEKLY,MONTHLY'],
@@ -85,7 +87,9 @@ class TargetSavingsController extends Controller
         ]);
 
         return $this->guarded(function () use ($request, $data) {
-            $created = $this->savings->createTarget($request->user(), $data);
+            $created = $this->savings->createTarget($request->user(), $data + [
+                'idempotency_key' => $request->header('Idempotency-Key'),
+            ]);
             $account = $created['account']->load('plan');
 
             return Response::successResponse('Target created.', SavingsPresenter::account($account, $this->savings), 201);

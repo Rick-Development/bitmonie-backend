@@ -71,10 +71,13 @@ class AutoSaveController extends Controller
         $data = $request->validate(self::SCHEDULE_RULES + [
             'title' => ['sometimes', 'string', 'max:120'],
             'description' => ['sometimes', 'nullable', 'string', 'max:500'],
+            'initial_deposit' => ['sometimes', 'nullable', 'numeric', 'min:0'],
         ]);
 
         return $this->guarded(function () use ($request, $data) {
-            $created = $this->savings->createAuto($request->user(), $data);
+            $created = $this->savings->createAuto($request->user(), $data + [
+                'idempotency_key' => $request->header('Idempotency-Key'),
+            ]);
 
             return Response::successResponse('Auto Save plan created.', [
                 'account' => SavingsPresenter::account($created['account']),
