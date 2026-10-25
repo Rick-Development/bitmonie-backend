@@ -56,7 +56,7 @@ class UsdtEasyearnService
         }
 
         $easyearnWallet = $this->getOrCreateEasyearnWallet($user);
-        $quidaxService = new QuidaxService();
+        $quidaxService = app(QuidaxService::class);
         $quidaxBalance = $availableBalance;
 
         $investment = DB::transaction(function () use (
@@ -108,26 +108,62 @@ class UsdtEasyearnService
                 );
             }
 
-            $easyearnWallet->lockAmount($amount);
+            try {
+                $easyearnWallet->lockAmount($amount);
 
-            $startDate = Carbon::now();
-            $endDate = $startDate->copy()->addMonths(12);
+                $startDate = Carbon::now();
+                $endDate = $startDate->copy()->addMonths(12);
 
-            $powerBonusMultiplier = (string) ($settings->power_bonus_multiplier ?? 2.00);
+                $powerBonusMultiplier = (string) ($settings->power_bonus_multiplier ?? 2.00);
 
-            $investment = UsdtEasyearnInvestment::create([
-                'user_id' => $user->id,
-                'amount' => $amount,
-                'initial_deposit_amount' => $amount,
-                'duration_months' => 12,
-                'interest_rate' => $settings->current_monthly_rate,
-                'auto_compound' => $autoCompound,
-                'power_bonus_multiplier' => $autoCompound ? $powerBonusMultiplier : 1.00,
-                'start_date' => $startDate,
-                'end_date' => $endDate,
-                'status' => 'active',
-                'total_interest_earned' => 0,
-            ]);
+                $investment = UsdtEasyearnInvestment::create([
+                    'user_id' => $user->id,
+                    'amount' => $amount,
+                    'initial_deposit_amount' => $amount,
+                    'duration_months' => 12,
+                    'interest_rate' => $settings->current_monthly_rate,
+                    'auto_compound' => $autoCompound,
+                    'power_bonus_multiplier' => $autoCompound ? $powerBonusMultiplier : 1.00,
+                    'start_date' => $startDate,
+                    'end_date' => $endDate,
+                    'status' => 'active',
+                    'total_interest_earned' => 0,
+                ]);
+            } catch (\Throwable $localFailure) {
+                // The DB rolls back, but the escrow transfer already happened:
+                // return the USDT to the user's Quidax sub-account.
+                Log::channel('easyearn_usdt')->error(
+                    'Local failure after USDT escrow transfer; refunding user',
+                    [
+                        'user_id' => $user->id,
+                        'amount' => $amount,
+                        'reference' => $escrowRef,
+                        'error' => $localFailure->getMessage(),
+                    ]
+                );
+
+                try {
+                    $quidaxService->fundSubAccount(
+                        $user->quidax_id,
+                        $amount,
+                        'usdt',
+                        $escrowRef . '-REFUND',
+                        'EasyEarn investment reversal: ' . $escrowRef
+                    );
+                } catch (\Throwable $refundFailure) {
+                    Log::channel('easyearn_usdt')->critical(
+                        'EasyEarn escrow refund FAILED - manual reconciliation required',
+                        [
+                            'user_id' => $user->id,
+                            'amount' => $amount,
+                            'reference' => $escrowRef,
+                            'error' => $refundFailure->getMessage(),
+                        ]
+                    );
+                }
+
+                throw $localFailure;
+            }
 
             Log::channel('easyearn_usdt')->info(
                 'USDT EasyEarn Investment Created',
@@ -1466,7 +1502,7 @@ $fundResponse = $quidaxService->fundSubAccount(
             );
         }
 
-        $quidaxService = new QuidaxService();
+        $quidaxService = app(QuidaxService::class);
         $walletResponse = $quidaxService->fetchUserWallet(
             $user->quidax_id,
             'usdt'

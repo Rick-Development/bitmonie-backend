@@ -5160,7 +5160,7 @@
                                                             },
                                                             "symbol": {
                                                                 "type": "string",
-                                                                "example": "\u20a6"
+                                                                "example": "₦"
                                                             },
                                                             "balance": {
                                                                 "type": "number",
@@ -17492,7 +17492,7 @@
                     "Savings & Vaults"
                 ],
                 "summary": "Create Auto Save Plan",
-                "description": "Creates a new Auto Save account with recurring daily, weekly, or monthly deductions from the user wallet.",
+                "description": "Creates an Auto Save plan. `amount` is the RECURRING instalment and is NOT charged at creation. To fund the plan immediately send `initial_deposit`, which is debited from the wallet atomically.",
                 "security": [
                     {
                         "bearerAuth": []
@@ -17505,18 +17505,22 @@
                             "schema": {
                                 "type": "object",
                                 "required": [
-                                    "name",
                                     "amount",
                                     "frequency"
                                 ],
                                 "properties": {
-                                    "name": {
+                                    "title": {
                                         "type": "string",
+                                        "maxLength": 120,
                                         "example": "Rainy Day Fund"
+                                    },
+                                    "description": {
+                                        "type": "string",
+                                        "maxLength": 500
                                     },
                                     "amount": {
                                         "type": "number",
-                                        "minimum": 100,
+                                        "description": "Recurring instalment (not charged at creation).",
                                         "example": 5000
                                     },
                                     "frequency": {
@@ -17530,8 +17534,9 @@
                                     },
                                     "day_of_week": {
                                         "type": "integer",
-                                        "minimum": 1,
-                                        "maximum": 7,
+                                        "minimum": 0,
+                                        "maximum": 6,
+                                        "description": "0 = Sunday",
                                         "example": 1
                                     },
                                     "day_of_month": {
@@ -17540,26 +17545,29 @@
                                         "maximum": 31,
                                         "example": 1
                                     },
-                                    "time_of_day": {
+                                    "run_time": {
                                         "type": "string",
                                         "example": "08:00"
+                                    },
+                                    "timezone": {
+                                        "type": "string",
+                                        "example": "Africa/Lagos"
                                     },
                                     "start_date": {
                                         "type": "string",
                                         "format": "date",
                                         "example": "2026-11-01"
                                     },
-                                    "target_amount": {
-                                        "type": "number",
-                                        "example": 500000
+                                    "end_date": {
+                                        "type": "string",
+                                        "format": "date",
+                                        "nullable": true
                                     },
                                     "initial_deposit": {
                                         "type": "number",
+                                        "minimum": 0,
+                                        "description": "Debited from the wallet at creation when > 0.",
                                         "example": 10000
-                                    },
-                                    "idempotency_key": {
-                                        "type": "string",
-                                        "example": "auto-create-12345"
                                     }
                                 }
                             }
@@ -17681,7 +17689,19 @@
                             }
                         }
                     }
-                }
+                },
+                "parameters": [
+                    {
+                        "name": "Idempotency-Key",
+                        "in": "header",
+                        "required": false,
+                        "description": "Recommended for money-moving creates (8-64 chars: letters, digits, _ - : .). Replays are safe; a deposit is never charged twice.",
+                        "schema": {
+                            "type": "string",
+                            "example": "target-create-0001"
+                        }
+                    }
+                ]
             }
         },
         "/api/v1/savings/auto/{id}": {
@@ -18315,7 +18335,7 @@
                     "Savings & Vaults"
                 ],
                 "summary": "Create Target Savings Account",
-                "description": "Creates a target savings goal with an optional recurring automated schedule and initial deposit.",
+                "description": "Creates a target. If `initial_deposit` (alias `amount`) is greater than 0 it is debited from the NGN wallet at creation, atomically: insufficient funds fails the whole request and nothing is created.",
                 "security": [
                     {
                         "bearerAuth": []
@@ -18328,57 +18348,89 @@
                             "schema": {
                                 "type": "object",
                                 "required": [
-                                    "name",
-                                    "target_amount",
-                                    "target_date"
+                                    "title",
+                                    "target_amount"
                                 ],
                                 "properties": {
-                                    "name": {
+                                    "title": {
                                         "type": "string",
+                                        "maxLength": 120,
                                         "example": "December Trip to Kigali"
                                     },
                                     "target_amount": {
                                         "type": "number",
-                                        "minimum": 1000,
                                         "example": 300000
-                                    },
-                                    "target_date": {
-                                        "type": "string",
-                                        "format": "date",
-                                        "example": "2026-12-20"
                                     },
                                     "description": {
                                         "type": "string",
+                                        "maxLength": 500,
                                         "example": "Flight & lodging savings"
                                     },
                                     "category": {
                                         "type": "string",
+                                        "maxLength": 60,
                                         "example": "vacation"
                                     },
-                                    "auto_save": {
-                                        "type": "boolean",
-                                        "example": true
-                                    },
-                                    "frequency": {
+                                    "start_date": {
                                         "type": "string",
-                                        "enum": [
-                                            "daily",
-                                            "weekly",
-                                            "monthly"
-                                        ],
-                                        "example": "weekly"
+                                        "format": "date",
+                                        "example": "2026-11-01"
                                     },
-                                    "schedule_amount": {
-                                        "type": "number",
-                                        "example": 25000
+                                    "deadline": {
+                                        "type": "string",
+                                        "format": "date",
+                                        "nullable": true,
+                                        "example": "2026-12-20"
                                     },
                                     "initial_deposit": {
                                         "type": "number",
+                                        "minimum": 0,
+                                        "description": "Debited from the wallet at creation when > 0.",
                                         "example": 50000
                                     },
-                                    "idempotency_key": {
-                                        "type": "string",
-                                        "example": "target-create-abcde"
+                                    "schedule": {
+                                        "type": "object",
+                                        "description": "Optional recurring contribution schedule.",
+                                        "required": [
+                                            "amount",
+                                            "frequency"
+                                        ],
+                                        "properties": {
+                                            "amount": {
+                                                "type": "number",
+                                                "example": 25000
+                                            },
+                                            "frequency": {
+                                                "type": "string",
+                                                "enum": [
+                                                    "daily",
+                                                    "weekly",
+                                                    "monthly"
+                                                ],
+                                                "example": "weekly"
+                                            },
+                                            "day_of_week": {
+                                                "type": "integer",
+                                                "minimum": 0,
+                                                "maximum": 6,
+                                                "description": "0 = Sunday",
+                                                "example": 1
+                                            },
+                                            "day_of_month": {
+                                                "type": "integer",
+                                                "minimum": 1,
+                                                "maximum": 31,
+                                                "example": 1
+                                            },
+                                            "run_time": {
+                                                "type": "string",
+                                                "example": "08:00"
+                                            },
+                                            "timezone": {
+                                                "type": "string",
+                                                "example": "Africa/Lagos"
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -18457,7 +18509,19 @@
                             }
                         }
                     }
-                }
+                },
+                "parameters": [
+                    {
+                        "name": "Idempotency-Key",
+                        "in": "header",
+                        "required": false,
+                        "description": "Recommended for money-moving creates (8-64 chars: letters, digits, _ - : .). Replays are safe; a deposit is never charged twice.",
+                        "schema": {
+                            "type": "string",
+                            "example": "target-create-0001"
+                        }
+                    }
+                ]
             }
         },
         "/api/v1/savings/targets/{id}/progress": {
@@ -19646,6 +19710,476 @@
                                 }
                             }
                         }
+                    }
+                }
+            }
+        },
+        "/api/v1/savings/safelock": {
+            "get": {
+                "tags": [
+                    "Savings & Vaults"
+                ],
+                "summary": "List SafeLocks",
+                "description": "Returns the user's SafeLocks with `active_locks`, `completed_locks` and `total_locked_balance`. Filter with `?status=active|completed`.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "SafeLocks listed",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {
+                                            "type": "object"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "nullable": true
+                                        },
+                                        "type": {
+                                            "type": "string",
+                                            "enum": [
+                                                "success",
+                                                "error"
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthenticated"
+                    }
+                }
+            }
+        },
+        "/api/v1/savings/safelock/plans": {
+            "get": {
+                "tags": [
+                    "Savings & Vaults"
+                ],
+                "summary": "List SafeLock plans",
+                "description": "Available lock durations with `interest_rate`, `min_amount` and `max_amount`.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Plans listed",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {
+                                            "type": "object"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "nullable": true
+                                        },
+                                        "type": {
+                                            "type": "string",
+                                            "enum": [
+                                                "success",
+                                                "error"
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthenticated"
+                    }
+                }
+            }
+        },
+        "/api/v1/savings/safelock/create": {
+            "post": {
+                "tags": [
+                    "Savings & Vaults"
+                ],
+                "summary": "Create a SafeLock",
+                "description": "Debits the NGN wallet immediately and locks the funds until maturity.\n\nThe amount is first transferred at the funding provider (SafeHaven). If any local step fails afterwards, the provider transfer is automatically reversed and the wallet is left unchanged. If the provider rejects the transfer, nothing is debited. Amount must be within the plan's `min_amount`/`max_amount`.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "plan_id",
+                                    "amount"
+                                ],
+                                "properties": {
+                                    "plan_id": {
+                                        "type": "integer",
+                                        "example": 1
+                                    },
+                                    "amount": {
+                                        "type": "number",
+                                        "example": 20000
+                                    },
+                                    "title": {
+                                        "type": "string",
+                                        "example": "6 Month Lock"
+                                    },
+                                    "autosave": {
+                                        "type": "object",
+                                        "nullable": true,
+                                        "description": "Optional AutoSave config (mode, amount, percentage, frequency, goal_amount, maturity_date)."
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "SafeLock created",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {
+                                            "type": "object"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "nullable": true
+                                        },
+                                        "type": {
+                                            "type": "string",
+                                            "enum": [
+                                                "success",
+                                                "error"
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthenticated"
+                    },
+                    "400": {
+                        "description": "Insufficient balance, amount outside plan limits, or provider failure (type=error)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {
+                                            "type": "object"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "nullable": true
+                                        },
+                                        "type": {
+                                            "type": "string",
+                                            "enum": [
+                                                "success",
+                                                "error"
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/savings/safelock/break": {
+            "post": {
+                "tags": [
+                    "Savings & Vaults"
+                ],
+                "summary": "Break a SafeLock early",
+                "description": "Returns the principal to the wallet minus a 1% early-break penalty when the lock has not matured. The lock becomes `broken`.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "lock_id"
+                                ],
+                                "properties": {
+                                    "lock_id": {
+                                        "type": "integer",
+                                        "example": 7
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "SafeLock broken",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {
+                                            "type": "object"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "nullable": true
+                                        },
+                                        "type": {
+                                            "type": "string",
+                                            "enum": [
+                                                "success",
+                                                "error"
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthenticated"
+                    }
+                }
+            }
+        },
+        "/api/v1/savings/safelock/withdraw": {
+            "post": {
+                "tags": [
+                    "Savings & Vaults"
+                ],
+                "summary": "Withdraw a matured SafeLock",
+                "description": "Pays principal plus interest to the wallet once the lock has matured. Repeat calls on an already redeemed lock return the earlier result.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "lock_id"
+                                ],
+                                "properties": {
+                                    "lock_id": {
+                                        "type": "integer",
+                                        "example": 7
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Withdrawn",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {
+                                            "type": "object"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "nullable": true
+                                        },
+                                        "type": {
+                                            "type": "string",
+                                            "enum": [
+                                                "success",
+                                                "error"
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthenticated"
+                    }
+                }
+            }
+        },
+        "/api/v1/usdt-easyearn/invest": {
+            "post": {
+                "tags": [
+                    "Savings & Vaults"
+                ],
+                "summary": "Create a USDT EasyEarn plan",
+                "description": "Locks USDT for 12 months. USDT is NOT taken from the NGN wallet: the principal moves from the user's Quidax USDT balance into platform escrow, so the Naira balance does not change.\n\nThe amount must be within the configured min/max and not exceed the spendable USDT balance. If the escrow transfer fails nothing is created. If it succeeds but the plan cannot be saved, the USDT is refunded to the user's Quidax account.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "amount"
+                                ],
+                                "properties": {
+                                    "amount": {
+                                        "type": "number",
+                                        "minimum": 1,
+                                        "example": 5
+                                    },
+                                    "auto_compound": {
+                                        "type": "boolean",
+                                        "example": false
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Plan created"
+                    },
+                    "400": {
+                        "description": "Insufficient USDT, amount outside limits, product disabled, or escrow transfer failed"
+                    },
+                    "401": {
+                        "description": "Unauthenticated"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                }
+            }
+        },
+        "/api/v1/usdt-easyearn/save": {
+            "post": {
+                "tags": [
+                    "Savings & Vaults"
+                ],
+                "summary": "Create a USDT EasyEarn plan",
+                "description": "Locks USDT for 12 months. USDT is NOT taken from the NGN wallet: the principal moves from the user's Quidax USDT balance into platform escrow, so the Naira balance does not change.\n\nThe amount must be within the configured min/max and not exceed the spendable USDT balance. If the escrow transfer fails nothing is created. If it succeeds but the plan cannot be saved, the USDT is refunded to the user's Quidax account.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "amount"
+                                ],
+                                "properties": {
+                                    "amount": {
+                                        "type": "number",
+                                        "minimum": 1,
+                                        "example": 5
+                                    },
+                                    "auto_compound": {
+                                        "type": "boolean",
+                                        "example": false
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Plan created"
+                    },
+                    "400": {
+                        "description": "Insufficient USDT, amount outside limits, product disabled, or escrow transfer failed"
+                    },
+                    "401": {
+                        "description": "Unauthenticated"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                }
+            }
+        },
+        "/api/v1/usdt-easyearn/info": {
+            "get": {
+                "tags": [
+                    "Savings & Vaults"
+                ],
+                "summary": "USDT EasyEarn product info",
+                "description": "Rates, min/max investment, early-withdrawal rules and the user's spendable USDT `available_balance`.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    },
+                    "401": {
+                        "description": "Unauthenticated"
+                    }
+                }
+            }
+        },
+        "/api/v1/usdt-easyearn/my-investments": {
+            "get": {
+                "tags": [
+                    "Savings & Vaults"
+                ],
+                "summary": "List my USDT EasyEarn plans",
+                "description": "Paginated. Filter with `?status=`. Alias: `/my-savings`.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    },
+                    "401": {
+                        "description": "Unauthenticated"
                     }
                 }
             }

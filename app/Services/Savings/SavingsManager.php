@@ -80,8 +80,9 @@ class SavingsManager
             $plan = $this->schedule->createPlan($account, $settings);
             $this->audit->record('account.created', $user->id, $account->id, ['product' => 'AUTO']);
 
-            // Auto-deposit initial amount if provided or requested
-            $initialAmount = $in['initial_deposit'] ?? $in['deposit_amount'] ?? $in['amount'] ?? null;
+            // Debit an initial deposit only when explicitly requested. `amount` is the
+            // recurring instalment for Auto Save and must never be charged at creation.
+            $initialAmount = $in['initial_deposit'] ?? $in['deposit_amount'] ?? null;
             if ($initialAmount !== null && Money::cmp(Money::parse($initialAmount), '0.00') > 0) {
                 $parsedAmount = Money::parse($initialAmount);
                 $key = $in['idempotency_key'] ?? ('auto-init-' . Str::uuid());

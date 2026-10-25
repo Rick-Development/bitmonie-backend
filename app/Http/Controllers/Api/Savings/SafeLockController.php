@@ -108,13 +108,15 @@ class SafeLockController extends Controller
         }
 
         $user = auth()->user();
+        $providerFundedReference = null;
 
         try {
             $result = DB::transaction(function () use (
                 $request,
                 $user,
                 $autosaveSetup,
-                $fundingProvider
+                $fundingProvider,
+                &$providerFundedReference
             ) {
                 $plan = SavingsPlan::where('id', $request->plan_id)
                     ->lockForUpdate()
@@ -239,9 +241,13 @@ class SafeLockController extends Controller
                 /*
                  * Provider accepted the transfer.
                  *
+                 * Remember it so it can be reversed if any local step
+                 * below fails (a DB rollback cannot undo it).
+                 *
                  * Now update local wallet and create the
                  * SafeLock records.
                  */
+                $providerFundedReference = $reference;
                 $wallet->balance = bcsub(
                     (string) $wallet->balance,
                     (string) $request->amount,
@@ -348,6 +354,24 @@ class SafeLockController extends Controller
                 'amount' => $request->amount,
                 'error' => $e->getMessage(),
             ]);
+
+            if ($providerFundedReference !== null) {
+                try {
+                    $fundingProvider->withdraw(
+                        $user,
+                        (string) $request->amount,
+                        $providerFundedReference . ':reversal',
+                        'SafeLock creation reversal'
+                    );
+                } catch (\Throwable $reversalError) {
+                    Log::critical('SafeLock creation reversal FAILED - manual reconciliation required', [
+                        'user_id' => $user->id,
+                        'amount' => $request->amount,
+                        'reference' => $providerFundedReference,
+                        'error' => $reversalError->getMessage(),
+                    ]);
+                }
+            }
 
             return Response::error([
                 $e->getMessage(),
