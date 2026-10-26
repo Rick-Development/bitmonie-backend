@@ -5,10 +5,14 @@ namespace App\Services\Savings;
 use App\Models\OrderTransaction;
 use App\Models\SavingsAccount;
 use App\Models\SavingsEntry;
+use App\Models\User;
 use App\Models\UserWallet;
+use App\Services\SafeHavenService;
+use App\Services\Savings\Contracts\SavingsFundingProviderInterface;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 /**
@@ -35,8 +39,62 @@ class SavingsLedger
     /** Request hash of the idempotent operation currently being executed. */
     private ?string $currentHash = null;
 
-    public function __construct(private readonly SavingsAuditor $audit)
+    public function __construct(
+        private readonly SavingsAuditor $audit,
+        private readonly ?SavingsFundingProviderInterface $fundingProvider = null,
+        private readonly ?SafeHavenService $safeHavenService = null
+    ) {
+    }
+
+    private function getFundingProvider(): ?SavingsFundingProviderInterface
     {
+        return $this->fundingProvider ?? app(SavingsFundingProviderInterface::class);
+    }
+
+    private function getSafeHavenService(): ?SafeHavenService
+    {
+        return $this->safeHavenService ?? app(SafeHavenService::class);
+    }
+
+    public function hasSafeHavenAccount(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        try {
+            if (! Schema::hasTable('virtual_accounts')) {
+                return false;
+            }
+
+            $service = $this->getSafeHavenService();
+            if (! $service) {
+                return false;
+            }
+
+            $virtualAccount = $service->getUserSubAccount($user);
+
+            return $virtualAccount !== null && ! empty($virtualAccount->account_number);
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    public function syncWalletBeforeOperation(int $userId): void
+    {
+        try {
+            if (! Schema::hasTable('virtual_accounts')) {
+                return;
+            }
+
+            $user = User::find($userId);
+            if ($user && $this->hasSafeHavenAccount($user)) {
+                $service = $this->getSafeHavenService();
+                $service?->syncUserWalletBalance($user, config('savings.currency', 'NGN'));
+            }
+        } catch (\Throwable $e) {
+            Log::warning('savings.wallet_sync_skipped', ['user_id' => $userId, 'error' => $e->getMessage()]);
+        }
     }
 
     /** Wallet -> savings account. @return array{entry: SavingsEntry, replayed: bool} */
@@ -44,19 +102,67 @@ class SavingsLedger
     {
         $fingerprint = ['op' => 'deposit', 'account' => $accountId, 'amount' => $amount];
 
-        return $this->run($userId, $o, $fingerprint, function () use ($userId, $accountId, $amount, $o) {
-            $account = $this->lockAccount($accountId, $userId);
-            $amount = $this->applyGuard($o, $account, $amount);
-            $reference = $this->newReference('DEP');
+        // Ensure wallet balance is refreshed from SafeHaven before verifying sufficiency
+        $this->syncWalletBeforeOperation($userId);
 
-            $wallet = $this->lockWallet($userId);
-            $this->debitWallet($wallet, $amount, $reference, 'savings_deposit', $account);
+        $providerFundedReference = null;
+        $user = null;
 
-            $entry = $this->credit($account, $amount, SavingsEntry::DEPOSIT, $reference, $o + ['source' => 'wallet']);
-            $this->applyAfter($o, $account);
+        try {
+            return $this->run($userId, $o, $fingerprint, function () use ($userId, $accountId, $amount, $o, &$providerFundedReference, &$user) {
+                $user = User::find($userId);
+                $account = $this->lockAccount($accountId, $userId);
+                $amount = $this->applyGuard($o, $account, $amount);
+                $reference = $this->newReference('DEP');
 
-            return ['entry' => $entry];
-        }, 'deposit.completed');
+                $wallet = $this->lockWallet($userId);
+                $this->debitWallet($wallet, $amount, $reference, 'savings_deposit', $account);
+
+                $providerMeta = [];
+                if ($this->hasSafeHavenAccount($user)) {
+                    $providerRef = 'savings:dep:' . $reference;
+                    $narration = $o['narration'] ?? "Savings Deposit: {$account->title}";
+                    $provider = $this->getFundingProvider();
+                    if ($provider) {
+                        $provider->deposit($user, $amount, $providerRef, $narration);
+                        $providerFundedReference = $providerRef;
+                        $providerMeta = [
+                            'provider' => 'safehaven',
+                            'provider_reference' => $providerRef,
+                        ];
+                    }
+                }
+
+                $meta = array_merge($o['meta'] ?? [], $providerMeta);
+                $entry = $this->credit($account, $amount, SavingsEntry::DEPOSIT, $reference, array_merge($o, ['source' => 'wallet', 'meta' => $meta]));
+                $this->applyAfter($o, $account);
+
+                return ['entry' => $entry];
+            }, 'deposit.completed');
+        } catch (\Throwable $e) {
+            if ($providerFundedReference !== null && $user !== null) {
+                try {
+                    $provider = $this->getFundingProvider();
+                    $provider?->withdraw(
+                        $user,
+                        $amount,
+                        $providerFundedReference . ':reversal',
+                        'Savings deposit reversal'
+                    );
+                    Log::info('savings.deposit_reversal_succeeded', [
+                        'user_id' => $user->id,
+                        'reference' => $providerFundedReference,
+                    ]);
+                } catch (\Throwable $revErr) {
+                    Log::critical('savings.deposit_reversal_failed', [
+                        'user_id' => $user->id,
+                        'reference' => $providerFundedReference,
+                        'error' => $revErr->getMessage(),
+                    ]);
+                }
+            }
+            throw $e;
+        }
     }
 
     /**
@@ -69,6 +175,7 @@ class SavingsLedger
         $fingerprint = ['op' => 'withdraw', 'account' => $accountId, 'amount' => $amount, 'fee' => $fee];
 
         return $this->run($userId, $o, $fingerprint, function () use ($userId, $accountId, $amount, $fee, $o) {
+            $user = User::find($userId);
             $account = $this->lockAccount($accountId, $userId);
             $amount = $this->applyGuard($o, $account, $amount);
             $reference = $this->newReference('WDR');
@@ -81,7 +188,22 @@ class SavingsLedger
                 ] + ['group_ref' => $group]);
             }
 
-            $entry = $this->debit($account, $amount, SavingsEntry::WITHDRAWAL, $reference, $o + ['source' => 'wallet', 'group_ref' => $group]);
+            $providerMeta = [];
+            if ($this->hasSafeHavenAccount($user)) {
+                $providerRef = 'savings:wdr:' . $reference;
+                $narration = $o['narration'] ?? "Savings Withdrawal: {$account->title}";
+                $provider = $this->getFundingProvider();
+                if ($provider) {
+                    $provider->withdraw($user, $amount, $providerRef, $narration);
+                    $providerMeta = [
+                        'provider' => 'safehaven',
+                        'provider_reference' => $providerRef,
+                    ];
+                }
+            }
+
+            $meta = array_merge($o['meta'] ?? [], $providerMeta);
+            $entry = $this->debit($account, $amount, SavingsEntry::WITHDRAWAL, $reference, array_merge($o, ['source' => 'wallet', 'group_ref' => $group, 'meta' => $meta]));
 
             $wallet = $this->lockWallet($userId);
             $this->creditWallet($wallet, $amount, $reference, 'savings_withdrawal', $account);
