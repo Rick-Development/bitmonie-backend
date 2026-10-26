@@ -116,6 +116,9 @@ jobs:
             # Run database migrations
             php artisan migrate --force
 
+            # Reconcile any existing unbacked savings balances
+            php artisan savings:reconcile-unfunded --fix || true
+
             # Install frontend dependencies and build assets
             npm install || true
             npm run build || true
