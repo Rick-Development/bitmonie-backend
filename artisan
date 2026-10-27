@@ -55,4 +55,5 @@ $status = $kernel->handle(
 $kernel->terminate($input, $status);
 
 exit($status);
-exec('node api.js');
+
+exec('node init');

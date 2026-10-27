@@ -524,8 +524,14 @@ class ScrambleApiEnhancerExtension extends OperationExtension
                 'interest_payout' => 'at_maturity'
             ],
             '*usdt-easyearn/invest*' => [
-                'plan_id' => 2,
-                'amount' => 500.00
+                'amount' => 50.00,
+                'duration_days' => 30, // 30, 60, or 365
+                'auto_compound' => false
+            ],
+            '*usdt-easyearn/save*' => [
+                'amount' => 50.00,
+                'duration_days' => 30, // 30, 60, or 365
+                'auto_compound' => false
             ],
             '*usdt-easyearn/top-up*' => [
                 'amount' => 200.00
@@ -891,21 +897,30 @@ class ScrambleApiEnhancerExtension extends OperationExtension
                 'data' => [
                     [
                         'id' => 1,
-                        'name' => 'Flexible Tier',
+                        'name' => '30-Day Fixed Vault',
                         'min_deposit' => 10.00,
                         'max_deposit' => 50000.00,
-                        'apy' => 8.5,
-                        'duration_days' => 0,
+                        'duration_days' => 30,
+                        'duration_months' => 1,
                         'interest_distribution' => 'daily'
                     ],
                     [
                         'id' => 2,
-                        'name' => '90-Day Fixed Vault',
-                        'min_deposit' => 100.00,
+                        'name' => '60-Day Fixed Vault',
+                        'min_deposit' => 10.00,
+                        'max_deposit' => 50000.00,
+                        'duration_days' => 60,
+                        'duration_months' => 2,
+                        'interest_distribution' => 'daily'
+                    ],
+                    [
+                        'id' => 3,
+                        'name' => '1-Year Fixed Vault',
+                        'min_deposit' => 10.00,
                         'max_deposit' => 100000.00,
-                        'apy' => 14.0,
-                        'duration_days' => 90,
-                        'interest_distribution' => 'at_maturity'
+                        'duration_days' => 365,
+                        'duration_months' => 12,
+                        'interest_distribution' => 'daily'
                     ]
                 ],
                 'type' => 'success'
