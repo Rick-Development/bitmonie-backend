@@ -46,6 +46,7 @@ class UsdtEasyearnTest extends SavingsTestCase
             $t->decimal('amount', 20, 8);
             $t->decimal('initial_deposit_amount', 20, 8)->nullable();
             $t->tinyInteger('duration_months')->default(12);
+            $t->integer('duration_days')->default(365);
             $t->decimal('interest_rate', 5, 2);
             $t->boolean('auto_compound')->default(false);
             $t->decimal('power_bonus_multiplier', 5, 2)->default(1);
@@ -217,5 +218,34 @@ class UsdtEasyearnTest extends SavingsTestCase
         $this->assertSame('qdx_' . $user->id, $refunds[0][0]);
         $this->assertEquals(5, $refunds[0][1]);
         $this->assertSame('usdt', $refunds[0][2]);
+    }
+
+    public function test_investment_supports_30_days_60_days_and_365_days(): void
+    {
+        $user = $this->cryptoUser('100');
+        $this->quidax(fn () => ['data' => ['id' => 'wd_test']]);
+
+        $service = app(UsdtEasyearnService::class);
+
+        // 30 days
+        $inv30 = $service->createInvestment($user, 5.0, false, 30);
+        $this->assertSame(30, $inv30->duration_days);
+        $this->assertSame(1, $inv30->duration_months);
+        $this->assertSame('30 Days', $inv30->getDurationLabel());
+        $this->assertSame(30, (int) round($inv30->start_date->diffInDays($inv30->end_date)));
+
+        // 60 days
+        $inv60 = $service->createInvestment($user, 5.0, false, 60);
+        $this->assertSame(60, $inv60->duration_days);
+        $this->assertSame(2, $inv60->duration_months);
+        $this->assertSame('60 Days', $inv60->getDurationLabel());
+        $this->assertSame(60, (int) round($inv60->start_date->diffInDays($inv60->end_date)));
+
+        // 365 days / 1 year default
+        $inv365 = $service->createInvestment($user, 5.0, false, 365);
+        $this->assertSame(365, $inv365->duration_days);
+        $this->assertSame(12, $inv365->duration_months);
+        $this->assertSame('1 Year', $inv365->getDurationLabel());
+        $this->assertTrue($inv365->end_date->gt($inv60->end_date));
     }
 }

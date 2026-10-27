@@ -59,12 +59,18 @@ class UsdtEasyearnController extends Controller
                     'is_active' => $settings->is_active,
                     'payout_day' => $settings->payout_day,
                     'duration_months' => 12,
+                    'available_durations' => [
+                        ['days' => 30, 'months' => 1, 'label' => '30 Days'],
+                        ['days' => 60, 'months' => 2, 'label' => '60 Days'],
+                        ['days' => 365, 'months' => 12, 'label' => '1 Year'],
+                    ],
                     'early_withdrawal_enabled' => (bool) $settings->early_withdrawal_enabled,
                     'early_withdrawal_penalty_percent' => (string) ($settings->early_withdrawal_penalty_percent ?? '5.00'),
                     'features' => [
                         'auto_compound' => true,
                         'monthly_withdrawal' => true,
                         'fixed_duration' => '12 months',
+                        'duration_options' => '30 days, 60 days, 1 year',
                         'standard_monthly_rate' => $settings->current_monthly_rate . '%',
                         'base_vault_apy' => $baseApy . '%',
                         'power_bonus' => "{$powerBonusMultiplier}X at maturity",
@@ -132,6 +138,9 @@ class UsdtEasyearnController extends Controller
         $validator = Validator::make($request->all(), [
             'amount' => 'required|numeric|min:1',
             'auto_compound' => 'boolean',
+            'duration_days' => 'nullable|integer|in:30,60,365',
+            'duration_months' => 'nullable|integer|in:1,2,12',
+            'term_days' => 'nullable|integer|in:30,60,365',
         ]);
 
         if ($validator->fails()) {
@@ -147,10 +156,25 @@ class UsdtEasyearnController extends Controller
             $amount = (float) $request->amount;
             $autoCompound = $request->auto_compound ?? false;
 
+            $durationDays = 365;
+            if ($request->filled('duration_days')) {
+                $durationDays = (int) $request->duration_days;
+            } elseif ($request->filled('term_days')) {
+                $durationDays = (int) $request->term_days;
+            } elseif ($request->filled('duration_months')) {
+                $durationMonths = (int) $request->duration_months;
+                $durationDays = match ($durationMonths) {
+                    1 => 30,
+                    2 => 60,
+                    default => 365,
+                };
+            }
+
             $investment = $this->usdtearnService->createInvestment(
                 $user,
                 $amount,
-                $autoCompound
+                $autoCompound,
+                $durationDays
             );
 
             return response()->json([

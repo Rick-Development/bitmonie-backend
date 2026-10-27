@@ -27,7 +27,8 @@ class UsdtEasyearnService
     public function createInvestment(
         User $user,
         float $amount,
-        bool $autoCompound = false
+        bool $autoCompound = false,
+        int $durationDays = 365
     ): UsdtEasyearnInvestment {
         $settings = UsdtEasyearnSetting::getSettings();
 
@@ -63,6 +64,7 @@ class UsdtEasyearnService
             $user,
             $amount,
             $autoCompound,
+            $durationDays,
             $easyearnWallet,
             $settings,
             $quidaxService,
@@ -112,7 +114,19 @@ class UsdtEasyearnService
                 $easyearnWallet->lockAmount($amount);
 
                 $startDate = Carbon::now();
-                $endDate = $startDate->copy()->addMonths(12);
+                if ($durationDays === 30) {
+                    $endDate = $startDate->copy()->addDays(30);
+                    $durationMonths = 1;
+                    $actualDurationDays = 30;
+                } elseif ($durationDays === 60) {
+                    $endDate = $startDate->copy()->addDays(60);
+                    $durationMonths = 2;
+                    $actualDurationDays = 60;
+                } else {
+                    $endDate = $startDate->copy()->addMonths(12);
+                    $durationMonths = 12;
+                    $actualDurationDays = 365;
+                }
 
                 $powerBonusMultiplier = (string) ($settings->power_bonus_multiplier ?? 2.00);
 
@@ -120,7 +134,8 @@ class UsdtEasyearnService
                     'user_id' => $user->id,
                     'amount' => $amount,
                     'initial_deposit_amount' => $amount,
-                    'duration_months' => 12,
+                    'duration_months' => $durationMonths,
+                    'duration_days' => $actualDurationDays,
                     'interest_rate' => $settings->current_monthly_rate,
                     'auto_compound' => $autoCompound,
                     'power_bonus_multiplier' => $autoCompound ? $powerBonusMultiplier : 1.00,
@@ -191,7 +206,7 @@ class UsdtEasyearnService
                 'amount'         => $investment->amount,
                 'asset'          => 'USDT',
                 'interest_rate'  => $investment->interest_rate,
-                'duration'       => $investment->duration_months,
+                'duration'       => $investment->getDurationLabel(),
                 'start_date'     => $investment->start_date?->format('Y-m-d'),
                 'end_date'       => $investment->end_date?->format('Y-m-d'),
                 'auto_compound'  => $investment->auto_compound ? 'Yes' : 'No',
@@ -986,6 +1001,9 @@ public function withdrawInterest(
             'start_date' => $investment->start_date ? $investment->start_date->format('Y-m-d') : null,
             'end_date' => $investment->end_date ? $investment->end_date->format('Y-m-d') : null,
             'status' => $investment->status,
+            'duration_months' => $investment->duration_months,
+            'duration_days' => $investment->duration_days ?? ($investment->duration_months ? ($investment->duration_months === 12 ? 365 : $investment->duration_months * 30) : 365),
+            'duration_label' => $investment->getDurationLabel(),
 
             'total_interest_earned' => $effectiveTotalInterest,
             'accrued_interest' => $effectiveTotalInterest,

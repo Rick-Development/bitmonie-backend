@@ -15,6 +15,7 @@ class UsdtEasyearnInvestment extends Model
         'amount',
         'initial_deposit_amount',
         'duration_months',
+        'duration_days',
         'interest_rate',
         'auto_compound',
         'power_bonus_multiplier',
@@ -31,6 +32,7 @@ class UsdtEasyearnInvestment extends Model
         'amount' => 'decimal:8',
         'initial_deposit_amount' => 'decimal:8',
         'duration_months' => 'integer',
+        'duration_days' => 'integer',
         'interest_rate' => 'decimal:2',
         'auto_compound' => 'boolean',
         'power_bonus_multiplier' => 'decimal:2',
@@ -248,6 +250,20 @@ class UsdtEasyearnInvestment extends Model
             return 0;
         }
         return Carbon::now()->diffInDays($this->end_date);
+    }
+
+    /**
+     * Get human-readable duration label
+     */
+    public function getDurationLabel(): string
+    {
+        if ($this->duration_days === 30 || $this->duration_months === 1) {
+            return '30 Days';
+        }
+        if ($this->duration_days === 60 || $this->duration_months === 2) {
+            return '60 Days';
+        }
+        return '1 Year';
     }
 
     // Scopes
