@@ -409,9 +409,7 @@ class QuidaxService
 
     /**
      * Move crypto from user sub-account
-     * into platform escrow wallet.
-     *
-     * Existing method name preserved.
+     * into platform escrow wallet (Main account) via internal transfer.
      */
     public function transferToEscrow(
         $quidax_id,
@@ -420,44 +418,15 @@ class QuidaxService
         ?string $transactionNote = null,
         ?string $reference = null
     ) {
-        $currency = $this->currency($currency);
-
-        /*
-        |--------------------------------------------------------------------------
-        | Get platform wallet address
-        |--------------------------------------------------------------------------
-        */
-        $addressResponse = $this->fetchPaymentAddress('me', $currency);
-        $escrowAddress = $addressResponse['data']['address'] ?? null;
-
-        if (!$escrowAddress) {
-            throw new \Exception(
-                "Unable to get platform {$currency} escrow address."
-            );
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | Create withdrawal from user wallet into platform escrow
-        |--------------------------------------------------------------------------
-        */
         $finalReference = $reference ?: ('BM-ESCROW-' . \Illuminate\Support\Str::uuid()->toString());
 
-        $data = [
-            'currency'         => $currency,
-            'amount'           => $amount,
-            'fund_uid'         => $escrowAddress,
-            'transaction_note' => $transactionNote ?: 'Escrow lock',
-            'reference'        => $finalReference,
-        ];
-
-        $response = $this->create_withdrawal(
-            $quidax_id,
-            $data,
-            $finalReference
+        return $this->transferFromSubToMain(
+            (string) $quidax_id,
+            (string) $amount,
+            $currency,
+            $finalReference,
+            $transactionNote ?: 'EasyEarn escrow lock'
         );
-
-        return $response;
     }
 
 
@@ -1209,6 +1178,6 @@ public function transferFromSubToMain(
     }
 
     // No network needed for internal transfer
-    return $this->create_withdrawal($subAccountId, $data);
+    return $this->create_withdrawal($subAccountId, $data, $reference);
 }
 }
