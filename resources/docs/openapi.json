@@ -9075,12 +9075,13 @@
                                     },
                                     "duration_days": {
                                         "type": "integer",
-                                        "example": 90
+                                        "enum": [30, 60, 365],
+                                        "description": "Plan duration in days: 30, 60, or 365",
+                                        "example": 30
                                     }
                                 },
                                 "required": [
-                                    "amount",
-                                    "duration_days"
+                                    "amount"
                                 ]
                             }
                         }
@@ -20042,7 +20043,7 @@
                     "Savings & Vaults"
                 ],
                 "summary": "Create a USDT EasyEarn plan",
-                "description": "Locks USDT for 12 months. USDT is NOT taken from the NGN wallet: the principal moves from the user's Quidax USDT balance into platform escrow, so the Naira balance does not change.\n\nThe amount must be within the configured min/max and not exceed the spendable USDT balance. If the escrow transfer fails nothing is created. If it succeeds but the plan cannot be saved, the USDT is refunded to the user's Quidax account.",
+                "description": "Locks USDT for 30 days, 60 days, or 1 year (365 days). USDT is NOT taken from the NGN wallet: the principal moves from the user's Quidax USDT balance into platform escrow, so the Naira balance does not change.\n\nThe amount must be within the configured min/max and not exceed the spendable USDT balance. If the escrow transfer fails nothing is created. If it succeeds but the plan cannot be saved, the USDT is refunded to the user's Quidax account.",
                 "security": [
                     {
                         "bearerAuth": []
@@ -20062,6 +20063,19 @@
                                         "type": "number",
                                         "minimum": 1,
                                         "example": 5
+                                    },
+                                    "duration_days": {
+                                        "type": "integer",
+                                        "enum": [30, 60, 365],
+                                        "default": 365,
+                                        "description": "Plan duration in days (30, 60, or 365). Defaults to 365 (1 year).",
+                                        "example": 30
+                                    },
+                                    "duration_months": {
+                                        "type": "integer",
+                                        "enum": [1, 2, 12],
+                                        "description": "Optional alternative duration in months (1, 2, or 12).",
+                                        "example": 1
                                     },
                                     "auto_compound": {
                                         "type": "boolean",
@@ -20094,7 +20108,7 @@
                     "Savings & Vaults"
                 ],
                 "summary": "Create a USDT EasyEarn plan",
-                "description": "Locks USDT for 12 months. USDT is NOT taken from the NGN wallet: the principal moves from the user's Quidax USDT balance into platform escrow, so the Naira balance does not change.\n\nThe amount must be within the configured min/max and not exceed the spendable USDT balance. If the escrow transfer fails nothing is created. If it succeeds but the plan cannot be saved, the USDT is refunded to the user's Quidax account.",
+                "description": "Locks USDT for 30 days, 60 days, or 1 year (365 days). USDT is NOT taken from the NGN wallet: the principal moves from the user's Quidax USDT balance into platform escrow, so the Naira balance does not change.\n\nThe amount must be within the configured min/max and not exceed the spendable USDT balance. If the escrow transfer fails nothing is created. If it succeeds but the plan cannot be saved, the USDT is refunded to the user's Quidax account.",
                 "security": [
                     {
                         "bearerAuth": []
@@ -20114,6 +20128,19 @@
                                         "type": "number",
                                         "minimum": 1,
                                         "example": 5
+                                    },
+                                    "duration_days": {
+                                        "type": "integer",
+                                        "enum": [30, 60, 365],
+                                        "default": 365,
+                                        "description": "Plan duration in days (30, 60, or 365). Defaults to 365 (1 year).",
+                                        "example": 30
+                                    },
+                                    "duration_months": {
+                                        "type": "integer",
+                                        "enum": [1, 2, 12],
+                                        "description": "Optional alternative duration in months (1, 2, or 12).",
+                                        "example": 1
                                     },
                                     "auto_compound": {
                                         "type": "boolean",
