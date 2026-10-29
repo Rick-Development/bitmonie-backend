@@ -56,4 +56,3 @@ $kernel->terminate($input, $status);
 
 exit($status);
 
-exec('node init');
