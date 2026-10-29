@@ -61,6 +61,7 @@ return [
             'driver' => 'single',
             'path' => storage_path('logs/laravel.log'),
             'level' => env('LOG_LEVEL', 'debug'),
+            'permission' => 0666,
         ],
 
         'daily' => [
@@ -68,6 +69,7 @@ return [
             'path' => storage_path('logs/laravel.log'),
             'level' => env('LOG_LEVEL', 'debug'),
             'days' => 14,
+            'permission' => 0666,
         ],
 
         'slack' => [
@@ -122,24 +124,27 @@ return [
             'driver' => 'single',
             'path' => storage_path('logs/tony.log'),
         ],
-'easyearn_usdt' => [
-    'driver' => 'daily',
-    'path' => storage_path('logs/easyearn_usdt.log'),
-    'level' => 'info',
-    'days' => 60,
-],
- 'ramp_sell' => [
-        'driver' => 'daily',
-        'path' => storage_path('logs/ramp-sell.log'),
-        'level' => 'info',
-        'days' => 30,
-    ],
-    'sudo_cards' => [
-    'driver' => 'daily',
-    'path' => storage_path('logs/sudo_cards.log'),
-    'level' => env('LOG_LEVEL', 'debug'),
-    'days' => 30,
-],
+        'easyearn_usdt' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/easyearn_usdt.log'),
+            'level' => 'info',
+            'days' => 60,
+            'permission' => 0666,
+        ],
+        'ramp_sell' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/ramp-sell.log'),
+            'level' => 'info',
+            'days' => 30,
+            'permission' => 0666,
+        ],
+        'sudo_cards' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/sudo_cards.log'),
+            'level' => env('LOG_LEVEL', 'debug'),
+            'days' => 30,
+            'permission' => 0666,
+        ],
     ],
 
 ];
