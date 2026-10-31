@@ -66,8 +66,8 @@ class MulticurrencyController extends Controller
 
             return response()->json([
                 'status' => false,
-                'message' => 'Unable to create currency wallet.',
-            ], 500);
+                'message' => $e->getMessage() ?: 'Unable to create currency wallet.',
+            ], $e instanceof \InvalidArgumentException ? 422 : 500);
         }
     }
 
@@ -191,8 +191,8 @@ class MulticurrencyController extends Controller
 
             return response()->json([
                 'status' => false,
-                'message' => 'Unable to retrieve collections.',
-            ], 500);
+                'message' => $e->getMessage() ?: 'Unable to retrieve collections.',
+            ], $e instanceof \InvalidArgumentException ? 422 : 500);
         }
     }
 

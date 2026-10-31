@@ -39,6 +39,21 @@ class ReferralController extends Controller
             $stats = $this->referralService->getStatistics($user);
             $stats['wallet'] = $this->referralWalletService->getBalanceSummary($user);
             $stats['commission_amount'] = (float) (BasicSettingsProvider::get()->referral_bonus ?? 500);
+
+            $commissionRate = 20.0;
+            try {
+                if (class_exists(\App\Models\ReferralCommissionSetting::class)) {
+                    $commissionSetting = \App\Models\ReferralCommissionSetting::current();
+                    if ($commissionSetting && isset($commissionSetting->commission_rate_percent)) {
+                        $commissionRate = (float) $commissionSetting->commission_rate_percent;
+                    }
+                }
+            } catch (\Throwable $e) {
+                // Fallback default
+            }
+
+            $stats['commission_rate'] = $commissionRate;
+            $stats['commission_rate_percent'] = $commissionRate;
             
             return Response::successResponse('Referral information retrieved successfully', $stats);
         } catch (Exception $e) {

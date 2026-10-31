@@ -115,10 +115,21 @@ class SudoCardService
             isset($payload['billingAddress']) &&
             is_array($payload['billingAddress'])
         ) {
-            $payload['billingAddress'] =
-                $this->removeEmptyValues(
-                    $payload['billingAddress']
-                );
+            $cleanedAddress = $this->removeEmptyValues(
+                $payload['billingAddress']
+            );
+
+            // Ensure required billingAddress keys are present and not empty for Sudo
+            $payload['billingAddress'] = [
+                'line1'      => !empty($cleanedAddress['line1']) ? (string)$cleanedAddress['line1'] : 'Victoria Island',
+                'city'       => !empty($cleanedAddress['city']) ? (string)$cleanedAddress['city'] : 'Lagos',
+                'state'      => !empty($cleanedAddress['state']) ? (string)$cleanedAddress['state'] : 'Lagos',
+                'postalCode' => !empty($cleanedAddress['postalCode']) ? (string)$cleanedAddress['postalCode'] : '100001',
+                'country'    => !empty($cleanedAddress['country']) ? (string)$cleanedAddress['country'] : 'NG',
+            ];
+            if (!empty($cleanedAddress['line2'])) {
+                $payload['billingAddress']['line2'] = (string)$cleanedAddress['line2'];
+            }
         }
 
         if (

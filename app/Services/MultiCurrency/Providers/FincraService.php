@@ -137,38 +137,45 @@ public function createVirtualAccount(
 
     $kyc = $user->user_kyc;
 
-    if ($kyc === null) {
-        throw new RuntimeException(
-            'User KYC verification record was not found.'
-        );
-    }
+    if ($currency === 'NGN') {
+        if ($kyc === null) {
+            throw new RuntimeException(
+                'User KYC verification record was not found.'
+            );
+        }
 
-    $bvn = data_get($kyc->data, 'bvn');
+        $bvn = data_get($kyc->data, 'bvn');
 
-    if (
-        !is_string($bvn)
-        || trim($bvn) === ''
-    ) {
-        throw new RuntimeException(
-            'User BVN is required to create a Fincra virtual account.'
-        );
+        if (
+            !is_string($bvn)
+            || trim($bvn) === ''
+        ) {
+            throw new RuntimeException(
+                'User BVN is required to create a Fincra virtual account for NGN.'
+            );
+        }
+    } else {
+        $bvn = $kyc ? data_get($kyc->data, 'bvn') : null;
     }
 
     $merchantReference = $this->generateReference(
         'MCW-VA'
     );
 
+    $kycInformation = [
+        'firstName' => $user->firstname,
+        'lastName' => $user->lastname,
+        'email' => $user->email,
+    ];
+
+    if (is_string($bvn) && trim($bvn) !== '') {
+        $kycInformation['bvn'] = trim($bvn);
+    }
+
     $payload = [
         'currency' => $currency,
         'accountType' => $accountType,
-
-        'KYCInformation' => [
-            'firstName' => $user->firstname,
-            'lastName' => $user->lastname,
-            'email' => $user->email,
-            'bvn' => trim($bvn),
-        ],
-
+        'KYCInformation' => $kycInformation,
         'merchantReference' => $merchantReference,
     ];
 

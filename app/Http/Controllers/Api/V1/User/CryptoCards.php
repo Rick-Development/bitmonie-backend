@@ -276,32 +276,57 @@ protected function formatCard($card): array
 
         // Billing Address: use request, fallback to KYC, fallback to User address
         $userAddress = (array) ($user->address ?? []);
-        $addressLine1 = $requestAddress['line1']
-            ?? Arr::get($providerResponse, 'residentialAddress')
-            ?? Arr::get($providerResponse, 'address')
-            ?? ($userAddress['address'] ?? 'Lagos');
+
+        $firstNonEmpty = function (...$values): ?string {
+            foreach ($values as $val) {
+                if ($val !== null && trim((string) $val) !== '') {
+                    return trim((string) $val);
+                }
+            }
+            return null;
+        };
+
+        $addressLine1 = $firstNonEmpty(
+            $requestAddress['line1'] ?? null,
+            Arr::get($providerResponse, 'residentialAddress'),
+            Arr::get($providerResponse, 'address'),
+            $userAddress['address'] ?? null,
+            'Victoria Island'
+        );
 
         $addressLine2 = $requestAddress['line2'] ?? null;
 
-        $city = $requestAddress['city']
-            ?? Arr::get($providerResponse, 'city')
-            ?? Arr::get($providerResponse, 'lgaOfResidence')
-            ?? ($userAddress['city'] ?? 'Lagos');
+        $city = $firstNonEmpty(
+            $requestAddress['city'] ?? null,
+            Arr::get($providerResponse, 'city'),
+            Arr::get($providerResponse, 'lgaOfResidence'),
+            $userAddress['city'] ?? null,
+            'Lagos'
+        );
 
-        $state = $requestAddress['state']
-            ?? Arr::get($providerResponse, 'state')
-            ?? Arr::get($providerResponse, 'stateOfResidence')
-            ?? ($userAddress['state'] ?? 'Lagos');
+        $state = $firstNonEmpty(
+            $requestAddress['state'] ?? null,
+            Arr::get($providerResponse, 'state'),
+            Arr::get($providerResponse, 'stateOfResidence'),
+            $userAddress['state'] ?? null,
+            'Lagos'
+        );
 
-        $postalCode = $requestAddress['postalCode']
-            ?? Arr::get($providerResponse, 'postalCode')
-            ?? Arr::get($providerResponse, 'postal_code')
-            ?? Arr::get($kycData, 'postalCode')
-            ?? ($userAddress['zip'] ?? '100001');
+        $postalCode = $firstNonEmpty(
+            $requestAddress['postalCode'] ?? null,
+            Arr::get($providerResponse, 'postalCode'),
+            Arr::get($providerResponse, 'postal_code'),
+            Arr::get($kycData, 'postalCode'),
+            $userAddress['zip'] ?? null,
+            '100001'
+        );
 
-        $country = $requestAddress['country']
-            ?? Arr::get($providerResponse, 'country')
-            ?? ($userAddress['country'] ?? 'NG');
+        $country = $firstNonEmpty(
+            $requestAddress['country'] ?? null,
+            Arr::get($providerResponse, 'country'),
+            $userAddress['country'] ?? null,
+            'NG'
+        );
 
         // Customer Details
         $name = $payload['name']
@@ -2933,32 +2958,62 @@ protected function autoCreateCardHolder(int $userId, string $provider, Request $
             ];
         }
 
-        // Billing address
+        // Billing address: robust fallback chain so empty string fields do not override defaults
         $userAddress = (array) ($user->address ?? []);
-        $addressLine1 = $requestAddress['line1']
-            ?? Arr::get($providerResponse, 'residentialAddress')
-            ?? Arr::get($providerResponse, 'address')
-            ?? ($existingHolder?->address_line1 ?: ($userAddress['address'] ?? 'Victoria Island'));
 
-        $city = $requestAddress['city']
-            ?? Arr::get($providerResponse, 'city')
-            ?? Arr::get($providerResponse, 'lgaOfResidence')
-            ?? ($existingHolder?->city ?: ($userAddress['city'] ?? 'Lagos'));
+        $firstNonEmpty = function (...$values): ?string {
+            foreach ($values as $val) {
+                if ($val !== null && trim((string) $val) !== '') {
+                    return trim((string) $val);
+                }
+            }
+            return null;
+        };
 
-        $state = $requestAddress['state']
-            ?? Arr::get($providerResponse, 'state')
-            ?? Arr::get($providerResponse, 'stateOfResidence')
-            ?? ($existingHolder?->state ?: ($userAddress['state'] ?? 'Lagos'));
+        $addressLine1 = $firstNonEmpty(
+            $requestAddress['line1'] ?? null,
+            Arr::get($providerResponse, 'residentialAddress'),
+            Arr::get($providerResponse, 'address'),
+            $existingHolder?->address_line1,
+            $userAddress['address'] ?? null,
+            'Victoria Island'
+        );
 
-        $postalCode = $requestAddress['postalCode']
-            ?? Arr::get($providerResponse, 'postalCode')
-            ?? Arr::get($providerResponse, 'postal_code')
-            ?? Arr::get($kycData, 'postalCode')
-            ?? ($existingHolder?->postal_code ?: ($userAddress['zip'] ?? '100001'));
+        $city = $firstNonEmpty(
+            $requestAddress['city'] ?? null,
+            Arr::get($providerResponse, 'city'),
+            Arr::get($providerResponse, 'lgaOfResidence'),
+            $existingHolder?->city,
+            $userAddress['city'] ?? null,
+            'Lagos'
+        );
 
-        $country = $requestAddress['country']
-            ?? Arr::get($providerResponse, 'country')
-            ?? ($existingHolder?->country ?: ($userAddress['country'] ?? 'NG'));
+        $state = $firstNonEmpty(
+            $requestAddress['state'] ?? null,
+            Arr::get($providerResponse, 'state'),
+            Arr::get($providerResponse, 'stateOfResidence'),
+            $existingHolder?->state,
+            $userAddress['state'] ?? null,
+            'Lagos'
+        );
+
+        $postalCode = $firstNonEmpty(
+            $requestAddress['postalCode'] ?? null,
+            Arr::get($providerResponse, 'postalCode'),
+            Arr::get($providerResponse, 'postal_code'),
+            Arr::get($kycData, 'postalCode'),
+            $existingHolder?->postal_code,
+            $userAddress['zip'] ?? null,
+            '100001'
+        );
+
+        $country = $firstNonEmpty(
+            $requestAddress['country'] ?? null,
+            Arr::get($providerResponse, 'country'),
+            $existingHolder?->country,
+            $userAddress['country'] ?? null,
+            'NG'
+        );
 
         // Customer Details
         $name = $request->input('name')
