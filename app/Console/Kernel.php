@@ -112,13 +112,13 @@ if (config('services.yellow_card.api_key') && config('services.yellow_card.secre
                  ->withoutOverlapping(10)
                  ->appendOutputTo(storage_path('logs/p2p-escrow-scheduler.log'));
 
-Schedule::command('autosave:reconcile')
-    ->everyFiveMinutes()
-    ->timezone('Africa/Lagos')
-    ->withoutOverlapping(10)
-    ->appendOutputTo(
-        storage_path('logs/autosave-reconciliation.log')
-    );
+        $schedule->command('autosave:reconcile')
+            ->everyFiveMinutes()
+            ->timezone('Africa/Lagos')
+            ->withoutOverlapping(10)
+            ->appendOutputTo(
+                storage_path('logs/autosave-reconciliation.log')
+            );
 
                  //encrypt data
         $schedule->command('kyc:encrypt-data --limit=100') 
