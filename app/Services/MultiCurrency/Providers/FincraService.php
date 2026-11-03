@@ -135,9 +135,24 @@ public function createVirtualAccount(
         );
     }
 
-    $kyc = $user->user_kyc;
+    $merchantReference = $this->generateReference(
+        'MCW-VA'
+    );
+
+    /*
+     * Fincra only accepts KYCInformation.bvn for NGN virtual accounts.
+     * Sending BVN for GHS/KES/TZS returns 422:
+     * "KYCInformation.bvn is not allowed".
+     */
+    $kycInformation = [
+        'firstName' => $user->firstname,
+        'lastName' => $user->lastname,
+        'email' => $user->email,
+    ];
 
     if ($currency === 'NGN') {
+        $kyc = $user->user_kyc;
+
         if ($kyc === null) {
             throw new RuntimeException(
                 'User KYC verification record was not found.'
@@ -146,29 +161,12 @@ public function createVirtualAccount(
 
         $bvn = data_get($kyc->data, 'bvn');
 
-        if (
-            !is_string($bvn)
-            || trim($bvn) === ''
-        ) {
+        if (! is_string($bvn) || trim($bvn) === '') {
             throw new RuntimeException(
                 'User BVN is required to create a Fincra virtual account for NGN.'
             );
         }
-    } else {
-        $bvn = $kyc ? data_get($kyc->data, 'bvn') : null;
-    }
 
-    $merchantReference = $this->generateReference(
-        'MCW-VA'
-    );
-
-    $kycInformation = [
-        'firstName' => $user->firstname,
-        'lastName' => $user->lastname,
-        'email' => $user->email,
-    ];
-
-    if (is_string($bvn) && trim($bvn) !== '') {
         $kycInformation['bvn'] = trim($bvn);
     }
 
