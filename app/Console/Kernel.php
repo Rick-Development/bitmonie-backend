@@ -4,7 +4,6 @@ namespace App\Console;
 
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
-use App\Jobs\EncryptKycVerificationData;
 
 class Kernel extends ConsoleKernel
 {
@@ -16,7 +15,7 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule)
     {
-        // Interest calculation - Daily at Midnight
+        // Legacy Flex / SafeLock interest + SafeLock maturity (runs inline in the command).
         $schedule->command('savings:process-interest')
                  ->dailyAt('00:00')
                  ->timezone('Africa/Lagos')
@@ -37,12 +36,14 @@ class Kernel extends ConsoleKernel
         $schedule->command('savings:flexi-interest')
                  ->dailyAt('00:30')
                  ->timezone('Africa/Lagos')
-                 ->withoutOverlapping(120);
+                 ->withoutOverlapping(120)
+                 ->appendOutputTo(storage_path('logs/savings-scheduler.log'));
 
         $schedule->command('savings:reconcile')
                  ->dailyAt('03:00')
                  ->timezone('Africa/Lagos')
                  ->appendOutputTo(storage_path('logs/savings-reconciliation.log'));
+
         // EduSave Payouts - Daily
         $schedule->command('edusave:process-payouts')->daily();
 
@@ -63,7 +64,7 @@ class Kernel extends ConsoleKernel
                  ->withoutOverlapping(10)
                  ->appendOutputTo(storage_path('logs/ramp-recovery.log'));
 
-        // AutoSave scheduled deductions.
+        // Legacy AutoSave scheduled deductions (autosave_plans table).
         $schedule->command('autosave:process-scheduled --limit=100')
                  ->everyMinute()
                  ->timezone('Africa/Lagos')
@@ -84,12 +85,11 @@ class Kernel extends ConsoleKernel
                  ->withoutOverlapping()
                  ->appendOutputTo(storage_path('logs/crypto-trade-failures.log'));
 
-
-                 //handle matured autosave
-                  $schedule->command('autosave:process-matured')
-    ->everyMinute()
-    ->withoutOverlapping()
-    ->onOneServer();
+        // Handle matured legacy autosave plans.
+        $schedule->command('autosave:process-matured')
+                 ->everyMinute()
+                 ->withoutOverlapping(10)
+                 ->appendOutputTo(storage_path('logs/autosave-scheduler.log'));
 
         // Cancel stale borrow requests (older than 48h)
         $schedule->command('loans:cancel-stale-requests')
@@ -97,7 +97,8 @@ class Kernel extends ConsoleKernel
                  ->timezone('Africa/Lagos')
                  ->withoutOverlapping()
                  ->appendOutputTo(storage_path('logs/loans-cancellation.log'));
-if (config('services.yellow_card.api_key') && config('services.yellow_card.secret_key')) {
+
+        if (config('services.yellow_card.api_key') && config('services.yellow_card.secret_key')) {
             $schedule->command('yellow-card:sync-coverage')
                      ->dailyAt('02:30')
                      ->timezone('Africa/Lagos')
@@ -113,38 +114,16 @@ if (config('services.yellow_card.api_key') && config('services.yellow_card.secre
                  ->appendOutputTo(storage_path('logs/p2p-escrow-scheduler.log'));
 
         $schedule->command('autosave:reconcile')
-            ->everyFiveMinutes()
-            ->timezone('Africa/Lagos')
-            ->withoutOverlapping(10)
-            ->appendOutputTo(
-                storage_path('logs/autosave-reconciliation.log')
-            );
+                 ->everyFiveMinutes()
+                 ->timezone('Africa/Lagos')
+                 ->withoutOverlapping(10)
+                 ->appendOutputTo(storage_path('logs/autosave-reconciliation.log'));
 
-                 //encrypt data
-        $schedule->command('kyc:encrypt-data --limit=100') 
-        ->everyFiveMinutes() ->timezone('Africa/Lagos') 
-        ->withoutOverlapping(10) ->appendOutputTo(storage_path('logs/kyc-encryption.log'));
-       
-                 
-        // $schedule->command('ramp:reconcile')
-        //         ->everyMinute()
-        //         ->withoutOverlapping(2)
-        //         ->runInBackground();
-                 
-        // $schedule->command('wallet:repair-reserved')
-        //         ->everyFiveMinutes()
-        //         ->timezone('Africa/Lagos')
-        //         ->withoutOverlapping()
-        //         ->runInBackground();
-                 
-        // $schedule->command('ramp:reverse-failed-offramp')
-        //         ->everyFiveMinutes()
-        //         ->timezone('Africa/Lagos')
-        //         ->withoutOverlapping()
-        //         ->runInBackground();
-                
-                
-                
+        $schedule->command('kyc:encrypt-data --limit=100')
+                 ->everyFiveMinutes()
+                 ->timezone('Africa/Lagos')
+                 ->withoutOverlapping(10)
+                 ->appendOutputTo(storage_path('logs/kyc-encryption.log'));
     }
 
     /**

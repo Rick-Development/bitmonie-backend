@@ -24,10 +24,13 @@ class TargetSavingsTest extends SavingsTestCase
     {
         $user = $this->makeUser('5000.00');
 
+        $tz = (string) config('savings.scheduler.default_timezone');
+        $today = Carbon::now($tz)->startOfDay();
+
         $t1 = $this->manager->createTarget($user, [
             'title' => 'Trip to Paris',
             'target_amount' => '1000.00',
-            'deadline' => '2026-12-31',
+            'deadline' => $today->copy()->addMonths(2)->toDateString(),
         ]);
         $this->assertSame('Trip to Paris', $t1['account']->title);
         $this->assertSame('1000.00', Money::norm($t1['account']->target_amount));
@@ -55,8 +58,8 @@ class TargetSavingsTest extends SavingsTestCase
             $this->manager->createTarget($user, [
                 'title' => 'Invalid Deadline',
                 'target_amount' => '500.00',
-                'start_date' => '2026-11-01',
-                'deadline' => '2026-10-01', // Before start
+                'start_date' => $today->copy()->addDays(10)->toDateString(),
+                'deadline' => $today->copy()->addDays(5)->toDateString(), // Before start
             ]);
             $this->fail('Expected exception for deadline before start date');
         } catch (SavingsException $e) {

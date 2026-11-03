@@ -7,6 +7,7 @@ use App\Services\AutosaveService;
 use App\Services\Savings\Contracts\SavingsFundingProviderInterface;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Throwable;
 
 class ReconcileAutosaveTransactions extends Command
@@ -26,6 +27,12 @@ class ReconcileAutosaveTransactions extends Command
 
     public function handle(): int
     {
+        if (! Schema::hasTable('autosave_transactions')) {
+            $this->info(json_encode(['processed' => 0, 'skipped' => 'autosave_transactions table missing']));
+
+            return self::SUCCESS;
+        }
+
         $limit = max(1, (int) $this->option('limit'));
         $transactionId = $this->option('id');
 

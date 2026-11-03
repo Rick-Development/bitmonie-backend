@@ -9,7 +9,6 @@ use App\Models\User;
 use App\Services\SafeHavenService;
 use App\Services\Savings\Contracts\SavingsFundingProviderInterface;
 use Illuminate\Support\Str;
-use RuntimeException;
 
 class SafeHavenSavingsProvider implements SavingsFundingProviderInterface
 {
@@ -32,8 +31,9 @@ class SafeHavenSavingsProvider implements SavingsFundingProviderInterface
         $narration='Savings Deposit',
     ): array {
         if (bccomp($amount, '0', 8) <= 0) {
-            throw new RuntimeException(
-                'Savings deposit amount must be greater than zero.'
+            throw new SavingsException(
+                'Savings deposit amount must be greater than zero.',
+                'INVALID_AMOUNT'
             );
         }
 
@@ -43,8 +43,10 @@ class SafeHavenSavingsProvider implements SavingsFundingProviderInterface
             !$virtualAccount ||
             empty($virtualAccount->account_number)
         ) {
-            throw new RuntimeException(
-                'SafeHaven account not found for user.'
+            throw new SavingsException(
+                'SafeHaven account not found for user.',
+                'PROVIDER_ACCOUNT_MISSING',
+                422
             );
         }
 
@@ -53,8 +55,11 @@ class SafeHavenSavingsProvider implements SavingsFundingProviderInterface
         $mainAccount = $settings?->safehaven_debit_account;
 
         if (empty($mainAccount)) {
-            throw new RuntimeException(
-                'SafeHaven main account is not configured.'
+            throw new SavingsException(
+                'Savings funding provider is not configured. Please try again later.',
+                'PROVIDER_NOT_CONFIGURED',
+                503,
+                true
             );
         }
 
@@ -68,7 +73,6 @@ class SafeHavenSavingsProvider implements SavingsFundingProviderInterface
             $bankCode,
             $mainAccount
         );
-        
 
         $sessionId =
             $enquiry['sessionId']
@@ -76,8 +80,11 @@ class SafeHavenSavingsProvider implements SavingsFundingProviderInterface
             ?? null;
 
         if (empty($sessionId)) {
-            throw new RuntimeException(
-                'Unable to obtain SafeHaven name enquiry session for savings deposit.'
+            throw new SavingsException(
+                'Unable to verify savings funding account. Please try again later.',
+                'PROVIDER_ENQUIRY_FAILED',
+                502,
+                true
             );
         }
 
@@ -99,8 +106,15 @@ class SafeHavenSavingsProvider implements SavingsFundingProviderInterface
                 'saveBeneficiary' => false,
                 'narration' => $narration,
             ]);
+        } catch (SavingsException $e) {
+            throw $e;
         } catch (\Throwable $e) {
-            throw new RuntimeException($e->getMessage() ?: 'Savings deposit transfer failed.', 0, $e);
+            throw new SavingsException(
+                $e->getMessage() ?: 'Savings deposit transfer failed.',
+                'PROVIDER_TRANSFER_FAILED',
+                502,
+                true
+            );
         }
 
         return $this->ensureTransferSucceeded(
@@ -123,8 +137,9 @@ class SafeHavenSavingsProvider implements SavingsFundingProviderInterface
         string $narration = 'Savings Withdrawal',
     ): array {
         if (bccomp($amount, '0', 8) <= 0) {
-            throw new RuntimeException(
-                'Savings withdrawal amount must be greater than zero.'
+            throw new SavingsException(
+                'Savings withdrawal amount must be greater than zero.',
+                'INVALID_AMOUNT'
             );
         }
 
@@ -134,8 +149,10 @@ class SafeHavenSavingsProvider implements SavingsFundingProviderInterface
             !$virtualAccount ||
             empty($virtualAccount->account_number)
         ) {
-            throw new RuntimeException(
-                'SafeHaven account not found for user.'
+            throw new SavingsException(
+                'SafeHaven account not found for user.',
+                'PROVIDER_ACCOUNT_MISSING',
+                422
             );
         }
 
@@ -144,8 +161,11 @@ class SafeHavenSavingsProvider implements SavingsFundingProviderInterface
         $mainAccount = $settings?->safehaven_debit_account;
 
         if (empty($mainAccount)) {
-            throw new RuntimeException(
-                'SafeHaven main account is not configured.'
+            throw new SavingsException(
+                'Savings funding provider is not configured. Please try again later.',
+                'PROVIDER_NOT_CONFIGURED',
+                503,
+                true
             );
         }
 
@@ -166,8 +186,11 @@ class SafeHavenSavingsProvider implements SavingsFundingProviderInterface
             ?? null;
 
         if (empty($sessionId)) {
-            throw new RuntimeException(
-                'Unable to obtain SafeHaven name enquiry session for savings withdrawal.'
+            throw new SavingsException(
+                'Unable to verify savings funding account. Please try again later.',
+                'PROVIDER_ENQUIRY_FAILED',
+                502,
+                true
             );
         }
 
@@ -189,8 +212,15 @@ class SafeHavenSavingsProvider implements SavingsFundingProviderInterface
                 'saveBeneficiary' => false,
                 'narration' => $narration,
             ]);
+        } catch (SavingsException $e) {
+            throw $e;
         } catch (\Throwable $e) {
-            throw new RuntimeException($e->getMessage() ?: 'Savings withdrawal transfer failed.', 0, $e);
+            throw new SavingsException(
+                $e->getMessage() ?: 'Savings withdrawal transfer failed.',
+                'PROVIDER_TRANSFER_FAILED',
+                502,
+                true
+            );
         }
 
         return $this->ensureTransferSucceeded(
@@ -224,44 +254,48 @@ class SafeHavenSavingsProvider implements SavingsFundingProviderInterface
                 ?? $response['message']
                 ?? "{$operation} failed.";
 
-            throw new RuntimeException(
-                "{$operation} failed: {$message}"
+            throw new SavingsException(
+                "{$operation} failed: {$message}",
+                'PROVIDER_TRANSFER_FAILED',
+                502,
+                true
             );
         }
 
         return $response;
     }
 
-/**
- * Get SafeHaven transfer status.
- *
- * POST /transfers/status
- *
- * {
- *     "sessionId": "...",
- *     "paymentReference": "..."
- * }
- */
-public function getTransferStatus(
-    string $sessionId,
-    string $paymentReference
-): array {
-    if (trim($sessionId) === '') {
-        throw new RuntimeException(
-            'SafeHaven transfer session ID is required.'
-        );
+    /**
+     * Get SafeHaven transfer status.
+     *
+     * POST /transfers/status
+     *
+     * {
+     *     "sessionId": "...",
+     *     "paymentReference": "..."
+     * }
+     */
+    public function getTransferStatus(
+        string $sessionId,
+        string $paymentReference
+    ): array {
+        if (trim($sessionId) === '') {
+            throw new SavingsException(
+                'SafeHaven transfer session ID is required.',
+                'PROVIDER_STATUS_INVALID'
+            );
+        }
+
+        if (trim($paymentReference) === '') {
+            throw new SavingsException(
+                'SafeHaven payment reference is required.',
+                'PROVIDER_STATUS_INVALID'
+            );
+        }
+
+        return $this->safeHavenService->transferStatus([
+            'sessionId' => $sessionId,
+            'paymentReference' => $paymentReference,
+        ]);
     }
-
-    if (trim($paymentReference) === '') {
-        throw new RuntimeException(
-            'SafeHaven payment reference is required.'
-        );
-    }
-
-    return $this->safeHavenService->transferStatus([
-        'sessionId' => $sessionId,
-        'paymentReference' => $paymentReference,
-    ]);
-}
-
 }

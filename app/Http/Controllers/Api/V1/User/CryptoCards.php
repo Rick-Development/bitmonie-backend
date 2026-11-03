@@ -637,13 +637,13 @@ public function createCard(Request $request): JsonResponse
 
     /*
     |--------------------------------------------------------------------------
-    | Charge card issuance fee AFTER holder is confirmed
+    | Charge card issuance fee in USDT AFTER holder is confirmed
     |--------------------------------------------------------------------------
     */
 
     $cardType = $request->input('type', 'virtual');
     $issuanceChargeType = ($cardType === 'physical') ? 'physical_card_fee' : 'virtual_card_issuance_fee';
-    $charge = $this->transferCardCharge($issuanceChargeType);
+    $charge = $this->transferCardChargeUsdt($issuanceChargeType);
 
     if (!$charge['success']) {
         return $this->serviceResponse($charge);
@@ -665,8 +665,8 @@ public function createCard(Request $request): JsonResponse
     );
 
     if (!($result['success'] ?? false) && ($charge['charged'] ?? false)) {
-        // Rollback / refund card fee
-        $this->refundCardCharge($charge);
+        // Rollback / refund card fee in USDT
+        $this->refundCardChargeUsdt($charge);
     }
 
     return $this->serviceResponse($result, 201);
@@ -1880,7 +1880,7 @@ public function fund(Request $request, int $id): JsonResponse
 
     /*
     |--------------------------------------------------------------------------
-    | Transfer configured card funding fee based on card type
+    | Transfer configured card funding fee based on card type in USDT
     | (This already records the charge in CryptoTransactionService)
     |--------------------------------------------------------------------------
     */
@@ -1891,7 +1891,7 @@ public function fund(Request $request, int $id): JsonResponse
     ))
         ? 'physical_card_funding_fee'
         : 'virtual_card_funding_fee';
-    $charge = $this->transferCardCharge($fundingChargeType);
+    $charge = $this->transferCardChargeUsdt($fundingChargeType);
 
     if (!$charge['success']) {
         return $this->serviceResponse($charge);
@@ -2019,6 +2019,16 @@ public function fund(Request $request, int $id): JsonResponse
             ]);
             // We still return the original funding result
         }
+    } else {
+        // Rollback / refund funding fee
+        if ($charge['charged'] ?? false) {
+            $this->refundCardChargeUsdt($charge);
+        }
+        // Rollback local wallet debit
+        if ($localWallet) {
+            $localWallet->balance = (float) bcadd((string) $localWallet->balance, (string) $amount, 8);
+            $localWallet->save();
+        }
     }
 
     return $this->serviceResponse($result);
@@ -2086,12 +2096,12 @@ public function orderCard(Request $request): JsonResponse
 
     /*
     |--------------------------------------------------------------------------
-    | Charge physical card fee FIRST
+    | Charge physical card fee FIRST in USDT
     | (This already records the charge in CryptoTransactionService)
     |--------------------------------------------------------------------------
     */
 
-    $charge = $this->transferCardCharge('physical_card_fee');
+    $charge = $this->transferCardChargeUsdt('physical_card_fee');
 
     if (!$charge['success']) {
         return $this->serviceResponse($charge);
@@ -2105,6 +2115,9 @@ public function orderCard(Request $request): JsonResponse
     );
 
     if (!$holder) {
+        if ($charge['charged'] ?? false) {
+            $this->refundCardChargeUsdt($charge);
+        }
         return response()->json([
             'success' => false,
             'message' => 'Card holder not found.',
@@ -2209,6 +2222,10 @@ public function orderCard(Request $request): JsonResponse
                 'status_code' => $result['statusCode'] ?? null,
                 'message' => $result['message'] ?? null,
             ]);
+
+            if ($charge['charged'] ?? false) {
+                $this->refundCardChargeUsdt($charge);
+            }
 
             return response()->json([
                 'success' => false,
@@ -2860,6 +2877,238 @@ protected function refundCardCharge(array $charge): void
         ]);
     } catch (Throwable $e) {
         Log::error('Crypto card fee refund failed: ' . $e->getMessage(), [
+            'user_id' => $user->id,
+            'charge'  => $charge,
+        ]);
+    }
+}
+
+/**
+ * Transfer configured card fee in USDT from user's balance to platform escrow.
+ */
+protected function transferCardChargeUsdt(string $chargeType): array
+{
+    $user = auth()->user();
+
+    if (!$user) {
+        return [
+            'success' => false,
+            'message' => 'Unauthenticated.',
+            'statusCode' => 401,
+        ];
+    }
+
+    $allowedCharges = [
+        'physical_card_fee',
+        'physical_card_funding_fee',
+        'physical_monthly_card_maintenance_fee',
+        'virtual_card_issuance_fee',
+        'virtual_card_funding_fee',
+        'virtual_monthly_card_maintenance_fee',
+        'card_issuance_fee',
+        'card_funding_fee',
+        'monthly_card_maintenance_fee',
+    ];
+
+    if (!in_array($chargeType, $allowedCharges, true)) {
+        return [
+            'success' => false,
+            'message' => 'Invalid crypto card charge type.',
+            'statusCode' => 422,
+        ];
+    }
+
+    $setup = CryptoCardSetup::query()->first() ?: new CryptoCardSetup();
+
+    $amount = match ($chargeType) {
+        'virtual_card_issuance_fee', 'card_issuance_fee' => $setup->virtual_issuance_fee,
+        'virtual_card_funding_fee', 'card_funding_fee' => $setup->virtual_funding_fee,
+        'virtual_monthly_card_maintenance_fee', 'monthly_card_maintenance_fee' => $setup->virtual_maintenance_fee,
+        'physical_card_fee' => $setup->physical_order_fee,
+        'physical_card_funding_fee' => $setup->physical_funding_fee,
+        'physical_monthly_card_maintenance_fee' => $setup->physical_maintenance_fee,
+        default => (float) ($setup->{$chargeType} ?? 0),
+    };
+
+    if (!is_numeric($amount)) {
+        return [
+            'success' => false,
+            'message' => 'Invalid configured crypto card charge.',
+            'statusCode' => 422,
+        ];
+    }
+
+    $amount = number_format((float) $amount, 2, '.', '');
+
+    /*
+     * No charge configured.
+     */
+    if (bccomp($amount, '0', 2) <= 0) {
+        return [
+            'success' => true,
+            'charged' => false,
+            'amount' => '0.00',
+            'usdt_amount' => '0.00',
+            'currency' => 'USDT',
+            'charge_type' => $chargeType,
+            'reference' => null,
+            'response' => null,
+            'message' => 'No charge configured.',
+        ];
+    }
+
+    $amountFloat = (float) $amount;
+
+    // Check Quidax USDT balance
+    $quidaxBalance = 0.0;
+    if ($user->quidax_id) {
+        try {
+            $quidaxWalletResponse = $this->quidaxService->fetchUserWallet($user->quidax_id, 'usdt');
+            $walletData = $quidaxWalletResponse['data'] ?? null;
+            if (is_array($walletData)) {
+                if (isset($walletData[0]) && is_array($walletData[0])) {
+                    $walletData = $walletData[0];
+                }
+                /** @var \App\Services\QuidaxSpendableBalanceService $spendableService */
+                $spendableService = app(\App\Services\QuidaxSpendableBalanceService::class);
+                $augmentedWallet = $spendableService->augmentWalletPayload(
+                    $user,
+                    $walletData,
+                    'usdt'
+                );
+                $quidaxBalance = (float) ($augmentedWallet['available_balance'] ?? $augmentedWallet['balance'] ?? 0);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Error fetching Quidax balance for card fee: ' . $e->getMessage());
+        }
+    }
+
+    $localWallet = UserWallet::where('user_id', $user->id)
+        ->where(function ($query) {
+            $query->where('currency_code', 'USDT')
+                ->orWhere('currency_code', 'usdt')
+                ->orWhere('quote_currency_code', 'USDT')
+                ->orWhere('quote_currency_code', 'usdt')
+                ->orWhereHas('currency', fn ($c) => $c->where('code', 'USDT')->orWhere('code', 'usdt'));
+        })
+        ->first();
+
+    $localBalance = $localWallet ? (float) $localWallet->balance : 0.0;
+    $availableUsdt = max($quidaxBalance, $localBalance);
+
+    if ($availableUsdt <= 0 || bccomp((string) $availableUsdt, (string) $amount, 8) < 0) {
+        return [
+            'success' => false,
+            'message' => 'Insufficient USDT balance to cover the card fee. Required: ' . number_format($amountFloat, 2, '.', '') . ' USDT, Available: ' . number_format($availableUsdt, 2, '.', '') . ' USDT.',
+            'statusCode' => 400,
+        ];
+    }
+
+    $reference = 'CARD-FEE-' . Str::uuid()->toString();
+
+    // Debit from Quidax Sub-account to Escrow
+    $escrowDeducted = false;
+    if ($user->quidax_id && $quidaxBalance >= $amountFloat) {
+        try {
+            $escrowTransfer = $this->quidaxService->transferToEscrow(
+                $user->quidax_id,
+                $amountFloat,
+                'usdt',
+                'Crypto card issuance fee: ' . $reference,
+                $reference
+            );
+            $escrowStatus = strtolower((string) ($escrowTransfer['status'] ?? ''));
+            if ($escrowStatus === 'error' || $escrowStatus === 'failed') {
+                return [
+                    'success' => false,
+                    'message' => "Could not process card fee deduction from USDT wallet. Please try again.",
+                    'statusCode' => 400,
+                ];
+            }
+            $escrowDeducted = true;
+        } catch (\Throwable $e) {
+            Log::error('Failed to transfer USDT to escrow for card fee: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'message' => "Could not process card fee deduction from USDT wallet. Please try again.",
+                'statusCode' => 400,
+            ];
+        }
+    }
+
+    // Deduct from local wallet mirror
+    if ($localWallet) {
+        $localWallet->balance = max(0, (float) bcsub((string) $localWallet->balance, (string) $amount, 8));
+        $localWallet->save();
+    }
+
+    // Record transaction
+    try {
+        $this->cryptoTransactionService->create([
+            'internal_trx_type'   => $chargeType,
+            'internal_trx_ref_id' => null,
+            'transaction_type'    => 'debit',
+            'sender_address'      => 'USDT_WALLET',
+            'receiver_address'    => 'PLATFORM_REVENUE',
+            'amount'              => $amountFloat,
+            'asset'               => 'USDT',
+            'txn_hash'            => $reference,
+            'status'              => 'done',
+            'callback_response'   => ['reference' => $reference, 'amount' => $amountFloat, 'currency' => 'USDT'],
+        ]);
+    } catch (\Throwable $e) {
+        Log::warning('CryptoTransactionService log warning: ' . $e->getMessage());
+    }
+
+    return [
+        'success' => true,
+        'charged' => true,
+        'amount' => $amount,
+        'usdt_amount' => $amount,
+        'currency' => 'USDT',
+        'charge_type' => $chargeType,
+        'reference' => $reference,
+        'escrow_deducted' => $escrowDeducted,
+        'message' => 'Card fee debited in USDT.',
+    ];
+}
+
+/**
+ * Refund card fee in USDT if card creation with the provider fails.
+ */
+protected function refundCardChargeUsdt(array $charge): void
+{
+    $user = auth()->user();
+    if (!$user || empty($charge['usdt_amount'])) {
+        return;
+    }
+
+    $usdtAmount = (float) $charge['usdt_amount'];
+    $originalRef = $charge['reference'] ?? 'unknown';
+
+    try {
+        $localWallet = UserWallet::where('user_id', $user->id)
+            ->where(function ($query) {
+                $query->where('currency_code', 'USDT')
+                    ->orWhere('currency_code', 'usdt')
+                    ->orWhere('quote_currency_code', 'USDT')
+                    ->orWhere('quote_currency_code', 'usdt')
+                    ->orWhereHas('currency', fn ($c) => $c->where('code', 'USDT')->orWhere('code', 'usdt'));
+            })
+            ->first();
+
+        if ($localWallet) {
+            $localWallet->balance = (float) bcadd((string) $localWallet->balance, (string) $usdtAmount, 8);
+            $localWallet->save();
+        }
+
+        Log::info('Crypto card USDT fee refunded locally.', [
+            'user_id' => $user->id,
+            'amount'  => $usdtAmount,
+            'reference' => $originalRef,
+        ]);
+    } catch (\Throwable $e) {
+        Log::error('Crypto card USDT fee refund failed: ' . $e->getMessage(), [
             'user_id' => $user->id,
             'charge'  => $charge,
         ]);

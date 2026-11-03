@@ -9,6 +9,7 @@ use App\Models\UserWallet;
 use App\Models\VirtualAccounts;
 use App\Services\SafeHavenService;
 use App\Services\Savings\Contracts\SavingsFundingProviderInterface;
+use App\Services\Savings\SavingsException;
 use App\Services\Savings\SavingsLedger;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -115,6 +116,34 @@ class ProviderFundingTest extends SavingsTestCase
 
         $wallet = UserWallet::where('user_id', $user->id)->first();
         $this->assertEquals('15000.00000000', (string) $wallet->balance);
+    }
+
+    public function test_provider_deposit_failure_rolls_back_and_raises_savings_exception(): void
+    {
+        $user = $this->createUserWithVirtualAccount('50000.00');
+        $this->fakeProvider->failDeposit = true;
+        $ledger = app(SavingsLedger::class);
+
+        $account = SavingsAccount::create([
+            'user_id' => $user->id,
+            'product' => SavingsAccount::AUTO,
+            'title' => 'Auto Save',
+            'currency' => 'NGN',
+            'status' => SavingsAccount::ACTIVE,
+            'balance' => '0.00',
+        ]);
+
+        try {
+            $ledger->deposit($user->id, $account->id, '1000.00', [
+                'idempotency_key' => 'provider-fail-001',
+            ]);
+            $this->fail('Expected SavingsException when provider deposit fails');
+        } catch (SavingsException $e) {
+            $this->assertSame('PROVIDER_TRANSFER_FAILED', $e->errorCode);
+        }
+
+        $this->assertSame('50000.00000000', (string) UserWallet::where('user_id', $user->id)->first()->balance);
+        $this->assertSame('0.00', \App\Services\Savings\Money::norm($account->refresh()->balance));
     }
 
     public function test_reconcile_unfunded_savings_command(): void

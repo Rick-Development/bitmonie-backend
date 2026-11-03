@@ -10,6 +10,7 @@ use App\Models\SavingsTransaction;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class SavingsService
 {
@@ -34,15 +35,33 @@ class SavingsService
             'date' => now()->toDateString(),
         ]);
 
-        DB::transaction(function () use (&$summary, $userId) {
-            $flexSummary = $this->processFlexInterest($userId);
-            $safeLockSummary = $this->processSafeLockInterest($userId);
+        // Process each product independently so a missing legacy table or one
+        // product failure cannot skip the other (e.g. SafeLock still accrues).
+        try {
+            DB::transaction(function () use (&$summary, $userId) {
+                $flexSummary = $this->processFlexInterest($userId);
+                $summary['flex_accounts'] = $flexSummary['count'];
+                $summary['flex_interest'] = $flexSummary['interest'];
+            });
+        } catch (\Throwable $e) {
+            Log::error('Savings flex interest processing failed.', [
+                'user_id' => $userId,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
-            $summary['flex_accounts'] = $flexSummary['count'];
-            $summary['flex_interest'] = $flexSummary['interest'];
-            $summary['safe_locks'] = $safeLockSummary['count'];
-            $summary['safe_lock_interest'] = $safeLockSummary['interest'];
-        });
+        try {
+            DB::transaction(function () use (&$summary, $userId) {
+                $safeLockSummary = $this->processSafeLockInterest($userId);
+                $summary['safe_locks'] = $safeLockSummary['count'];
+                $summary['safe_lock_interest'] = $safeLockSummary['interest'];
+            });
+        } catch (\Throwable $e) {
+            Log::error('Savings SafeLock interest processing failed.', [
+                'user_id' => $userId,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         Log::info('Savings daily interest calculation completed.', $summary);
 
@@ -62,6 +81,12 @@ class SavingsService
 
     protected function legacyProcessFlexInterest(?int $userId = null): array
     {
+        $summary = ['count' => 0, 'interest' => '0'];
+
+        if (! Schema::hasTable('flex_savings')) {
+            return $summary;
+        }
+
         $today = now()->startOfDay();
         $query = FlexSavings::where('status', true)
             ->where('balance', '>', 0)
@@ -74,8 +99,6 @@ class SavingsService
         if ($userId !== null) {
             $query->where('user_id', $userId);
         }
-
-        $summary = ['count' => 0, 'interest' => '0'];
 
         foreach ($query->get() as $flex) {
             $days = $this->eligibleInterestDays($flex->last_interest_date, $flex->created_at, $today);
@@ -142,6 +165,12 @@ class SavingsService
 
     protected function processSafeLockInterest(?int $userId = null): array
     {
+        $summary = ['count' => 0, 'interest' => '0'];
+
+        if (! Schema::hasTable('safe_locks')) {
+            return $summary;
+        }
+
         $today = now()->startOfDay();
         $query = SafeLock::where('status', 'active')
             ->where('is_redeemed', false)
@@ -155,8 +184,6 @@ class SavingsService
         if ($userId !== null) {
             $query->where('user_id', $userId);
         }
-
-        $summary = ['count' => 0, 'interest' => '0'];
 
         foreach ($query->get() as $lock) {
             $interestEndDate = $this->safeLockInterestEndDate($lock, $today);
@@ -203,6 +230,10 @@ class SavingsService
      */
     public function processSafeLockMaturity(?int $userId = null): void
     {
+        if (! Schema::hasTable('safe_locks')) {
+            return;
+        }
+
         $maturedLocks = SafeLock::where('status', 'active')
             ->where('is_redeemed', false)
             ->where('maturity_date', '<=', now());

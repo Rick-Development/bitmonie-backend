@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\AutosavePlan;
 use App\Services\AutosaveService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Schema;
 
 class ProcessAutosaveScheduledDeductions extends Command
 {
@@ -14,6 +15,12 @@ class ProcessAutosaveScheduledDeductions extends Command
 
     public function handle(AutosaveService $autosaveService): int
     {
+        if (! Schema::hasTable('autosave_plans')) {
+            $this->info(json_encode(['processed' => 0, 'skipped' => 'autosave_plans table missing']));
+
+            return self::SUCCESS;
+        }
+
         $processed = 0;
         $limit = (int) $this->option('limit');
 

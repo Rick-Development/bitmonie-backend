@@ -948,8 +948,216 @@ All core savings operations run on an immutable double-entry ledger with transac
 
 ---
 
-## 9. Developer Testing Checklist for Frontend
+## 9. Crypto Virtual & Physical Cards (Sudo & Quidax Integration)
+
+Bitmonie provides virtual and physical debit cards powered by **Sudo Africa** and funded via **Quidax USDT**.
+
+### 9.1 Card Architecture & Settlement Flow
+
+To provide instant UI response times and seamless UX without blocking on cross-network off-ramp operations, the system follows an asynchronous, queue-driven architecture:
+
+```
+[User App]
+    │
+    ▼ (Initiates Card Creation / Funding in USDT)
+[Bitmonie API]
+    │── 1. Verifies USDT Balance (Quidax & Mirror Wallet)
+    │── 2. Deducts Issuance / Funding Fee in USDT
+    │── 3. Locks/Escrows USDT for Funding
+    ▼
+[Async Background Job: InitiateQuidaxCardFundingJob]
+    │── Off-ramps USDT to Sudo NGN Settlement Account
+    ▼
+[Sudo Africa API]
+    │── Debits Settlement Account in NGN
+    │── Issues / Credits Card
+    ▼
+[User Notified & Card Ready]
+```
+
+---
+
+### 9.2 Get Available Card Charges & Fees
+- **Method & Path:** `GET /api/user/crypto-cards/charges`
+- **Auth Required:** Yes (`Bearer <token>`)
+
+Retrieves the currently active fees configured by admin for virtual/physical card issuance, funding, and maintenance. All fees are debited in USDT.
+
+**Success Response (`200 OK`):**
+```json
+{
+  "success": true,
+  "data": {
+    "virtual_issuance_fee": "2.00",
+    "virtual_funding_fee": "1.00",
+    "virtual_maintenance_fee": "1.00",
+    "physical_order_fee": "5.00",
+    "physical_funding_fee": "1.00",
+    "physical_maintenance_fee": "1.50"
+  }
+}
+```
+
+---
+
+### 9.3 Create Card (Virtual or Physical)
+- **Method & Path:** `POST /api/user/crypto-cards/create`
+- **Auth Required:** Yes (`Bearer <token>`)
+
+Creates a new card for the user. If the user does not yet have a Sudo Card Holder, the backend automatically generates one using verified KYC data (BVN/NIN/Address).
+
+> **Fee & Balance Note:** The configured issuance fee (e.g. 2 USDT) is checked against the user's USDT balance and debited. If provider issuance fails, the fee is automatically refunded back to the user's USDT balance.
+
+**Request Body:**
+```json
+{
+  "provider": "sudo",
+  "type": "virtual",
+  "currency": "NGN",
+  "brand": "Visa",
+  "status": "active"
+}
+```
+
+| Field | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `provider` | `string` | Optional | Provider identifier (`sudo`, default: `sudo`). |
+| `type` | `string` | **Yes** | Card type: `virtual` or `physical`. |
+| `currency` | `string` | **Yes** | Card settlement currency: `NGN` or `USD`. |
+| `brand` | `string` | Optional | Card brand (`Visa`, `MasterCard`, `Verve`, `AfriGo`). Default: `Visa`. |
+| `status` | `string` | Optional | Initial status: `active` or `inactive`. Default: `active`. |
+| `number` | `string` | Required if physical | Card PAN printed on physical card. |
+
+**Success Response (`201 Created`):**
+```json
+{
+  "success": true,
+  "message": "Card created successfully.",
+  "data": {
+    "card": {
+      "id": 12,
+      "user_id": 84,
+      "card_provider": "sudo",
+      "card_provider_id": "crd_01h8abcdef123456",
+      "card_type": "virtual",
+      "card_currency": "NGN",
+      "card_brand": "Visa",
+      "card_status": "active",
+      "card_balance": 0,
+      "masked_pan": "411111******1111",
+      "expiry_month": "12",
+      "expiry_year": "28",
+      "created_at": "2026-11-02T12:00:00.000000Z"
+    }
+  }
+}
+```
+
+**Insufficient USDT Balance Response (`400 Bad Request`):**
+```json
+{
+  "success": false,
+  "message": "Insufficient USDT balance to cover the card fee. Required: 2.00 USDT, Available: 0.50 USDT."
+}
+```
+
+---
+
+### 9.4 Fund Card (USDT -> NGN Card Balance)
+- **Method & Path:** `POST /api/user/crypto-cards/{id}/fund`
+- **Auth Required:** Yes (`Bearer <token>`)
+
+Funds an active crypto card. The user specifies the funding amount in USDT. The backend deducts the funding fee + funds, initiates an escrow, and dispatches `InitiateQuidaxCardFundingJob` to off-ramp USDT to Sudo's settlement bank in the background.
+
+**Request Body:**
+```json
+{
+  "amount": 25.00,
+  "description": "Weekly shopping funding"
+}
+```
+
+| Field | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `amount` | `numeric` | **Yes** | Amount in USDT to fund onto the card (must be > 0). |
+| `description` | `string` | Optional | Description / narration for the funding transaction. |
+
+**Success Response (`200 OK` - Accepted for processing):**
+```json
+{
+  "success": true,
+  "message": "Card funding initiated. You will be notified once the funds are credited.",
+  "data": {
+    "card_id": 12,
+    "amount": 25,
+    "transaction_id": 1045,
+    "escrow_id": 312,
+    "status": "initiated",
+    "current_balance": "0.00"
+  }
+}
+```
+
+**Error Responses:**
+- **400 Bad Request:** Insufficient USDT balance:
+  ```json
+  {
+    "success": false,
+    "message": "Insufficient USDT balance to fund this card. Required: 25.00 USDT, Available: 10.00 USDT."
+  }
+  ```
+- **422 Unprocessable Entity:** Card not active:
+  ```json
+  {
+    "success": false,
+    "message": "Only active cards can be funded."
+  }
+  ```
+
+---
+
+### 9.5 List User Cards
+- **Method & Path:** `GET /api/user/crypto-cards`
+- **Auth Required:** Yes (`Bearer <token>`)
+
+**Success Response (`200 OK`):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 12,
+      "card_provider": "sudo",
+      "card_provider_id": "crd_01h8abcdef123456",
+      "card_type": "virtual",
+      "card_currency": "NGN",
+      "card_brand": "Visa",
+      "card_status": "active",
+      "card_balance": 38500.00,
+      "masked_pan": "411111******1111",
+      "expiry_month": "12",
+      "expiry_year": "28"
+    }
+  ]
+}
+```
+
+---
+
+### 9.6 View Card Details & Sensitive Credentials
+- **Method & Path:** `GET /api/user/crypto-cards/show/{id}`
+- **Auth Required:** Yes (`Bearer <token>`)
+
+Retrieves full card details including real-time balance and spending limits. For PCI-DSS sensitive data (CVV, full PAN, PIN), use the tokenized endpoint:
+- **Token Endpoint:** `GET /api/user/crypto-cards/{id}/token` (returns single-use iframe/widget token).
+- **Activate Card:** `POST /api/user/crypto-cards/{id}/activate`
+- **Change PIN:** `POST /api/user/crypto-cards/{id}/change-pin` (payload: `{"pin": "1234"}`)
+
+---
+
+## 10. Developer Testing Checklist for Frontend
 - [ ] Save Bearer token securely in Encrypted SecureStore / Keychain.
 - [ ] Implement interceptors to attach `Authorization: Bearer <token>` and auto-refresh on 401.
 - [ ] For form validations, map the `errors` object directly to individual input error hints.
 - [ ] Handle offline states and display toast notifications with `message` string from API error responses.
+- [ ] For Crypto Card funding, display status `initiated` / `processing` with a spinner or pending badge until push notification or balance refresh confirms completion.

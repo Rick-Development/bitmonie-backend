@@ -8,6 +8,7 @@ use App\Services\Savings\Contracts\SavingsFundingProviderInterface;
 use App\Support\UserScopedCache;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class ProcessMaturedAutosaves extends Command
@@ -27,6 +28,12 @@ class ProcessMaturedAutosaves extends Command
 
     public function handle(): int
     {
+        if (! Schema::hasTable('autosave_plans')) {
+            $this->info('No autosave_plans table; skipping matured autosave processing.');
+
+            return self::SUCCESS;
+        }
+
         $limit = max(
             1,
             (int) $this->option('limit')

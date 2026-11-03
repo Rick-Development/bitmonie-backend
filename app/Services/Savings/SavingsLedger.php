@@ -124,7 +124,18 @@ class SavingsLedger
                     $narration = $o['narration'] ?? "Savings Deposit: {$account->title}";
                     $provider = $this->getFundingProvider();
                     if ($provider) {
-                        $provider->deposit($user, $amount, $providerRef, $narration);
+                        try {
+                            $provider->deposit($user, $amount, $providerRef, $narration);
+                        } catch (SavingsException $e) {
+                            throw $e;
+                        } catch (\Throwable $e) {
+                            throw new SavingsException(
+                                $e->getMessage() ?: 'Savings funding provider failed.',
+                                'PROVIDER_TRANSFER_FAILED',
+                                502,
+                                true
+                            );
+                        }
                         $providerFundedReference = $providerRef;
                         $providerMeta = [
                             'provider' => 'safehaven',
@@ -194,7 +205,18 @@ class SavingsLedger
                 $narration = $o['narration'] ?? "Savings Withdrawal: {$account->title}";
                 $provider = $this->getFundingProvider();
                 if ($provider) {
-                    $provider->withdraw($user, $amount, $providerRef, $narration);
+                    try {
+                        $provider->withdraw($user, $amount, $providerRef, $narration);
+                    } catch (SavingsException $e) {
+                        throw $e;
+                    } catch (\Throwable $e) {
+                        throw new SavingsException(
+                            $e->getMessage() ?: 'Savings funding provider failed.',
+                            'PROVIDER_TRANSFER_FAILED',
+                            502,
+                            true
+                        );
+                    }
                     $providerMeta = [
                         'provider' => 'safehaven',
                         'provider_reference' => $providerRef,
@@ -353,7 +375,9 @@ class SavingsLedger
 
         try {
             $this->currentHash = $key !== null ? $hash : null;
-            $result = DB::transaction($body, 3);
+            // Single attempt: provider transfers inside deposit/withdraw must never be retried
+            // by the DB deadlock loop (that would double-fund SafeHaven).
+            $result = DB::transaction($body, 1);
         } catch (DuplicateEntry $e) {
             return ['entry' => SavingsEntry::where('reference', $e->reference)->first(), 'replayed' => true];
         } catch (QueryException $e) {

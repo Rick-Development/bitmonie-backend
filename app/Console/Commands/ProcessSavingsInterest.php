@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Jobs\ProcessDailyInterestJob;
 use Illuminate\Console\Command;
 
 class ProcessSavingsInterest extends Command
@@ -12,11 +13,14 @@ class ProcessSavingsInterest extends Command
 
     public function handle()
     {
-        $this->info('Dispatching Savings Interest and Maturity Processing to background queue...');
-        
-        \App\Jobs\ProcessDailyInterestJob::dispatch();
+        $this->info('Starting savings interest and maturity processing...');
 
-        $this->info('Job dispatched successfully.');
+        // Run inline so midnight cron accrues interest even when queue workers are down.
+        // dispatchSync still goes through the bus but never depends on a worker process.
+        ProcessDailyInterestJob::dispatchSync();
+
+        $this->info('Savings interest and maturity processing completed.');
+
         return Command::SUCCESS;
     }
 }
