@@ -22001,6 +22001,433 @@
                     }
                 }
             }
+        },
+        "/api/v1/savings/targets/{id}/schedule": {
+            "put": {
+                "tags": [
+                    "Savings & Vaults"
+                ],
+                "summary": "Set or replace Target auto-debit schedule",
+                "description": "Also accepts nested `autosave` body (same shape as SafeLock/Flexi).",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "example": 3
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "oneOf": [
+                                    {
+                                        "type": "object",
+                                        "required": [
+                                            "amount",
+                                            "frequency"
+                                        ],
+                                        "properties": {
+                                            "amount": {
+                                                "type": "number",
+                                                "example": 25000
+                                            },
+                                            "frequency": {
+                                                "type": "string",
+                                                "enum": [
+                                                    "daily",
+                                                    "weekly",
+                                                    "monthly"
+                                                ],
+                                                "example": "weekly"
+                                            },
+                                            "day_of_week": {
+                                                "type": "integer",
+                                                "minimum": 0,
+                                                "maximum": 6,
+                                                "example": 1
+                                            },
+                                            "day_of_month": {
+                                                "type": "integer",
+                                                "minimum": 1,
+                                                "maximum": 31
+                                            },
+                                            "run_time": {
+                                                "type": "string",
+                                                "example": "08:00"
+                                            },
+                                            "timezone": {
+                                                "type": "string",
+                                                "example": "Africa/Lagos"
+                                            },
+                                            "start_date": {
+                                                "type": "string",
+                                                "format": "date"
+                                            },
+                                            "end_date": {
+                                                "type": "string",
+                                                "format": "date",
+                                                "nullable": true
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "type": "object",
+                                        "required": [
+                                            "autosave"
+                                        ],
+                                        "properties": {
+                                            "autosave": {
+                                                "type": "object",
+                                                "required": [
+                                                    "amount",
+                                                    "frequency"
+                                                ],
+                                                "properties": {
+                                                    "enabled": {
+                                                        "type": "boolean",
+                                                        "example": true
+                                                    },
+                                                    "mode": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "scheduled",
+                                                            "percentage",
+                                                            "both"
+                                                        ],
+                                                        "example": "scheduled"
+                                                    },
+                                                    "amount": {
+                                                        "type": "number",
+                                                        "example": 25000
+                                                    },
+                                                    "frequency": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "daily",
+                                                            "weekly",
+                                                            "monthly"
+                                                        ],
+                                                        "example": "weekly"
+                                                    },
+                                                    "run_time": {
+                                                        "type": "string",
+                                                        "example": "08:00"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Schedule saved."
+                                        },
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "Savings & Vaults"
+                ],
+                "summary": "Cancel Target auto-debit schedule",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "example": 3
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Schedule cancelled."
+                                        },
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/savings/targets/{id}/schedule/pause": {
+            "post": {
+                "tags": [
+                    "Savings & Vaults"
+                ],
+                "summary": "Pause Target auto-debit schedule",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "example": 3
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Schedule paused."
+                                        },
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/savings/targets/{id}/schedule/resume": {
+            "post": {
+                "tags": [
+                    "Savings & Vaults"
+                ],
+                "summary": "Resume Target auto-debit schedule",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "example": 3
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Schedule resumed."
+                                        },
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/savings/targets/{id}": {
+            "get": {
+                "tags": [
+                    "Savings & Vaults"
+                ],
+                "summary": "Get Target Savings account",
+                "description": "Includes progress, plan (if any), and debited_today.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "example": 3
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Target retrieved."
+                                        },
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "tags": [
+                    "Savings & Vaults"
+                ],
+                "summary": "Update Target Savings account",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "example": 3
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "title": {
+                                        "type": "string"
+                                    },
+                                    "description": {
+                                        "type": "string"
+                                    },
+                                    "category": {
+                                        "type": "string"
+                                    },
+                                    "target_amount": {
+                                        "type": "number"
+                                    },
+                                    "deadline": {
+                                        "type": "string",
+                                        "format": "date"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Target updated."
+                                        },
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
