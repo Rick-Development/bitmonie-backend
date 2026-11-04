@@ -536,6 +536,16 @@ Route::prefix("user")->name("api.user.")->group(function () {
 
        Route::prefix('multi/currency')->group(function (): void {
 
+    Route::get(
+        '/currencies',
+        [MulticurrencyController::class, 'currencies']
+    );
+
+    Route::get(
+        '/balances',
+        [MulticurrencyController::class, 'balances']
+    );
+
     Route::post(
         '/wallets',
         [MulticurrencyController::class, 'create']
@@ -549,6 +559,11 @@ Route::prefix("user")->name("api.user.")->group(function () {
     Route::get(
         '/wallets/{currency}',
         [MulticurrencyController::class, 'show']
+    );
+
+    Route::get(
+        '/wallets/{currency}/balance',
+        [MulticurrencyController::class, 'balance']
     );
 
     Route::get(

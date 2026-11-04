@@ -126,14 +126,52 @@ class MultiCurrencyWalletService
     }
 
     /**
+     * Currencies currently enabled for user-facing virtual accounts.
+     *
+     * Fincra also documents USD/EUR/GBP virtual accounts, but those require
+     * extra foreign-currency KYC/documents and are not enabled here yet.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function supportedCurrencies(): array
+    {
+        return [
+            [
+                'code' => 'NGN',
+                'name' => 'Nigerian Naira',
+                'provider' => 'fincra',
+                'kyc' => ['firstName', 'lastName', 'bvn'],
+                'notes' => 'BVN required. Email optional.',
+            ],
+            [
+                'code' => 'GHS',
+                'name' => 'Ghanaian Cedi',
+                'provider' => 'fincra',
+                'kyc' => ['firstName', 'lastName', 'email'],
+                'notes' => 'Email required. BVN not allowed.',
+            ],
+            [
+                'code' => 'KES',
+                'name' => 'Kenyan Shilling',
+                'provider' => 'fincra',
+                'kyc' => ['firstName', 'lastName'],
+                'notes' => 'Email and BVN are not allowed by Fincra.',
+            ],
+            [
+                'code' => 'TZS',
+                'name' => 'Tanzanian Shilling',
+                'provider' => 'fincra',
+                'kyc' => ['firstName', 'lastName'],
+                'notes' => 'Email and BVN are not allowed by Fincra API validation.',
+            ],
+        ];
+    }
+
+    /**
      * Get all multicurrency wallets belonging to a user.
      */
     public function getUserWallets(User $user)
     {
-        /*
-         * Replace `multicurrencyWallets()` with the actual
-         * relationship on your User model.
-         */
         return $user->multicurrencyWallets()
             ->latest()
             ->get();
@@ -154,6 +192,37 @@ class MultiCurrencyWalletService
             $user,
             $currency
         );
+    }
+
+    /**
+     * Get balances for all of a user's multicurrency wallets.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function getUserBalances(User $user): array
+    {
+        return $this->getUserWallets($user)
+            ->map(fn (MultiCurrencyWallet $wallet) => $wallet->toBalanceArray())
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Get balance for one currency wallet.
+     *
+     * @return array<string, mixed>
+     */
+    public function getWalletBalance(User $user, string $currency): array
+    {
+        $wallet = $this->getWallet($user, $currency);
+
+        if (! $wallet) {
+            throw new InvalidArgumentException(
+                "You do not have a {$currency} wallet."
+            );
+        }
+
+        return $wallet->toBalanceArray();
     }
 
     /**
@@ -582,6 +651,10 @@ protected function findUserWallet(
                 'status',
                 'pending'
             ),
+
+        'available_balance' => '0.00000000',
+        'ledger_balance' => '0.00000000',
+        'locked_balance' => '0.00000000',
 
         'can_receive' =>
             (bool) data_get(

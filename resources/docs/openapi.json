@@ -5160,7 +5160,7 @@
                                                             },
                                                             "symbol": {
                                                                 "type": "string",
-                                                                "example": "₦"
+                                                                "example": "\u20a6"
                                                             },
                                                             "balance": {
                                                                 "type": "number",
@@ -9075,7 +9075,11 @@
                                     },
                                     "duration_days": {
                                         "type": "integer",
-                                        "enum": [30, 60, 365],
+                                        "enum": [
+                                            30,
+                                            60,
+                                            365
+                                        ],
                                         "description": "Plan duration in days: 30, 60, or 365",
                                         "example": 30
                                     }
@@ -20066,14 +20070,22 @@
                                     },
                                     "duration_days": {
                                         "type": "integer",
-                                        "enum": [30, 60, 365],
+                                        "enum": [
+                                            30,
+                                            60,
+                                            365
+                                        ],
                                         "default": 365,
                                         "description": "Plan duration in days (30, 60, or 365). Defaults to 365 (1 year).",
                                         "example": 30
                                     },
                                     "duration_months": {
                                         "type": "integer",
-                                        "enum": [1, 2, 12],
+                                        "enum": [
+                                            1,
+                                            2,
+                                            12
+                                        ],
                                         "description": "Optional alternative duration in months (1, 2, or 12).",
                                         "example": 1
                                     },
@@ -20131,14 +20143,22 @@
                                     },
                                     "duration_days": {
                                         "type": "integer",
-                                        "enum": [30, 60, 365],
+                                        "enum": [
+                                            30,
+                                            60,
+                                            365
+                                        ],
                                         "default": 365,
                                         "description": "Plan duration in days (30, 60, or 365). Defaults to 365 (1 year).",
                                         "example": 30
                                     },
                                     "duration_months": {
                                         "type": "integer",
-                                        "enum": [1, 2, 12],
+                                        "enum": [
+                                            1,
+                                            2,
+                                            12
+                                        ],
                                         "description": "Optional alternative duration in months (1, 2, or 12).",
                                         "example": 1
                                     },
@@ -20207,6 +20227,1182 @@
                     },
                     "401": {
                         "description": "Unauthenticated"
+                    }
+                }
+            }
+        },
+        "/api/user/multi/currency/currencies": {
+            "get": {
+                "tags": [
+                    "Multicurrency"
+                ],
+                "summary": "List supported multicurrency wallets",
+                "description": "Returns currencies currently enabled for virtual-account wallets (NGN, GHS, KES, TZS) plus provider currencies not yet enabled (USD, EUR, GBP).",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Supported multicurrency wallets retrieved."
+                                        },
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "status": true,
+                                    "message": "Supported multicurrency wallets retrieved.",
+                                    "data": {
+                                        "enabled": [
+                                            {
+                                                "code": "NGN",
+                                                "name": "Nigerian Naira",
+                                                "provider": "fincra",
+                                                "kyc": [
+                                                    "firstName",
+                                                    "lastName",
+                                                    "bvn"
+                                                ]
+                                            },
+                                            {
+                                                "code": "GHS",
+                                                "name": "Ghanaian Cedi",
+                                                "provider": "fincra",
+                                                "kyc": [
+                                                    "firstName",
+                                                    "lastName",
+                                                    "email"
+                                                ]
+                                            },
+                                            {
+                                                "code": "KES",
+                                                "name": "Kenyan Shilling",
+                                                "provider": "fincra",
+                                                "kyc": [
+                                                    "firstName",
+                                                    "lastName"
+                                                ]
+                                            },
+                                            {
+                                                "code": "TZS",
+                                                "name": "Tanzanian Shilling",
+                                                "provider": "fincra",
+                                                "kyc": [
+                                                    "firstName",
+                                                    "lastName"
+                                                ]
+                                            }
+                                        ],
+                                        "provider_also_offers": [
+                                            {
+                                                "code": "USD",
+                                                "name": "US Dollar",
+                                                "status": "not_enabled"
+                                            },
+                                            {
+                                                "code": "EUR",
+                                                "name": "Euro",
+                                                "status": "not_enabled"
+                                            },
+                                            {
+                                                "code": "GBP",
+                                                "name": "British Pound",
+                                                "status": "not_enabled"
+                                            }
+                                        ]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/user/multi/currency/balances": {
+            "get": {
+                "tags": [
+                    "Multicurrency"
+                ],
+                "summary": "Get all multicurrency wallet balances",
+                "description": "Returns available/ledger/locked balances for every multicurrency wallet owned by the authenticated user.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Currency balances fetched successfully."
+                                        },
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "currency": {
+                                                        "type": "string",
+                                                        "example": "GHS"
+                                                    },
+                                                    "status": {
+                                                        "type": "string",
+                                                        "example": "active"
+                                                    },
+                                                    "available_balance": {
+                                                        "type": "string",
+                                                        "example": "1500.00"
+                                                    },
+                                                    "ledger_balance": {
+                                                        "type": "string",
+                                                        "example": "1500.00"
+                                                    },
+                                                    "locked_balance": {
+                                                        "type": "string",
+                                                        "example": "0.00"
+                                                    },
+                                                    "virtual_account_number": {
+                                                        "type": "string",
+                                                        "example": "1234567890"
+                                                    },
+                                                    "account_name": {
+                                                        "type": "string",
+                                                        "example": "John Doe"
+                                                    },
+                                                    "bank_name": {
+                                                        "type": "string",
+                                                        "example": "Fincra"
+                                                    },
+                                                    "bank_code": {
+                                                        "type": "string",
+                                                        "example": "090286"
+                                                    },
+                                                    "provider": {
+                                                        "type": "string",
+                                                        "example": "fincraservice"
+                                                    },
+                                                    "can_receive": {
+                                                        "type": "boolean",
+                                                        "example": true
+                                                    },
+                                                    "can_send": {
+                                                        "type": "boolean",
+                                                        "example": true
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "status": true,
+                                    "message": "Currency balances fetched successfully.",
+                                    "data": [
+                                        {
+                                            "currency": "GHS",
+                                            "status": "active",
+                                            "available_balance": "1500.00",
+                                            "ledger_balance": "1500.00",
+                                            "locked_balance": "0.00",
+                                            "virtual_account_number": "1234567890",
+                                            "account_name": "John Doe",
+                                            "bank_name": "Fincra MFB",
+                                            "bank_code": "090286",
+                                            "provider": "fincraservice",
+                                            "can_receive": true,
+                                            "can_send": true
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/user/multi/currency/wallets": {
+            "get": {
+                "tags": [
+                    "Multicurrency"
+                ],
+                "summary": "List multicurrency wallets",
+                "description": "List the authenticated user's local-currency virtual account wallets with balances.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Currency wallets fetched successfully."
+                                        },
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "currency": {
+                                                        "type": "string",
+                                                        "example": "GHS"
+                                                    },
+                                                    "status": {
+                                                        "type": "string",
+                                                        "example": "active"
+                                                    },
+                                                    "available_balance": {
+                                                        "type": "string",
+                                                        "example": "1500.00"
+                                                    },
+                                                    "ledger_balance": {
+                                                        "type": "string",
+                                                        "example": "1500.00"
+                                                    },
+                                                    "locked_balance": {
+                                                        "type": "string",
+                                                        "example": "0.00"
+                                                    },
+                                                    "virtual_account_number": {
+                                                        "type": "string",
+                                                        "example": "1234567890"
+                                                    },
+                                                    "account_name": {
+                                                        "type": "string",
+                                                        "example": "John Doe"
+                                                    },
+                                                    "bank_name": {
+                                                        "type": "string",
+                                                        "example": "Fincra"
+                                                    },
+                                                    "bank_code": {
+                                                        "type": "string",
+                                                        "example": "090286"
+                                                    },
+                                                    "provider": {
+                                                        "type": "string",
+                                                        "example": "fincraservice"
+                                                    },
+                                                    "can_receive": {
+                                                        "type": "boolean",
+                                                        "example": true
+                                                    },
+                                                    "can_send": {
+                                                        "type": "boolean",
+                                                        "example": true
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "status": true,
+                                    "message": "Currency wallets fetched successfully.",
+                                    "data": [
+                                        {
+                                            "currency": "GHS",
+                                            "status": "active",
+                                            "available_balance": "1500.00",
+                                            "ledger_balance": "1500.00",
+                                            "locked_balance": "0.00",
+                                            "virtual_account_number": "1234567890",
+                                            "account_name": "John Doe",
+                                            "bank_name": "Fincra MFB",
+                                            "bank_code": "090286",
+                                            "provider": "fincraservice",
+                                            "can_receive": true,
+                                            "can_send": true
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "Multicurrency"
+                ],
+                "summary": "Create multicurrency wallet",
+                "description": "Create a Fincra virtual account wallet. KYC payload is currency-specific: NGN requires BVN; GHS requires email; KES/TZS send firstName+lastName only (email/bvn are rejected by Fincra).",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "currency"
+                                ],
+                                "properties": {
+                                    "currency": {
+                                        "type": "string",
+                                        "enum": [
+                                            "NGN",
+                                            "GHS",
+                                            "KES",
+                                            "TZS"
+                                        ],
+                                        "example": "KES"
+                                    },
+                                    "account_type": {
+                                        "type": "string",
+                                        "enum": [
+                                            "individual",
+                                            "corporate"
+                                        ],
+                                        "example": "individual"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Currency wallet created successfully."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "currency": {
+                                                    "type": "string",
+                                                    "example": "GHS"
+                                                },
+                                                "status": {
+                                                    "type": "string",
+                                                    "example": "active"
+                                                },
+                                                "available_balance": {
+                                                    "type": "string",
+                                                    "example": "1500.00"
+                                                },
+                                                "ledger_balance": {
+                                                    "type": "string",
+                                                    "example": "1500.00"
+                                                },
+                                                "locked_balance": {
+                                                    "type": "string",
+                                                    "example": "0.00"
+                                                },
+                                                "virtual_account_number": {
+                                                    "type": "string",
+                                                    "example": "1234567890"
+                                                },
+                                                "account_name": {
+                                                    "type": "string",
+                                                    "example": "John Doe"
+                                                },
+                                                "bank_name": {
+                                                    "type": "string",
+                                                    "example": "Fincra"
+                                                },
+                                                "bank_code": {
+                                                    "type": "string",
+                                                    "example": "090286"
+                                                },
+                                                "provider": {
+                                                    "type": "string",
+                                                    "example": "fincraservice"
+                                                },
+                                                "can_receive": {
+                                                    "type": "boolean",
+                                                    "example": true
+                                                },
+                                                "can_send": {
+                                                    "type": "boolean",
+                                                    "example": true
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "status": true,
+                                    "message": "Currency wallet created successfully.",
+                                    "data": {
+                                        "currency": "GHS",
+                                        "status": "active",
+                                        "available_balance": "1500.00",
+                                        "ledger_balance": "1500.00",
+                                        "locked_balance": "0.00",
+                                        "virtual_account_number": "1234567890",
+                                        "account_name": "John Doe",
+                                        "bank_name": "Fincra MFB",
+                                        "bank_code": "090286",
+                                        "provider": "fincraservice",
+                                        "can_receive": true,
+                                        "can_send": true
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation / provider KYC error",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "status": false,
+                                    "message": "Fincra API error (422): KYCInformation.email is not allowed"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/user/multi/currency/wallets/{currency}": {
+            "get": {
+                "tags": [
+                    "Multicurrency"
+                ],
+                "summary": "Get one multicurrency wallet",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "currency",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "NGN",
+                                "GHS",
+                                "KES",
+                                "TZS"
+                            ]
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Currency wallet fetched successfully."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "currency": {
+                                                    "type": "string",
+                                                    "example": "GHS"
+                                                },
+                                                "status": {
+                                                    "type": "string",
+                                                    "example": "active"
+                                                },
+                                                "available_balance": {
+                                                    "type": "string",
+                                                    "example": "1500.00"
+                                                },
+                                                "ledger_balance": {
+                                                    "type": "string",
+                                                    "example": "1500.00"
+                                                },
+                                                "locked_balance": {
+                                                    "type": "string",
+                                                    "example": "0.00"
+                                                },
+                                                "virtual_account_number": {
+                                                    "type": "string",
+                                                    "example": "1234567890"
+                                                },
+                                                "account_name": {
+                                                    "type": "string",
+                                                    "example": "John Doe"
+                                                },
+                                                "bank_name": {
+                                                    "type": "string",
+                                                    "example": "Fincra"
+                                                },
+                                                "bank_code": {
+                                                    "type": "string",
+                                                    "example": "090286"
+                                                },
+                                                "provider": {
+                                                    "type": "string",
+                                                    "example": "fincraservice"
+                                                },
+                                                "can_receive": {
+                                                    "type": "boolean",
+                                                    "example": true
+                                                },
+                                                "can_send": {
+                                                    "type": "boolean",
+                                                    "example": true
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "status": true,
+                                    "message": "Currency wallet fetched successfully.",
+                                    "data": {
+                                        "currency": "GHS",
+                                        "status": "active",
+                                        "available_balance": "1500.00",
+                                        "ledger_balance": "1500.00",
+                                        "locked_balance": "0.00",
+                                        "virtual_account_number": "1234567890",
+                                        "account_name": "John Doe",
+                                        "bank_name": "Fincra MFB",
+                                        "bank_code": "090286",
+                                        "provider": "fincraservice",
+                                        "can_receive": true,
+                                        "can_send": true
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Wallet not found"
+                    }
+                }
+            }
+        },
+        "/api/user/multi/currency/wallets/{currency}/balance": {
+            "get": {
+                "tags": [
+                    "Multicurrency"
+                ],
+                "summary": "Get one multicurrency wallet balance",
+                "description": "Returns available, ledger and locked balances for a single currency wallet.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "currency",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "NGN",
+                                "GHS",
+                                "KES",
+                                "TZS"
+                            ]
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Currency balance fetched successfully."
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "currency": {
+                                                    "type": "string",
+                                                    "example": "GHS"
+                                                },
+                                                "status": {
+                                                    "type": "string",
+                                                    "example": "active"
+                                                },
+                                                "available_balance": {
+                                                    "type": "string",
+                                                    "example": "1500.00"
+                                                },
+                                                "ledger_balance": {
+                                                    "type": "string",
+                                                    "example": "1500.00"
+                                                },
+                                                "locked_balance": {
+                                                    "type": "string",
+                                                    "example": "0.00"
+                                                },
+                                                "virtual_account_number": {
+                                                    "type": "string",
+                                                    "example": "1234567890"
+                                                },
+                                                "account_name": {
+                                                    "type": "string",
+                                                    "example": "John Doe"
+                                                },
+                                                "bank_name": {
+                                                    "type": "string",
+                                                    "example": "Fincra"
+                                                },
+                                                "bank_code": {
+                                                    "type": "string",
+                                                    "example": "090286"
+                                                },
+                                                "provider": {
+                                                    "type": "string",
+                                                    "example": "fincraservice"
+                                                },
+                                                "can_receive": {
+                                                    "type": "boolean",
+                                                    "example": true
+                                                },
+                                                "can_send": {
+                                                    "type": "boolean",
+                                                    "example": true
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "status": true,
+                                    "message": "Currency balance fetched successfully.",
+                                    "data": {
+                                        "currency": "GHS",
+                                        "status": "active",
+                                        "available_balance": "1500.00",
+                                        "ledger_balance": "1500.00",
+                                        "locked_balance": "0.00",
+                                        "virtual_account_number": "1234567890",
+                                        "account_name": "John Doe",
+                                        "bank_name": "Fincra MFB",
+                                        "bank_code": "090286",
+                                        "provider": "fincraservice",
+                                        "can_receive": true,
+                                        "can_send": true
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Wallet not found"
+                    }
+                }
+            }
+        },
+        "/api/user/multi/currency/wallets/{currency}/collections": {
+            "get": {
+                "tags": [
+                    "Multicurrency"
+                ],
+                "summary": "Get wallet collections/deposits",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "currency",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "NGN",
+                                "GHS",
+                                "KES",
+                                "TZS"
+                            ]
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Collections retrieved successfully."
+                                        },
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "status": true,
+                                    "message": "Collections retrieved successfully.",
+                                    "data": {
+                                        "items": []
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/user/multi/currency/rates": {
+            "get": {
+                "tags": [
+                    "Multicurrency"
+                ],
+                "summary": "Get multicurrency rates",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "from",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "example": "NGN"
+                        }
+                    },
+                    {
+                        "name": "to",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "example": "GHS"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Rates retrieved successfully."
+                                        },
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "status": true,
+                                    "message": "Rates retrieved successfully.",
+                                    "data": {}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/user/multi/currency/banks": {
+            "get": {
+                "tags": [
+                    "Multicurrency"
+                ],
+                "summary": "Get banks for currency/country",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "currency",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "example": "NGN"
+                        }
+                    },
+                    {
+                        "name": "country",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "example": "NG"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Banks retrieved successfully."
+                                        },
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "status": true,
+                                    "message": "Banks retrieved successfully.",
+                                    "data": {}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/user/multi/currency/quotes": {
+            "post": {
+                "tags": [
+                    "Multicurrency"
+                ],
+                "summary": "Generate multicurrency quote",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "source_currency": {
+                                        "type": "string",
+                                        "example": "NGN"
+                                    },
+                                    "destination_currency": {
+                                        "type": "string",
+                                        "example": "GHS"
+                                    },
+                                    "amount": {
+                                        "type": "number",
+                                        "example": 10000
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Quote generated successfully."
+                                        },
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "status": true,
+                                    "message": "Quote generated successfully.",
+                                    "data": {}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/user/multi/currency/payin": {
+            "post": {
+                "tags": [
+                    "Multicurrency"
+                ],
+                "summary": "Initiate multicurrency payin",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "currency": {
+                                        "type": "string",
+                                        "example": "GHS"
+                                    },
+                                    "amount": {
+                                        "type": "number",
+                                        "example": 100
+                                    },
+                                    "payment_method": {
+                                        "type": "string",
+                                        "example": "bank_transfer"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Payin initiated successfully."
+                                        },
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "status": true,
+                                    "message": "Payin initiated successfully.",
+                                    "data": {}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/user/multi/currency/transfers/wallet": {
+            "post": {
+                "tags": [
+                    "Multicurrency"
+                ],
+                "summary": "Transfer to another Fincra wallet",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Transfer initiated successfully."
+                                        },
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "status": true,
+                                    "message": "Transfer initiated successfully.",
+                                    "data": {}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/user/multi/currency/payouts/bank": {
+            "post": {
+                "tags": [
+                    "Multicurrency"
+                ],
+                "summary": "Payout to bank account",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Payout initiated successfully."
+                                        },
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "status": true,
+                                    "message": "Payout initiated successfully.",
+                                    "data": {}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/user/multi/currency/conversions": {
+            "post": {
+                "tags": [
+                    "Multicurrency"
+                ],
+                "summary": "Convert between currencies",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Conversion initiated successfully."
+                                        },
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "status": true,
+                                    "message": "Conversion initiated successfully.",
+                                    "data": {}
+                                }
+                            }
+                        }
                     }
                 }
             }

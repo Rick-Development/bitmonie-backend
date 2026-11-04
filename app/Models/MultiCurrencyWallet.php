@@ -40,6 +40,10 @@ class MultiCurrencyWallet extends Model
 
         'status',
 
+        'available_balance',
+        'ledger_balance',
+        'locked_balance',
+
         'can_receive',
         'can_send',
 
@@ -53,8 +57,35 @@ class MultiCurrencyWallet extends Model
         'can_receive' => 'boolean',
         'can_send' => 'boolean',
 
+        'available_balance' => 'decimal:8',
+        'ledger_balance' => 'decimal:8',
+        'locked_balance' => 'decimal:8',
+
         'provider_metadata' => 'array',
     ];
+
+    /**
+     * Normalize wallet payload for API responses.
+     *
+     * @return array<string, mixed>
+     */
+    public function toBalanceArray(): array
+    {
+        return [
+            'currency' => strtoupper((string) $this->currency),
+            'status' => $this->status,
+            'available_balance' => number_format((float) $this->available_balance, 2, '.', ''),
+            'ledger_balance' => number_format((float) $this->ledger_balance, 2, '.', ''),
+            'locked_balance' => number_format((float) $this->locked_balance, 2, '.', ''),
+            'virtual_account_number' => $this->virtual_account_number,
+            'account_name' => $this->account_name,
+            'bank_name' => $this->bank_name,
+            'bank_code' => $this->bank_code,
+            'provider' => $this->provider,
+            'can_receive' => (bool) $this->can_receive,
+            'can_send' => (bool) $this->can_send,
+        ];
+    }
 
     /**
      * The user who owns this wallet.

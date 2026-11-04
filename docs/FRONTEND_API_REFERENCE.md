@@ -416,6 +416,61 @@ Authorization: Bearer <access_token>
 
 ---
 
+## 4b. Multicurrency Wallets (Fincra)
+
+Base path: `/api/user/multi/currency`  
+Auth: Bearer token required.
+
+### Enabled currencies
+| Code | Name | KYC sent to Fincra |
+|------|------|--------------------|
+| `NGN` | Nigerian Naira | `firstName`, `lastName`, `bvn` (email optional) |
+| `GHS` | Ghanaian Cedi | `firstName`, `lastName`, `email` |
+| `KES` | Kenyan Shilling | `firstName`, `lastName` only |
+| `TZS` | Tanzanian Shilling | `firstName`, `lastName` only |
+
+Fincra also documents `USD`, `EUR`, `GBP` virtual accounts, but those are **not enabled** yet (extra foreign KYC).
+
+> Important: For **KES/TZS**, do not send `email` or `bvn`. Fincra returns `422 KYCInformation.email is not allowed`.
+
+### Endpoints
+- `GET /currencies` — enabled currencies + provider-only offers
+- `GET /balances` — all wallet balances for the user
+- `GET /wallets` — list wallets (includes balances)
+- `POST /wallets` — create wallet `{ "currency": "KES", "account_type": "individual" }`
+- `GET /wallets/{currency}` — one wallet with balances
+- `GET /wallets/{currency}/balance` — one currency balance
+- `GET /wallets/{currency}/collections` — deposits into that VA
+- `GET /rates`, `GET /banks`, `POST /quotes`, `POST /payin`, `POST /transfers/wallet`, `POST /payouts/bank`, `POST /conversions`
+
+### Balance response shape
+```json
+{
+  "status": true,
+  "message": "Currency balances fetched successfully.",
+  "data": [
+    {
+      "currency": "GHS",
+      "status": "active",
+      "available_balance": "1500.00",
+      "ledger_balance": "1500.00",
+      "locked_balance": "0.00",
+      "virtual_account_number": "1234567890",
+      "account_name": "John Doe",
+      "bank_name": "Fincra MFB",
+      "bank_code": "090286",
+      "provider": "fincraservice",
+      "can_receive": true,
+      "can_send": true
+    }
+  ]
+}
+```
+
+Note: Fincra virtual accounts settle into the merchant wallet. Per-user `available_balance` / `ledger_balance` / `locked_balance` are stored on Bitmonie and returned by these endpoints.
+
+---
+
 ## 5. Piggyvest-Style Savings & Wealth Module
 
 All core savings operations run on an immutable double-entry ledger with transactional safety and idempotency support (`Idempotency-Key` header or request body field).

@@ -129,8 +129,16 @@ jobs:
             php artisan view:cache
             php artisan event:cache
 
-            # Set file permissions for cache and storage
-            chmod -R 775 storage bootstrap/cache 2>/dev/null || true
+            # Keep storage/cache owned by the app user so PHP-FPM can write locks.
+            # Running deploy/artisan as root previously left root-owned cache files
+            # and caused intermittent 500s (login throttling, schedule locks, etc.).
+            if [ -x /usr/local/bin/bitmonie-fix-storage-perms ]; then
+              /usr/local/bin/bitmonie-fix-storage-perms || true
+            else
+              chown -R bitmonie:bitmonie storage bootstrap/cache 2>/dev/null || true
+              chmod -R ug+rwX storage bootstrap/cache 2>/dev/null || true
+              find storage bootstrap/cache -type d -exec chmod g+s {} + 2>/dev/null || true
+            fi
 
             # Restart queue workers if configured
             php artisan queue:restart || true

@@ -19,9 +19,93 @@ class MulticurrencyController extends Controller
     }
 
     /**
+     * List currencies available for multicurrency wallets.
+     *
+     * GET /api/v1/user/multi/currency/currencies
+     */
+    public function currencies(): JsonResponse
+    {
+        return response()->json([
+            'status' => true,
+            'message' => 'Supported multicurrency wallets retrieved.',
+            'data' => [
+                'enabled' => $this->walletService->supportedCurrencies(),
+                'provider_also_offers' => [
+                    ['code' => 'USD', 'name' => 'US Dollar', 'status' => 'not_enabled'],
+                    ['code' => 'EUR', 'name' => 'Euro', 'status' => 'not_enabled'],
+                    ['code' => 'GBP', 'name' => 'British Pound', 'status' => 'not_enabled'],
+                ],
+            ],
+        ]);
+    }
+
+    /**
+     * Get balances for all of the authenticated user's multicurrency wallets.
+     *
+     * GET /api/v1/user/multi/currency/balances
+     */
+    public function balances(Request $request): JsonResponse
+    {
+        try {
+            return response()->json([
+                'status' => true,
+                'message' => 'Currency balances fetched successfully.',
+                'data' => $this->walletService->getUserBalances($request->user()),
+            ]);
+        } catch (Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Unable to retrieve currency balances.',
+            ], 500);
+        }
+    }
+
+    /**
+     * Get balance for one currency wallet.
+     *
+     * GET /api/v1/user/multi/currency/wallets/{currency}/balance
+     */
+    public function balance(Request $request, string $currency): JsonResponse
+    {
+        $currency = strtoupper($currency);
+
+        if (! in_array($currency, ['NGN', 'GHS', 'KES', 'TZS'], true)) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Unsupported currency.',
+            ], 422);
+        }
+
+        try {
+            return response()->json([
+                'status' => true,
+                'message' => 'Currency balance fetched successfully.',
+                'data' => $this->walletService->getWalletBalance(
+                    $request->user(),
+                    $currency
+                ),
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'status' => false,
+                'message' => $e->getMessage(),
+            ], 404);
+        } catch (Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Unable to retrieve currency balance.',
+            ], 500);
+        }
+    }
+
+    /**
      * Create a multicurrency wallet / local currency account.
      *
-     * POST /api/v1/user/multicurrency/wallets
+     * POST /api/v1/user/multi/currency/wallets
      */
     public function create(Request $request): JsonResponse
     {
@@ -58,7 +142,7 @@ class MulticurrencyController extends Controller
             return response()->json([
                 'status' => true,
                 'message' => 'Currency wallet created successfully.',
-                'data' => $wallet,
+                'data' => $wallet->toBalanceArray(),
             ], 201);
 
         } catch (Throwable $e) {
@@ -74,14 +158,14 @@ class MulticurrencyController extends Controller
     /**
      * Get all multicurrency wallets belonging to the authenticated user.
      *
-     * GET /api/v1/user/multicurrency/wallets
+     * GET /api/v1/user/multi/currency/wallets
      */
     public function index(Request $request): JsonResponse
     {
         try {
             $wallets = $this->walletService->getUserWallets(
                 $request->user()
-            );
+            )->map(fn ($wallet) => $wallet->toBalanceArray())->values();
 
             return response()->json([
                 'status' => true,
@@ -102,7 +186,7 @@ class MulticurrencyController extends Controller
     /**
      * Get one wallet.
      *
-     * GET /api/v1/user/multicurrency/wallets/{currency}
+     * GET /api/v1/user/multi/currency/wallets/{currency}
      */
     public function show(
         Request $request,
@@ -138,7 +222,7 @@ class MulticurrencyController extends Controller
             return response()->json([
                 'status' => true,
                 'message' => 'Currency wallet fetched successfully.',
-                'data' => $wallet,
+                'data' => $wallet->toBalanceArray(),
             ]);
 
         } catch (Throwable $e) {

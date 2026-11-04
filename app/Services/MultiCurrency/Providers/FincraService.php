@@ -140,35 +140,17 @@ public function createVirtualAccount(
     );
 
     /*
-     * Fincra only accepts KYCInformation.bvn for NGN virtual accounts.
-     * Sending BVN for GHS/KES/TZS returns 422:
-     * "KYCInformation.bvn is not allowed".
+     * Fincra KYC fields differ by currency (individual accounts):
+     * - NGN: firstName, lastName, bvn (required); email optional
+     * - GHS: firstName, lastName, email (required)
+     * - KES: firstName, lastName only (email/bvn NOT allowed)
+     * - TZS: firstName, lastName only (email/bvn rejected by API)
      */
-    $kycInformation = [
-        'firstName' => $user->firstname,
-        'lastName' => $user->lastname,
-        'email' => $user->email,
-    ];
-
-    if ($currency === 'NGN') {
-        $kyc = $user->user_kyc;
-
-        if ($kyc === null) {
-            throw new RuntimeException(
-                'User KYC verification record was not found.'
-            );
-        }
-
-        $bvn = data_get($kyc->data, 'bvn');
-
-        if (! is_string($bvn) || trim($bvn) === '') {
-            throw new RuntimeException(
-                'User BVN is required to create a Fincra virtual account for NGN.'
-            );
-        }
-
-        $kycInformation['bvn'] = trim($bvn);
-    }
+    $kycInformation = $this->buildVirtualAccountKyc(
+        $user,
+        $currency,
+        $accountType
+    );
 
     $payload = [
         'currency' => $currency,
@@ -176,6 +158,11 @@ public function createVirtualAccount(
         'KYCInformation' => $kycInformation,
         'merchantReference' => $merchantReference,
     ];
+
+    $phone = $this->resolveInternationalPhone($user);
+    if ($phone !== null && in_array($currency, ['GHS', 'KES', 'TZS'], true)) {
+        $payload['phoneNumber'] = $phone;
+    }
 
     $response = $this->post(
         '/profile/virtual-accounts/requests',
@@ -986,6 +973,184 @@ public function initiatePayin(
                 "Currency {$currency} is not supported by Fincra."
             );
         }
+    }
+
+    /**
+     * Build currency-specific KYCInformation for virtual account creation.
+     *
+     * @return array<string, string>
+     */
+    protected function buildVirtualAccountKyc(
+        User $user,
+        string $currency,
+        string $accountType
+    ): array {
+        $currency = strtoupper($currency);
+        $accountType = strtolower($accountType);
+
+        if ($accountType === 'corporate') {
+            $businessName = trim(
+                (string) ($user->business_name
+                    ?? $user->company_name
+                    ?? trim(($user->firstname ?? '') . ' ' . ($user->lastname ?? '')))
+            );
+
+            if ($businessName === '') {
+                throw new RuntimeException(
+                    'Business name is required to create a corporate virtual account.'
+                );
+            }
+
+            $kyc = ['businessName' => $businessName];
+
+            if ($currency === 'GHS') {
+                $email = trim((string) $user->email);
+                if ($email === '') {
+                    throw new RuntimeException(
+                        'Email is required to create a GHS corporate virtual account.'
+                    );
+                }
+                $kyc['email'] = $email;
+            }
+
+            if ($currency === 'NGN') {
+                $kyc = array_merge($kyc, $this->requireNgnBvn($user));
+                $email = trim((string) $user->email);
+                if ($email !== '') {
+                    $kyc['email'] = $email;
+                }
+            }
+
+            return $kyc;
+        }
+
+        $firstName = trim((string) $user->firstname);
+        $lastName = trim((string) $user->lastname);
+
+        if ($firstName === '' || $lastName === '') {
+            throw new RuntimeException(
+                'First name and last name are required to create a virtual account.'
+            );
+        }
+
+        $kyc = [
+            'firstName' => $firstName,
+            'lastName' => $lastName,
+        ];
+
+        if ($currency === 'NGN') {
+            $kyc = array_merge($kyc, $this->requireNgnBvn($user));
+            $email = trim((string) $user->email);
+            if ($email !== '') {
+                $kyc['email'] = $email;
+            }
+
+            return $kyc;
+        }
+
+        if ($currency === 'GHS') {
+            $email = trim((string) $user->email);
+            if ($email === '') {
+                throw new RuntimeException(
+                    'Email is required to create a GHS virtual account.'
+                );
+            }
+            $kyc['email'] = $email;
+
+            return $kyc;
+        }
+
+        // KES / TZS: firstName + lastName only. Do not send email or bvn.
+        return $kyc;
+    }
+
+    /**
+     * @return array{bvn: string}
+     */
+    protected function requireNgnBvn(User $user): array
+    {
+        $kyc = $user->user_kyc;
+
+        if ($kyc === null) {
+            throw new RuntimeException(
+                'User KYC verification record was not found.'
+            );
+        }
+
+        $bvn = data_get($kyc->data, 'bvn');
+
+        if (! is_string($bvn) || trim($bvn) === '') {
+            throw new RuntimeException(
+                'User BVN is required to create a Fincra virtual account for NGN.'
+            );
+        }
+
+        return ['bvn' => trim($bvn)];
+    }
+
+    protected function resolveInternationalPhone(User $user): ?string
+    {
+        foreach (['full_mobile', 'mobile', 'phone'] as $field) {
+            $value = trim((string) ($user->{$field} ?? ''));
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Fetch merchant wallet balances from Fincra.
+     *
+     * Note: Fincra virtual accounts settle into the business wallet.
+     * Per-user spendable balances are tracked locally on MultiCurrencyWallet.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function getBusinessWalletBalances(?string $currency = null): array
+    {
+        if (! $this->businessId) {
+            throw new RuntimeException(
+                'Fincra business ID is not configured.'
+            );
+        }
+
+        $response = $this->get('/wallets', [
+            'businessID' => $this->businessId,
+        ]);
+
+        $rows = data_get($response, 'data', []);
+        if (! is_array($rows)) {
+            return [];
+        }
+
+        $currency = $currency !== null ? strtoupper(trim($currency)) : null;
+
+        $out = [];
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $rowCurrency = strtoupper((string) data_get($row, 'currency', ''));
+            if ($currency !== null && $rowCurrency !== $currency) {
+                continue;
+            }
+
+            $out[] = [
+                'provider' => 'fincra',
+                'currency' => $rowCurrency,
+                'wallet_id' => data_get($row, 'id') ?? data_get($row, '_id'),
+                'wallet_number' => data_get($row, 'walletNumber'),
+                'available_balance' => (string) data_get($row, 'availableBalance', 0),
+                'ledger_balance' => (string) data_get($row, 'ledgerBalance', 0),
+                'locked_balance' => (string) data_get($row, 'lockedBalance', 0),
+                'status' => data_get($row, 'status'),
+            ];
+        }
+
+        return $out;
     }
 
     /*
