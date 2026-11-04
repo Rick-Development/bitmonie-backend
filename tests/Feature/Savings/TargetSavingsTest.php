@@ -88,6 +88,7 @@ class TargetSavingsTest extends SavingsTestCase
         $this->assertSame('250.00', $p1['balance']);
         $this->assertSame('750.00', $p1['remaining_amount']);
         $this->assertSame('25.00', $p1['percentage_completed']);
+        $this->assertSame('250.00', $p1['debited_today']);
 
         // Contribute another 500
         $this->manager->contribute($user, $target->id, '500.00', 'wallet', 'contrib-key-02');
@@ -95,6 +96,31 @@ class TargetSavingsTest extends SavingsTestCase
         $this->assertSame('750.00', $p2['balance']);
         $this->assertSame('250.00', $p2['remaining_amount']);
         $this->assertSame('75.00', $p2['percentage_completed']);
+        $this->assertSame('750.00', $p2['debited_today']);
+    }
+
+    public function test_target_accepts_autosave_alias_as_schedule(): void
+    {
+        $user = $this->makeUser('5000.00');
+        $tz = (string) config('savings.scheduler.default_timezone');
+        $today = Carbon::now($tz)->startOfDay();
+
+        $created = $this->manager->createTarget($user, [
+            'title' => 'Autosave Trip',
+            'target_amount' => '5000.00',
+            'deadline' => $today->copy()->addMonths(3)->toDateString(),
+            'autosave' => [
+                'enabled' => true,
+                'mode' => 'scheduled',
+                'amount' => '100.00',
+                'frequency' => 'daily',
+                'run_time' => '09:00',
+            ],
+        ]);
+
+        $this->assertNotNull($created['plan']);
+        $this->assertSame('100.00', \App\Services\Savings\Money::norm($created['plan']->amount));
+        $this->assertSame('DAILY', $created['plan']->frequency);
     }
 
     public function test_target_completes_automatically_when_goal_reached_and_prevents_excess_contributions(): void

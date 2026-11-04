@@ -28,6 +28,10 @@ final class SavingsPresenter
             'created_at' => $a->created_at?->toIso8601String(),
         ];
 
+        if ($manager) {
+            $base['debited_today'] = $manager->debitedToday($a);
+        }
+
         if ($a->product === SavingsAccount::TARGET) {
             $base += [
                 'target_amount' => Money::norm($a->target_amount),

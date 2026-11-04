@@ -35,6 +35,8 @@ class SafeLock extends Model
         'is_active',
         'expected_interest',
         'total_payout',
+        'interest_earned_today',
+        'daily_interest',
     ];
 
     public function user()
@@ -48,7 +50,13 @@ class SafeLock extends Model
             return '0.00';
         }
 
-        return number_format((float) ($this->amount ?? 0), 2, '.', '');
+        // Principal + accrued interest so daily interest is visible like Flex/USDT earn.
+        return number_format(
+            (float) bcadd((string) ($this->amount ?? '0'), (string) ($this->interest_accrued ?? '0'), 8),
+            2,
+            '.',
+            ''
+        );
     }
 
     public function getIsActiveAttribute(): bool
@@ -71,5 +79,34 @@ class SafeLock extends Model
         $interest = $accrued > 0 ? (string) $this->interest_accrued : $this->expected_interest;
 
         return number_format((float) bcadd((string) ($this->amount ?? '0'), (string) $interest, 8), 2, '.', '');
+    }
+
+    public function getDailyInterestAttribute(): string
+    {
+        if (! $this->lock_date || ! $this->maturity_date) {
+            return '0.00';
+        }
+
+        $durationDays = max(
+            1,
+            $this->lock_date->copy()->startOfDay()->diffInDays($this->maturity_date->copy()->startOfDay())
+        );
+        $flatRate = bcdiv((string) ($this->interest_rate ?? '0'), '100', 8);
+        $dailyRate = bcdiv($flatRate, (string) $durationDays, 8);
+
+        return number_format((float) bcmul((string) ($this->amount ?? '0'), $dailyRate, 8), 2, '.', '');
+    }
+
+    public function getInterestEarnedTodayAttribute(): string
+    {
+        if (! $this->last_interest_date || ! $this->is_active) {
+            return '0.00';
+        }
+
+        $tz = (string) config('app.timezone', 'Africa/Lagos');
+        $last = $this->last_interest_date->copy()->timezone($tz)->toDateString();
+        $today = now($tz)->toDateString();
+
+        return $last === $today ? $this->daily_interest : '0.00';
     }
 }

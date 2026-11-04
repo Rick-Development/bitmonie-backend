@@ -69,14 +69,17 @@ class TargetSavingsController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
-            'title' => ['required', 'string', 'max:120'],
+            'title' => ['required_without:name', 'string', 'max:120'],
+            'name' => ['required_without:title', 'string', 'max:120'], // FE alias for title
             'description' => ['sometimes', 'nullable', 'string', 'max:500'],
             'category' => ['sometimes', 'nullable', 'string', 'max:60'],
             'target_amount' => ['required', 'numeric'],
             'start_date' => ['sometimes', 'date'],
             'deadline' => ['sometimes', 'nullable', 'date'],
+            'target_date' => ['sometimes', 'nullable', 'date'], // FE alias for deadline
             'initial_deposit' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'amount' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            // Unified schedule object
             'schedule' => ['sometimes', 'array'],
             'schedule.amount' => ['required_with:schedule', 'numeric'],
             'schedule.frequency' => ['required_with:schedule', 'in:daily,weekly,monthly,DAILY,WEEKLY,MONTHLY'],
@@ -84,7 +87,31 @@ class TargetSavingsController extends Controller
             'schedule.day_of_month' => ['sometimes', 'nullable', 'integer', 'between:1,31'],
             'schedule.run_time' => ['sometimes', 'date_format:H:i'],
             'schedule.timezone' => ['sometimes', 'timezone'],
+            // Autosave aliases (same shape as SafeLock/EduSave + flat docs style)
+            'autosave' => ['sometimes', 'nullable', 'array'],
+            'autosave.enabled' => ['sometimes', 'boolean'],
+            'autosave.mode' => ['sometimes', 'in:scheduled,percentage,both'],
+            'autosave.amount' => ['sometimes', 'nullable', 'numeric', 'min:1'],
+            'autosave.frequency' => ['sometimes', 'nullable', 'in:daily,weekly,monthly,DAILY,WEEKLY,MONTHLY'],
+            'autosave.day_of_week' => ['sometimes', 'nullable', 'integer', 'between:0,6'],
+            'autosave.day_of_month' => ['sometimes', 'nullable', 'integer', 'between:1,31'],
+            'autosave.run_time' => ['sometimes', 'date_format:H:i'],
+            'autosave.time_of_day' => ['sometimes', 'date_format:H:i'],
+            'autosave.start_date' => ['sometimes', 'date'],
+            'autosave.end_date' => ['sometimes', 'nullable', 'date'],
+            'autosave.maturity_date' => ['sometimes', 'nullable', 'date'],
+            'auto_save' => ['sometimes', 'boolean'],
+            'schedule_amount' => ['sometimes', 'nullable', 'numeric', 'min:1'],
+            'frequency' => ['sometimes', 'nullable', 'in:daily,weekly,monthly,DAILY,WEEKLY,MONTHLY'],
+            'day_of_week' => ['sometimes', 'nullable', 'integer', 'between:0,6'],
+            'day_of_month' => ['sometimes', 'nullable', 'integer', 'between:1,31'],
+            'run_time' => ['sometimes', 'date_format:H:i'],
+            'time_of_day' => ['sometimes', 'date_format:H:i'],
         ]);
+
+        if (empty($data['title']) && ! empty($data['name'])) {
+            $data['title'] = $data['name'];
+        }
 
         return $this->guarded(function () use ($request, $data) {
             $created = $this->savings->createTarget($request->user(), $data + [
@@ -179,12 +206,39 @@ class TargetSavingsController extends Controller
         return $this->guarded(fn () => Response::successResponse('Target completed.', SavingsPresenter::account($this->savings->completeTarget($request->user(), $id)->load('plan'), $this->savings)));
     }
 
-    /** Set or replace the recurring contribution schedule. */
+    /** Set or replace the recurring contribution schedule (also accepts `autosave` alias). */
     public function setSchedule(Request $request, int $id)
     {
-        $data = $request->validate(self::SCHEDULE_RULES);
+        $data = $request->validate([
+            'amount' => ['required_without:autosave', 'numeric'],
+            'frequency' => ['required_without:autosave', 'in:daily,weekly,monthly,DAILY,WEEKLY,MONTHLY'],
+            'day_of_week' => ['sometimes', 'nullable', 'integer', 'between:0,6'],
+            'day_of_month' => ['sometimes', 'nullable', 'integer', 'between:1,31'],
+            'run_time' => ['sometimes', 'date_format:H:i'],
+            'timezone' => ['sometimes', 'timezone'],
+            'start_date' => ['sometimes', 'date'],
+            'end_date' => ['sometimes', 'nullable', 'date'],
+            'autosave' => ['sometimes', 'nullable', 'array'],
+            'autosave.enabled' => ['sometimes', 'boolean'],
+            'autosave.mode' => ['sometimes', 'in:scheduled,percentage,both'],
+            'autosave.amount' => ['required_with:autosave', 'numeric', 'min:1'],
+            'autosave.frequency' => ['required_with:autosave', 'in:daily,weekly,monthly,DAILY,WEEKLY,MONTHLY'],
+            'autosave.day_of_week' => ['sometimes', 'nullable', 'integer', 'between:0,6'],
+            'autosave.day_of_month' => ['sometimes', 'nullable', 'integer', 'between:1,31'],
+            'autosave.run_time' => ['sometimes', 'date_format:H:i'],
+            'autosave.time_of_day' => ['sometimes', 'date_format:H:i'],
+        ]);
 
-        return $this->guarded(fn () => Response::successResponse('Schedule saved.', SavingsPresenter::plan($this->savings->setTargetSchedule($request->user(), $id, $data))));
+        return $this->guarded(function () use ($request, $id, $data) {
+            $merged = $this->savings->mergeAutosaveAliases($data);
+            $schedule = ! empty($merged['schedule']) ? $merged['schedule'] : $merged;
+            unset($schedule['autosave']);
+
+            return Response::successResponse(
+                'Schedule saved.',
+                SavingsPresenter::plan($this->savings->setTargetSchedule($request->user(), $id, $schedule))
+            );
+        });
     }
 
     /** Pause the recurring schedule only (target remains open for manual contributions). */

@@ -78,6 +78,15 @@ Route::middleware('auth:api')->prefix('v1/savings')->group(function () {
         $c = \App\Http\Controllers\Api\Savings\FlexiSaveController::class;
         Route::get('/', [$c, 'show']);
         Route::get('transactions', [$c, 'transactions']);
+        Route::put('schedule', [$c, 'setSchedule']);
+        Route::post('schedule/pause', [$c, 'pauseSchedule']);
+        Route::post('schedule/resume', [$c, 'resumeSchedule']);
+        Route::delete('schedule', [$c, 'cancelSchedule']);
+        // Autosave aliases (same handlers as schedule) for FE parity with SafeLock
+        Route::put('autosave', [$c, 'setSchedule']);
+        Route::post('autosave/pause', [$c, 'pauseSchedule']);
+        Route::post('autosave/resume', [$c, 'resumeSchedule']);
+        Route::delete('autosave', [$c, 'cancelSchedule']);
         Route::middleware('throttle:savings-money')->group(function () use ($c) {
             Route::post('deposit', [$c, 'deposit']);
             Route::post('withdraw', [$c, 'withdraw']);

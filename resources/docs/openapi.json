@@ -16668,7 +16668,7 @@
                     "Savings & Vaults"
                 ],
                 "summary": "Get Flexi Save Account Details",
-                "description": "Fetches or creates the user's Flexi Save account with current balance, accrued interest, and active APY.",
+                "description": "Fetches or creates the user's Flexi Save account with current balance, accrued interest, and active APY. Includes `plan` when auto-debit is set, and `debited_today`.",
                 "security": [
                     {
                         "bearerAuth": []
@@ -18340,7 +18340,7 @@
                     "Savings & Vaults"
                 ],
                 "summary": "Create Target Savings Account",
-                "description": "Creates a target. If `initial_deposit` (alias `amount`) is greater than 0 it is debited from the NGN wallet at creation, atomically: insufficient funds fails the whole request and nothing is created.",
+                "description": "Creates a target. Optional recurring auto-debit via `schedule`, nested `autosave`, or flat `auto_save`+`schedule_amount`+`frequency`. Aliases: `name`\u2192title, `target_date`\u2192deadline. Responses include `debited_today` on progress/account payloads.",
                 "security": [
                     {
                         "bearerAuth": []
@@ -18434,6 +18434,83 @@
                                             "timezone": {
                                                 "type": "string",
                                                 "example": "Africa/Lagos"
+                                            }
+                                        }
+                                    },
+                                    "name": {
+                                        "type": "string",
+                                        "maxLength": 120,
+                                        "description": "Alias for title",
+                                        "example": "December Trip to Kigali"
+                                    },
+                                    "target_date": {
+                                        "type": "string",
+                                        "format": "date",
+                                        "nullable": true,
+                                        "description": "Alias for deadline",
+                                        "example": "2026-12-20"
+                                    },
+                                    "auto_save": {
+                                        "type": "boolean",
+                                        "description": "When true with schedule_amount+frequency, creates a recurring schedule",
+                                        "example": true
+                                    },
+                                    "schedule_amount": {
+                                        "type": "number",
+                                        "example": 25000
+                                    },
+                                    "frequency": {
+                                        "type": "string",
+                                        "enum": [
+                                            "daily",
+                                            "weekly",
+                                            "monthly"
+                                        ],
+                                        "example": "weekly"
+                                    },
+                                    "autosave": {
+                                        "type": "object",
+                                        "description": "SafeLock-style autosave alias; mapped to schedule when enabled/mode=scheduled|both",
+                                        "properties": {
+                                            "enabled": {
+                                                "type": "boolean",
+                                                "example": true
+                                            },
+                                            "mode": {
+                                                "type": "string",
+                                                "enum": [
+                                                    "scheduled",
+                                                    "percentage",
+                                                    "both"
+                                                ],
+                                                "example": "scheduled"
+                                            },
+                                            "amount": {
+                                                "type": "number",
+                                                "example": 25000
+                                            },
+                                            "frequency": {
+                                                "type": "string",
+                                                "enum": [
+                                                    "daily",
+                                                    "weekly",
+                                                    "monthly"
+                                                ],
+                                                "example": "weekly"
+                                            },
+                                            "run_time": {
+                                                "type": "string",
+                                                "example": "08:00"
+                                            },
+                                            "day_of_week": {
+                                                "type": "integer",
+                                                "minimum": 0,
+                                                "maximum": 6
+                                            },
+                                            "day_of_month": {
+                                                "type": "integer",
+                                                "minimum": 1,
+                                                "maximum": 31
                                             }
                                         }
                                     }
@@ -18535,7 +18612,7 @@
                     "Savings & Vaults"
                 ],
                 "summary": "Get Target Progress & Analytics",
-                "description": "Calculates current target progress, percentage achieved, days remaining, and estimated completion.",
+                "description": "Calculates current target progress, percentage achieved, days remaining, and estimated completion. Includes `debited_today` (completed credits for today, Africa/Lagos).",
                 "security": [
                     {
                         "bearerAuth": []
@@ -19815,7 +19892,7 @@
                     "Savings & Vaults"
                 ],
                 "summary": "Create a SafeLock",
-                "description": "Debits the NGN wallet immediately and locks the funds until maturity.\n\nThe amount is first transferred at the funding provider (SafeHaven). If any local step fails afterwards, the provider transfer is automatically reversed and the wallet is left unchanged. If the provider rejects the transfer, nothing is debited. Amount must be within the plan's `min_amount`/`max_amount`.",
+                "description": "Debits the NGN wallet immediately and locks the funds until maturity.\n\nThe amount is first transferred at the funding provider (SafeHaven). If any local step fails afterwards, the provider transfer is automatically reversed and the wallet is left unchanged. If the provider rejects the transfer, nothing is debited. Amount must be within the plan's `min_amount`/`max_amount`. Daily interest accrues to interest_accrued; current_balance = principal + accrued. Response fields include interest_earned_today and daily_interest. Nested autosave is supported.",
                 "security": [
                     {
                         "bearerAuth": []
@@ -20561,7 +20638,7 @@
                     "Multicurrency"
                 ],
                 "summary": "Create multicurrency wallet",
-                "description": "Create a Fincra virtual account wallet. KYC payload is currency-specific: NGN requires BVN; GHS requires email; KES/TZS send firstName+lastName only (email/bvn are rejected by Fincra).",
+                "description": "Create a Fincra virtual account wallet. KYC payload is currency-specific: NGN requires BVN; GHS requires email; KES/TZS send firstName+lastName only (email/bvn are rejected by Fincra). phoneNumber is optional and is only forwarded when the user's phone country matches the wallet currency (GHS=+233, KES=+254, TZS=+255); Nigerian +234 numbers are never sent for KES/TZS/GHS.",
                 "security": [
                     {
                         "bearerAuth": []
@@ -21400,6 +21477,524 @@
                                     "status": true,
                                     "message": "Conversion initiated successfully.",
                                     "data": {}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/savings/flexi/schedule": {
+            "put": {
+                "tags": [
+                    "Savings & Vaults"
+                ],
+                "summary": "Set Flexi Save auto-debit schedule",
+                "description": "Create or replace the Flexi Save recurring wallet debit. Alias: PUT /api/v1/savings/flexi/autosave.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "oneOf": [
+                                    {
+                                        "type": "object",
+                                        "required": [
+                                            "amount",
+                                            "frequency"
+                                        ],
+                                        "properties": {
+                                            "amount": {
+                                                "type": "number",
+                                                "example": 5000
+                                            },
+                                            "frequency": {
+                                                "type": "string",
+                                                "enum": [
+                                                    "daily",
+                                                    "weekly",
+                                                    "monthly"
+                                                ],
+                                                "example": "daily"
+                                            },
+                                            "day_of_week": {
+                                                "type": "integer",
+                                                "minimum": 0,
+                                                "maximum": 6
+                                            },
+                                            "day_of_month": {
+                                                "type": "integer",
+                                                "minimum": 1,
+                                                "maximum": 31
+                                            },
+                                            "run_time": {
+                                                "type": "string",
+                                                "example": "08:00"
+                                            },
+                                            "timezone": {
+                                                "type": "string",
+                                                "example": "Africa/Lagos"
+                                            },
+                                            "start_date": {
+                                                "type": "string",
+                                                "format": "date"
+                                            },
+                                            "end_date": {
+                                                "type": "string",
+                                                "format": "date",
+                                                "nullable": true
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "type": "object",
+                                        "required": [
+                                            "autosave"
+                                        ],
+                                        "properties": {
+                                            "autosave": {
+                                                "type": "object",
+                                                "required": [
+                                                    "amount",
+                                                    "frequency"
+                                                ],
+                                                "properties": {
+                                                    "enabled": {
+                                                        "type": "boolean",
+                                                        "example": true
+                                                    },
+                                                    "mode": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "scheduled",
+                                                            "percentage",
+                                                            "both"
+                                                        ],
+                                                        "example": "scheduled"
+                                                    },
+                                                    "amount": {
+                                                        "type": "number",
+                                                        "example": 5000
+                                                    },
+                                                    "frequency": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "daily",
+                                                            "weekly",
+                                                            "monthly"
+                                                        ],
+                                                        "example": "daily"
+                                                    },
+                                                    "run_time": {
+                                                        "type": "string",
+                                                        "example": "08:00"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Flexi Save auto-debit schedule saved."
+                                        },
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "Savings & Vaults"
+                ],
+                "summary": "Cancel Flexi Save auto-debit schedule",
+                "description": "Alias: DELETE /api/v1/savings/flexi/autosave.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Flexi Save schedule cancelled."
+                                        },
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/savings/flexi/schedule/pause": {
+            "post": {
+                "tags": [
+                    "Savings & Vaults"
+                ],
+                "summary": "Pause Flexi Save auto-debit",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Flexi Save schedule paused."
+                                        },
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/savings/flexi/schedule/resume": {
+            "post": {
+                "tags": [
+                    "Savings & Vaults"
+                ],
+                "summary": "Resume Flexi Save auto-debit",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Flexi Save schedule resumed."
+                                        },
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/savings/flexi/autosave": {
+            "put": {
+                "tags": [
+                    "Savings & Vaults"
+                ],
+                "summary": "Set Flexi Save autosave (alias of schedule)",
+                "description": "Create or replace the Flexi Save recurring wallet debit. Alias: PUT /api/v1/savings/flexi/autosave.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "oneOf": [
+                                    {
+                                        "type": "object",
+                                        "required": [
+                                            "amount",
+                                            "frequency"
+                                        ],
+                                        "properties": {
+                                            "amount": {
+                                                "type": "number",
+                                                "example": 5000
+                                            },
+                                            "frequency": {
+                                                "type": "string",
+                                                "enum": [
+                                                    "daily",
+                                                    "weekly",
+                                                    "monthly"
+                                                ],
+                                                "example": "daily"
+                                            },
+                                            "day_of_week": {
+                                                "type": "integer",
+                                                "minimum": 0,
+                                                "maximum": 6
+                                            },
+                                            "day_of_month": {
+                                                "type": "integer",
+                                                "minimum": 1,
+                                                "maximum": 31
+                                            },
+                                            "run_time": {
+                                                "type": "string",
+                                                "example": "08:00"
+                                            },
+                                            "timezone": {
+                                                "type": "string",
+                                                "example": "Africa/Lagos"
+                                            },
+                                            "start_date": {
+                                                "type": "string",
+                                                "format": "date"
+                                            },
+                                            "end_date": {
+                                                "type": "string",
+                                                "format": "date",
+                                                "nullable": true
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "type": "object",
+                                        "required": [
+                                            "autosave"
+                                        ],
+                                        "properties": {
+                                            "autosave": {
+                                                "type": "object",
+                                                "required": [
+                                                    "amount",
+                                                    "frequency"
+                                                ],
+                                                "properties": {
+                                                    "enabled": {
+                                                        "type": "boolean",
+                                                        "example": true
+                                                    },
+                                                    "mode": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "scheduled",
+                                                            "percentage",
+                                                            "both"
+                                                        ],
+                                                        "example": "scheduled"
+                                                    },
+                                                    "amount": {
+                                                        "type": "number",
+                                                        "example": 5000
+                                                    },
+                                                    "frequency": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "daily",
+                                                            "weekly",
+                                                            "monthly"
+                                                        ],
+                                                        "example": "daily"
+                                                    },
+                                                    "run_time": {
+                                                        "type": "string",
+                                                        "example": "08:00"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Flexi Save auto-debit schedule saved."
+                                        },
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "Savings & Vaults"
+                ],
+                "summary": "Cancel Flexi Save auto-debit schedule",
+                "description": "Alias: DELETE /api/v1/savings/flexi/autosave.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Flexi Save schedule cancelled."
+                                        },
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/savings/flexi/autosave/pause": {
+            "post": {
+                "tags": [
+                    "Savings & Vaults"
+                ],
+                "summary": "Pause Flexi Save auto-debit",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Flexi Save schedule paused."
+                                        },
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/savings/flexi/autosave/resume": {
+            "post": {
+                "tags": [
+                    "Savings & Vaults"
+                ],
+                "summary": "Resume Flexi Save auto-debit",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Flexi Save schedule resumed."
+                                        },
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
                                 }
                             }
                         }

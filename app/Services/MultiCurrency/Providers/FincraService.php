@@ -159,8 +159,10 @@ public function createVirtualAccount(
         'merchantReference' => $merchantReference,
     ];
 
-    $phone = $this->resolveInternationalPhone($user);
-    if ($phone !== null && in_array($currency, ['GHS', 'KES', 'TZS'], true)) {
+    // phoneNumber is optional for GHS/KES/TZS, but when sent it MUST match
+    // that currency's country. Nigerian (+234) numbers cause 422 for KES/TZS/GHS.
+    $phone = $this->resolvePhoneForCurrency($user, $currency);
+    if ($phone !== null) {
         $payload['phoneNumber'] = $phone;
     }
 
@@ -1098,6 +1100,45 @@ public function initiatePayin(
         }
 
         return null;
+    }
+
+    /**
+     * Return an E.164 phone only when it matches the currency country.
+     * Otherwise omit (phone is optional) to avoid Fincra 422 country validation.
+     */
+    protected function resolvePhoneForCurrency(User $user, string $currency): ?string
+    {
+        $currency = strtoupper($currency);
+        $dialCodes = [
+            'GHS' => '233',
+            'KES' => '254',
+            'TZS' => '255',
+        ];
+
+        if (! isset($dialCodes[$currency])) {
+            return null;
+        }
+
+        $raw = $this->resolveInternationalPhone($user);
+        if ($raw === null) {
+            return null;
+        }
+
+        $digits = preg_replace('/\D+/', '', $raw) ?? '';
+        if ($digits === '') {
+            return null;
+        }
+
+        if (str_starts_with($digits, '00')) {
+            $digits = substr($digits, 2);
+        }
+
+        $dial = $dialCodes[$currency];
+        if (! str_starts_with($digits, $dial)) {
+            return null;
+        }
+
+        return '+' . $digits;
     }
 
     /**

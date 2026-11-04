@@ -432,12 +432,14 @@ Auth: Bearer token required.
 Fincra also documents `USD`, `EUR`, `GBP` virtual accounts, but those are **not enabled** yet (extra foreign KYC).
 
 > Important: For **KES/TZS**, do not send `email` or `bvn`. Fincra returns `422 KYCInformation.email is not allowed`.
+>
+> `phoneNumber` is optional. Bitmonie only forwards it when the user's phone country matches the wallet currency (`GHS=+233`, `KES=+254`, `TZS=+255`). A Nigerian `+234` number is **never** sent for KES/TZS/GHS (that caused `422 phoneNumber must be a valid phone number for country`).
 
 ### Endpoints
 - `GET /currencies` — enabled currencies + provider-only offers
 - `GET /balances` — all wallet balances for the user
 - `GET /wallets` — list wallets (includes balances)
-- `POST /wallets` — create wallet `{ "currency": "KES", "account_type": "individual" }`
+- `POST /wallets` — create wallet `{ "currency": "KES", "account_type": "individual" }` (no phone/email/bvn required from FE for KES/TZS)
 - `GET /wallets/{currency}` — one wallet with balances
 - `GET /wallets/{currency}/balance` — one currency balance
 - `GET /wallets/{currency}/collections` — deposits into that VA
@@ -592,6 +594,34 @@ All core savings operations run on an immutable double-entry ledger with transac
 }
 ```
 
+#### 5. Flexi Save - Auto-debit (schedule / autosave)
+- `PUT /api/v1/savings/flexi/schedule` (alias: `PUT /api/v1/savings/flexi/autosave`)
+- `POST /api/v1/savings/flexi/schedule/pause` (alias: `.../autosave/pause`)
+- `POST /api/v1/savings/flexi/schedule/resume` (alias: `.../autosave/resume`)
+- `DELETE /api/v1/savings/flexi/schedule` (alias: `DELETE .../autosave`)
+
+**Request Body (either shape):**
+```json
+{
+  "amount": 5000,
+  "frequency": "daily",
+  "run_time": "08:00"
+}
+```
+```json
+{
+  "autosave": {
+    "enabled": true,
+    "mode": "scheduled",
+    "amount": 5000,
+    "frequency": "daily",
+    "run_time": "08:00"
+  }
+}
+```
+
+`GET /api/v1/savings/flexi` now returns `plan` (when set) and `debited_today`.
+
 ---
 
 ### Endpoints: Auto Save
@@ -635,23 +665,34 @@ All core savings operations run on an immutable double-entry ledger with transac
 - **Method & Path:** `GET /api/v1/savings/targets`
 - **Method & Path:** `POST /api/v1/savings/targets`
 
-**Request Body:**
+**Request Body** (preferred + aliases):
 ```json
 {
-  "name": "December Trip to Kigali",
+  "title": "December Trip to Kigali",
   "target_amount": 300000,
-  "target_date": "2026-12-20",
+  "deadline": "2026-12-20",
   "category": "vacation",
-  "auto_save": true,
-  "frequency": "weekly",
-  "schedule_amount": 25000,
-  "initial_deposit": 50000
+  "initial_deposit": 50000,
+  "schedule": {
+    "amount": 25000,
+    "frequency": "weekly",
+    "day_of_week": 1,
+    "run_time": "08:00"
+  }
 }
 ```
+
+Aliases still accepted:
+- `name` → `title`, `target_date` → `deadline`
+- Flat: `auto_save: true`, `schedule_amount`, `frequency`
+- Nested SafeLock-style: `autosave: { enabled, mode, amount, frequency, ... }`
+- Schedule manage: `PUT/POST/DELETE /api/v1/savings/targets/{id}/schedule` (also accepts `autosave` body)
 
 #### 2. Target Progress & Early Closure Quote
 - `GET /api/v1/savings/targets/{id}/progress`
 - `GET /api/v1/savings/targets/{id}/closure-quote`
+
+Progress / target payloads include **`debited_today`** (sum of completed credits for today in `Africa/Lagos`).
 
 #### 3. Target Contribute, Withdraw (at maturity) & Early Cancel
 - `POST /api/v1/savings/targets/{id}/contribute` (`{"amount": 10000}`)
@@ -677,28 +718,30 @@ All core savings operations run on an immutable double-entry ledger with transac
 {
   "title": "House Rent 2027",
   "amount": 150000,
-  "duration_days": 180,
-  "pay_interest_upfront": true,
-  "pin": "1234"
-}
-```
-
-**Success Response (`201 Created`):**
-```json
-{
-  "status": "success",
-  "message": "SafeLock plan created successfully.",
-  "data": {
-    "safelock_id": "SL-99201",
-    "title": "House Rent 2027",
-    "principal": "150000.00",
-    "interest_rate": 13.0,
-    "expected_interest": "9616.44",
-    "maturity_date": "2027-04-04T00:00:00Z",
-    "status": "active"
+  "plan_id": 1,
+  "autosave": {
+    "enabled": true,
+    "mode": "scheduled",
+    "amount": 10000,
+    "frequency": "weekly"
   }
 }
 ```
+
+SafeLock interest accrues daily onto `interest_accrued` (not the NGN wallet) until maturity. List/detail now expose:
+- `amount` — principal
+- `interest_accrued` / `interest_earned_today` / `daily_interest`
+- `current_balance` — principal + accrued interest (so daily interest is visible like Flex / USDT earn)
+- `expected_interest`, `total_payout`
+
+**Autosave availability by product**
+| Product | How to enable auto-debit |
+|---------|--------------------------|
+| Auto Save | Built-in on `POST /savings/auto` |
+| Target | `schedule` / `autosave` on create, or `PUT .../targets/{id}/schedule` |
+| Flexi | `PUT /savings/flexi/schedule` (or `/autosave`) |
+| SafeLock | nested `autosave` on create |
+| EduSave | nested `autosave` on create |
 
 ---
 

@@ -147,6 +147,7 @@ class SavingsManager
     public function createTarget(User $user, array $in): array
     {
         $this->assertCount($user, SavingsAccount::TARGET, (int) config('savings.limits.max_active_targets'));
+        $in = $this->mergeAutosaveAliases($in);
 
         $target = Money::parse($in['target_amount'] ?? null, 'target_amount');
         if (Money::cmp($target, (string) config('savings.limits.max_target_amount')) > 0) {
@@ -156,6 +157,10 @@ class SavingsManager
         $tz = (string) config('savings.scheduler.default_timezone');
         $today = Carbon::now($tz)->startOfDay();
         $start = isset($in['start_date']) ? Carbon::parse($in['start_date'], $tz)->startOfDay() : $today->copy();
+        // Docs/FE sometimes send target_date instead of deadline.
+        if (empty($in['deadline']) && ! empty($in['target_date'])) {
+            $in['deadline'] = $in['target_date'];
+        }
         $deadline = ! empty($in['deadline']) ? Carbon::parse($in['deadline'], $tz)->startOfDay() : null;
         if ($start->lt($today)) {
             throw new SavingsException('The start date cannot be in the past.', 'INVALID_START_DATE');
@@ -474,11 +479,13 @@ class SavingsManager
     public function progress(SavingsAccount $account): array
     {
         $balance = Money::norm($account->balance);
+        $debitedToday = $this->debitedToday($account);
         $out = [
             'account_id' => $account->id, 'product' => $account->product, 'status' => $account->status,
             'balance' => $balance, 'available_balance' => $account->availableBalance(),
             'total_deposited' => Money::norm($account->total_deposited), 'total_withdrawn' => Money::norm($account->total_withdrawn),
             'interest_earned' => Money::norm($account->interest_earned), 'currency' => $account->currency,
+            'debited_today' => $debitedToday,
         ];
 
         if ($account->product === SavingsAccount::TARGET) {
@@ -492,6 +499,107 @@ class SavingsManager
         }
 
         return $out;
+    }
+
+    /** Sum of completed credits (deposits / transfer-ins / scheduled) for today in the savings timezone. */
+    public function debitedToday(SavingsAccount $account): string
+    {
+        $tz = (string) config('savings.scheduler.default_timezone', config('app.timezone', 'Africa/Lagos'));
+        $start = Carbon::now($tz)->startOfDay()->utc();
+        $end = Carbon::now($tz)->endOfDay()->utc();
+
+        $sum = SavingsEntry::where('account_id', $account->id)
+            ->where('direction', SavingsEntry::CREDIT)
+            ->where('status', 'COMPLETED')
+            ->whereIn('type', [SavingsEntry::DEPOSIT, SavingsEntry::TRANSFER_IN, SavingsEntry::INTEREST])
+            ->whereBetween('created_at', [$start, $end])
+            ->sum('amount');
+
+        return Money::norm((string) ($sum ?? '0'));
+    }
+
+    /**
+     * Map frontend autosave aliases onto the unified `schedule` object.
+     * Accepts nested `autosave` (SafeLock-style) or flat `auto_save` + `schedule_amount`.
+     *
+     * @param  array<string, mixed>  $in
+     * @return array<string, mixed>
+     */
+    public function mergeAutosaveAliases(array $in): array
+    {
+        if (! empty($in['schedule']) && is_array($in['schedule'])) {
+            return $in;
+        }
+
+        $autosave = $in['autosave'] ?? null;
+        if (is_array($autosave)) {
+            $enabled = array_key_exists('enabled', $autosave)
+                ? filter_var($autosave['enabled'], FILTER_VALIDATE_BOOLEAN)
+                : true;
+            $mode = strtolower((string) ($autosave['mode'] ?? 'scheduled'));
+            if ($enabled && $mode !== 'percentage') {
+                $in['schedule'] = array_filter([
+                    'amount' => $autosave['amount'] ?? null,
+                    'frequency' => $autosave['frequency'] ?? null,
+                    'day_of_week' => $autosave['day_of_week'] ?? null,
+                    'day_of_month' => $autosave['day_of_month'] ?? null,
+                    'run_time' => $autosave['run_time'] ?? $autosave['time_of_day'] ?? null,
+                    'timezone' => $autosave['timezone'] ?? null,
+                    'start_date' => $autosave['start_date'] ?? null,
+                    'end_date' => $autosave['end_date'] ?? $autosave['maturity_date'] ?? null,
+                ], fn ($v) => $v !== null && $v !== '');
+
+                return $in;
+            }
+        }
+
+        if (filter_var($in['auto_save'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            $in['schedule'] = array_filter([
+                'amount' => $in['schedule_amount'] ?? $in['amount'] ?? null,
+                'frequency' => $in['frequency'] ?? null,
+                'day_of_week' => $in['day_of_week'] ?? null,
+                'day_of_month' => $in['day_of_month'] ?? null,
+                'run_time' => $in['run_time'] ?? $in['time_of_day'] ?? null,
+                'timezone' => $in['timezone'] ?? null,
+                'start_date' => $in['start_date'] ?? null,
+                'end_date' => $in['end_date'] ?? $in['deadline'] ?? null,
+            ], fn ($v) => $v !== null && $v !== '');
+        }
+
+        return $in;
+    }
+
+    /** Create or replace a Flexi Save recurring auto-debit schedule. */
+    public function setFlexiSchedule(User $user, array $in): RecurringSavingsPlan
+    {
+        $account = $this->flexi($user);
+        $existing = $account->plan;
+        if ($existing && in_array($existing->status, [RecurringSavingsPlan::ACTIVE, RecurringSavingsPlan::PAUSED], true)) {
+            return $this->schedule->updatePlan($existing, $in);
+        }
+
+        $tz = (string) config('savings.scheduler.default_timezone');
+        $settings = $this->schedule->normalize($in + ['timezone' => $in['timezone'] ?? $tz]);
+
+        return DB::transaction(function () use ($account, $existing, $settings) {
+            if (! $existing) {
+                return $this->schedule->createPlan($account, $settings);
+            }
+
+            $locked = RecurringSavingsPlan::whereKey($existing->id)->lockForUpdate()->firstOrFail();
+            $locked->fill($settings + [
+                'status' => RecurringSavingsPlan::ACTIVE,
+                'next_run_at' => $this->schedule->nextRunAfter($settings, Carbon::now('UTC')),
+            ])->save();
+            $this->audit->record('plan.recreated', $account->user_id, $account->id, ['plan_id' => $locked->id]);
+
+            return $locked;
+        });
+    }
+
+    public function removeFlexiSchedule(User $user): RecurringSavingsPlan
+    {
+        return $this->schedule->cancel($this->planFor($this->flexi($user)));
     }
 
     // ------------------------------------------------------------ rules
