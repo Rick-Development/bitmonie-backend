@@ -391,7 +391,8 @@ class MultiCurrencyWalletService
      */
     public function getBanks(
         string $currency,
-        string $country
+        string $country,
+        ?string $paymentDestination = null
     ): array {
         $currency = strtoupper($currency);
         $country = strtoupper($country);
@@ -410,7 +411,8 @@ class MultiCurrencyWalletService
 
         return $provider->getBanks(
             currency: $currency,
-            country: $country
+            country: $country,
+            paymentDestination: $paymentDestination
         );
     }
 

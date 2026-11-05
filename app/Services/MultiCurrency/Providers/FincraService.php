@@ -365,20 +365,97 @@ public function createVirtualAccount(
     */
 
     /**
-     * Get banks supported by Fincra.
+     * Get banks / payout providers supported by Fincra.
+     *
+     * For NGN we filter to bank accounts. For GHS/KES/TZS Fincra primarily
+     * serves mobile-money rails, so we do not force bank_account (that filter
+     * can 4xx or return empty depending on Fincra's current catalogue).
+     * Callers may still pass an explicit payment destination.
      */
     public function getBanks(
         string $currency,
-        string $country
+        string $country,
+        ?string $paymentDestination = null
     ): array {
-        return $this->get(
-            '/core/banks',
-            [
-                'currency' => strtoupper($currency),
-                'country' => strtoupper($country),
-                'paymentDestination' => 'bank_account',
-            ]
-        );
+        $currency = strtoupper($currency);
+        $country = strtoupper($country);
+
+        $destination = $paymentDestination !== null
+            ? trim($paymentDestination)
+            : null;
+
+        if ($destination === '') {
+            $destination = null;
+        }
+
+        if ($destination === null && $currency === 'NGN') {
+            $destination = 'bank_account';
+        }
+
+        $attempts = [];
+        if ($destination !== null) {
+            $attempts[] = $destination;
+        } else {
+            // Unfiltered first, then explicit rails as fallback.
+            $attempts[] = null;
+            if (in_array($currency, ['KES', 'GHS', 'TZS'], true)) {
+                $attempts[] = 'mobile_money_wallet';
+                $attempts[] = 'bank_account';
+            }
+        }
+
+        $lastError = null;
+        $attempts = array_values(array_unique($attempts, SORT_REGULAR));
+        $lastIndex = count($attempts) - 1;
+
+        foreach ($attempts as $index => $attempt) {
+            $query = [
+                'currency' => $currency,
+                'country' => $country,
+            ];
+
+            if ($attempt !== null) {
+                $query['paymentDestination'] = $attempt;
+            }
+
+            try {
+                $response = $this->get('/core/banks', $query);
+                $banks = data_get($response, 'data');
+
+                if (! is_array($banks)) {
+                    $banks = is_array($response) && array_is_list($response)
+                        ? $response
+                        : [];
+                }
+
+                if ($banks !== [] || $index === $lastIndex) {
+                    return [
+                        'success' => (bool) data_get($response, 'success', true),
+                        'message' => data_get($response, 'message', 'Banks fetched successfully'),
+                        'currency' => $currency,
+                        'country' => $country,
+                        'payment_destination' => $attempt,
+                        'data' => array_values($banks),
+                    ];
+                }
+            } catch (Throwable $e) {
+                $lastError = $e;
+                $this->logError('GET', '/core/banks', $e);
+            }
+        }
+
+        if ($lastError) {
+            throw $lastError;
+        }
+
+        return [
+            'success' => true,
+            'message' => 'Banks fetched successfully',
+            'currency' => $currency,
+            'country' => $country,
+            'payment_destination' => $destination,
+            'data' => [],
+        ];
     }
 
     /*

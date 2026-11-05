@@ -130,6 +130,22 @@ class TransactionHistoryService
                     ?? 'NGN'
                 ));
 
+                $txType = data_get($metadata, 'savings_type')
+                    ?: data_get($metadata, 'bill_type')
+                    ?: data_get($metadata, 'source')
+                    ?: 'wallet';
+
+                $description = data_get($metadata, 'narration')
+                    ?: data_get($metadata, 'description')
+                    ?: data_get($metadata, 'title');
+
+                if (! $description && data_get($metadata, 'source') === 'savings') {
+                    $description = \App\Services\Savings\SavingsCatalog::statementType(
+                        data_get($metadata, 'product'),
+                        data_get($metadata, 'kind') ?: $txType
+                    );
+                }
+
                 return $this->row([
                     'source_table' => 'order_transactions',
                     'source_id' => $transaction->id,
@@ -140,13 +156,13 @@ class TransactionHistoryService
                     'transaction_date_time' => $transaction->created_at,
                     'user_sender_id' => $user->id,
                     'recipient_id' => data_get($metadata, 'recipient_id'),
-                    'transaction_type' => data_get($metadata, 'savings_type') ?: data_get($metadata, 'bill_type') ?: data_get($metadata, 'source') ?: 'wallet',
+                    'transaction_type' => $txType,
                     'direction' => $transaction->type,
                     'fees' => data_get($metadata, 'fees.total') ?? data_get($metadata, 'total_fee') ?? data_get($metadata, 'fee') ?? data_get($metadata, 'platform_fee') ?? 0,
                     'balance_after' => $transaction->balance_after,
                     'wallet_address' => data_get($metadata, 'wallet_address') ?? data_get($metadata, 'recipient_address'),
                     'transaction_hash' => data_get($metadata, 'transaction_hash') ?? data_get($metadata, 'txid'),
-                    'description' => data_get($metadata, 'narration') ?: data_get($metadata, 'description') ?: data_get($metadata, 'title'),
+                    'description' => $description,
                     'details' => $metadata,
                 ]);
             });
@@ -282,14 +298,23 @@ class TransactionHistoryService
                     'balance_after' => $transaction->balance_after,
                     'wallet_address' => null,
                     'transaction_hash' => null,
-                    'description' => $transaction->narration,
+                    'description' => $transaction->narration
+                        ?: $this->savingsName($transaction->savingsable_type) . ' ' . ucfirst((string) ($transaction->type ?: 'transaction')),
                     'details' => [
-    'savings_type' => $this->savingsName($transaction->savingsable_type),
-    'savings_id' => $transaction->savings_id,
-    'source' => $transaction->source,
-    'savingsable_id' => $transaction->savingsable_id,
-    'type' => $transaction->type,
-],
+                        'savings_type' => $this->savingsName($transaction->savingsable_type),
+                        'savings_id' => $transaction->savings_id,
+                        'source' => $transaction->source,
+                        'savingsable_id' => $transaction->savingsable_id,
+                        'type' => $transaction->type,
+                        'product' => match (class_basename((string) $transaction->savingsable_type)) {
+                            'FlexSavings', 'SavingsAccount' => 'FLEXI',
+                            'SafeLock' => 'SAFELOCK',
+                            'TargetSavings' => 'TARGET',
+                            'EduSave' => 'EDUSAVE',
+                            default => null,
+                        },
+                        'kind' => $transaction->type,
+                    ],
                 ]);
             });
     }
@@ -551,15 +576,19 @@ protected function autosaveTransactions(User $user, array $filters): Collection
         return $value ? Carbon::parse($value)->endOfDay() : null;
     }
     protected function savingsName(?string $class): string
-{
-    if (!$class) {
-        return 'Savings';
+    {
+        if (! $class) {
+            return 'Savings';
+        }
+
+        return match (class_basename($class)) {
+            'FlexSavings' => 'Flexi Save',
+            'SafeLock' => 'SafeLock',
+            'TargetSavings' => 'Target Savings',
+            'EduSave' => 'EduSave',
+            'UsdtEasyearnInvestment' => 'USDT EasyEarn',
+            'SavingsAccount' => 'Savings',
+            default => ucwords(preg_replace('/(?<!^)([A-Z])/', ' $1', class_basename($class))),
+        };
     }
-
-    $model = class_basename($class);
-
-    return ucwords(
-        preg_replace('/(?<!^)([A-Z])/', ' $1', $model)
-    );
-}
 }

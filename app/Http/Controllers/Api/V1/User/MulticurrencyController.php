@@ -369,7 +369,7 @@ class MulticurrencyController extends Controller
     /**
      * Get banks supported for a currency/country.
      *
-     * GET /api/v1/user/multicurrency/banks
+     * GET /api/user/multi/currency/banks
      */
     public function banks(Request $request): JsonResponse
     {
@@ -385,14 +385,23 @@ class MulticurrencyController extends Controller
                 'string',
                 'size:2',
             ],
+
+            'payment_destination' => [
+                'nullable',
+                'string',
+                'in:bank_account,mobile_money_wallet,cash_pick_up,settlement_account',
+            ],
         ]);
 
         try {
             $banks = $this->walletService->getBanks(
                 currency: strtoupper($validated['currency']),
-                country: strtoupper($validated['country'])
+                country: strtoupper($validated['country']),
+                paymentDestination: $validated['payment_destination'] ?? null
             );
 
+            // Preserve Fincra-style envelope ({ success, message, data: [...] }) so
+            // existing clients reading response.data.data keep working.
             return response()->json([
                 'status' => true,
                 'message' => 'Banks fetched successfully.',
@@ -402,9 +411,16 @@ class MulticurrencyController extends Controller
         } catch (Throwable $e) {
             report($e);
 
+            $providerMessage = trim((string) $e->getMessage());
+            $isProviderError = str_starts_with($providerMessage, 'Fincra API error')
+                || str_contains($providerMessage, 'Fincra secret key')
+                || $e instanceof \InvalidArgumentException;
+
             return response()->json([
                 'status' => false,
-                'message' => 'Unable to retrieve banks.',
+                'message' => $isProviderError && $providerMessage !== ''
+                    ? $providerMessage
+                    : 'Unable to retrieve banks.',
             ], 500);
         }
     }

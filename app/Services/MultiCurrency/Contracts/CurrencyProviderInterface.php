@@ -44,10 +44,14 @@ interface CurrencyProviderInterface
 
     /**
      * Get supported banks for a currency/country.
+     *
+     * @param  string|null  $paymentDestination  Optional Fincra paymentDestination
+     *                                           (bank_account, mobile_money_wallet, …)
      */
     public function getBanks(
         string $currency,
-        string $country
+        string $country,
+        ?string $paymentDestination = null
     ): array;
 
     /**

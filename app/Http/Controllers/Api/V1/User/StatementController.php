@@ -37,41 +37,57 @@ public function index(Request $request, TransactionHistoryService $historyServic
                     (string) ($row['transaction_type'] ?? '')
                 );
 
-                $type = match ($transactionType) {
-                    'flex_savings_deposit' => 'Flex Savings Deposit',
-                    'flex_savings_interest' => 'Flex Savings Interest',
-                    'flex_savings_withdrawal' => 'Flex Savings Withdrawal',
+                $details = is_array($row['details'] ?? null) ? $row['details'] : [];
+                $product = $details['product'] ?? null;
+                $kind = $details['kind'] ?? $transactionType;
 
-                    'safe_lock_deposit' => 'SafeLock Deposit',
-                    'safe_lock_withdrawal' => 'SafeLock Withdrawal',
+                $type = match (true) {
+                    str_starts_with($transactionType, 'flexi_'),
+                    str_starts_with($transactionType, 'flex_'),
+                    in_array($transactionType, ['flexi', 'flex', 'flex_savings'], true)
+                        => \App\Services\Savings\SavingsCatalog::statementType('FLEXI', $kind ?: $transactionType),
 
-                    'target_savings_deposit' => 'Target Savings Deposit',
-                    'target_savings_withdrawal' => 'Target Savings Withdrawal',
+                    str_starts_with($transactionType, 'auto_'),
+                    in_array($transactionType, ['auto', 'autosave', 'autosave_percentage', 'autosave_scheduled'], true)
+                        => \App\Services\Savings\SavingsCatalog::statementType('AUTO', $kind ?: $transactionType),
 
-                    'autosave',
-                    'autosave_percentage',
-                    'autosave_scheduled' => 'AutoSave',
+                    str_starts_with($transactionType, 'target_'),
+                    in_array($transactionType, ['target', 'target_savings'], true)
+                        => \App\Services\Savings\SavingsCatalog::statementType('TARGET', $kind ?: $transactionType),
 
-                    'airtime' => 'Airtime Purchase',
-                    'utility' => 'Utility Payment',
-                    'data' => 'Data Purchase',
+                    str_starts_with($transactionType, 'safelock_'),
+                    str_starts_with($transactionType, 'safe_lock'),
+                    in_array($transactionType, ['safelock', 'safe_lock'], true)
+                        => \App\Services\Savings\SavingsCatalog::statementType('SAFELOCK', $kind ?: $transactionType),
 
-                    'on_ramp' => 'Crypto Purchase',
-                    'off_ramp' => 'Crypto Sale',
+                    str_starts_with($transactionType, 'edusave'),
+                    in_array($transactionType, ['edusave', 'edu_save'], true)
+                        => \App\Services\Savings\SavingsCatalog::statementType('EDUSAVE', $kind ?: $transactionType),
 
-                    'wallet' => 'Wallet Transfer',
-                    'own-bank-transfer' => 'Bank Transfer',
+                    str_contains($transactionType, 'easyearn'),
+                    str_starts_with($transactionType, 'usdt_')
+                        => \App\Services\Savings\SavingsCatalog::statementType('USDT_EASYEARN', $kind ?: $transactionType),
 
-                    default => ucwords(
-                        str_replace(
-                            ['_', '-'],
-                            ' ',
-                            $transactionType
-                        )
-                    ),
+                    $transactionType === 'savings'
+                        => \App\Services\Savings\SavingsCatalog::statementType($product, $kind),
+
+                    $transactionType === 'airtime' => 'Airtime Purchase',
+                    $transactionType === 'utility' => 'Utility Payment',
+                    $transactionType === 'data' => 'Data Purchase',
+                    $transactionType === 'on_ramp' => 'Crypto Purchase',
+                    $transactionType === 'off_ramp' => 'Crypto Sale',
+                    $transactionType === 'wallet' => 'Wallet Transfer',
+                    $transactionType === 'own-bank-transfer' => 'Bank Transfer',
+
+                    default => $product
+                        ? \App\Services\Savings\SavingsCatalog::statementType($product, $kind)
+                        : ucwords(str_replace(['_', '-'], ' ', $transactionType)),
                 };
 
-                $description = $row['description'] ?: $type;
+                $description = $row['description']
+                    ?: ($details['narration'] ?? null)
+                    ?: ($details['description'] ?? null)
+                    ?: $type;
 
                 $status = strtolower(
                     (string) ($row['status'] ?? '')

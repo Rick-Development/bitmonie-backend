@@ -15,8 +15,8 @@ final class SavingsPresenter
         $base = [
             'id' => $a->id,
             'product' => $a->product,
-            'title' => $a->title,
-            'description' => $a->description,
+            'title' => $a->title ?: SavingsCatalog::label($a->product),
+            'description' => $a->description ?: SavingsCatalog::description($a->product),
             'category' => $a->category,
             'currency' => $a->currency,
             'status' => $a->status,

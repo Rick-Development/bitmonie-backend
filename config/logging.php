@@ -145,6 +145,13 @@ return [
             'days' => 30,
             'permission' => 0666,
         ],
+        'fincra' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/fincra.log'),
+            'level' => env('LOG_LEVEL', 'debug'),
+            'days' => 30,
+            'permission' => 0666,
+        ],
     ],
 
 ];

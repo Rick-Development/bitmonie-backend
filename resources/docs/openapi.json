@@ -19424,6 +19424,10 @@
                                                                 "type": "string",
                                                                 "example": "Flexi Save"
                                                             },
+                                                            "description": {
+                                                                "type": "string",
+                                                                "example": "Flexible savings with instant deposits, free withdrawals to your wallet, and daily interest."
+                                                            },
                                                             "type": {
                                                                 "type": "string",
                                                                 "example": "flexible"

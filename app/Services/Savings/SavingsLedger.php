@@ -121,7 +121,7 @@ class SavingsLedger
                 $providerMeta = [];
                 if ($this->hasSafeHavenAccount($user)) {
                     $providerRef = 'savings:dep:' . $reference;
-                    $narration = $o['narration'] ?? "Savings Deposit: {$account->title}";
+                    $narration = $o['narration'] ?? SavingsCatalog::narration($account->product, 'Deposit', $account->title);
                     $provider = $this->getFundingProvider();
                     if ($provider) {
                         try {
@@ -202,7 +202,7 @@ class SavingsLedger
             $providerMeta = [];
             if ($this->hasSafeHavenAccount($user)) {
                 $providerRef = 'savings:wdr:' . $reference;
-                $narration = $o['narration'] ?? "Savings Withdrawal: {$account->title}";
+                $narration = $o['narration'] ?? SavingsCatalog::narration($account->product, 'Withdrawal', $account->title);
                 $provider = $this->getFundingProvider();
                 if ($provider) {
                     try {
@@ -495,13 +495,24 @@ class SavingsLedger
 
     private function walletTrail(UserWallet $wallet, string $type, string $amount, string $reference, string $kind, SavingsAccount $account): void
     {
+        $label = SavingsCatalog::statementType($account->product, $kind);
+
         OrderTransaction::create([
             'user_wallet_id' => $wallet->id,
             'type' => $type,
             'amount' => $amount,
             'balance_after' => (string) $wallet->balance,
             'reference' => $reference,
-            'metadata' => ['source' => 'savings', 'kind' => $kind, 'product' => $account->product, 'account_id' => $account->id],
+            'metadata' => [
+                'source' => 'savings',
+                'kind' => $kind,
+                'product' => $account->product,
+                'account_id' => $account->id,
+                'title' => $account->title,
+                'narration' => $label,
+                'description' => $label,
+                'savings_type' => strtolower((string) $account->product) . '_' . str_replace('savings_', '', $kind),
+            ],
         ]);
     }
 

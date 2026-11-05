@@ -12,6 +12,7 @@ use App\Models\SavingsSetting;
 use App\Models\UsdtEasyearnInvestment;
 use App\Models\UsdtEasyearnSetting;
 use App\Services\Savings\Money;
+use App\Services\Savings\SavingsCatalog;
 use App\Services\Savings\SavingsManager;
 use App\Services\UsdtEasyearnService;
 use Carbon\Carbon;
@@ -61,6 +62,7 @@ class SavingsProductsController extends Controller
                 'id' => $flexi->id,
                 'product_key' => 'FLEXI',
                 'name' => 'Flexi Save',
+                'description' => SavingsCatalog::description('FLEXI'),
                 'type' => 'flexible',
                 'currency' => config('savings.currency', 'NGN'),
                 'balance' => $flexiBalance,
@@ -105,7 +107,8 @@ class SavingsProductsController extends Controller
                 $products[] = [
                     'id' => null,
                     'product_key' => 'AUTO',
-                    'name' => 'AutoSave',
+                    'name' => 'Auto Save',
+                    'description' => SavingsCatalog::description('AUTO'),
                     'type' => 'recurring',
                     'currency' => config('savings.currency', 'NGN'),
                     'balance' => '0.00',
@@ -147,7 +150,8 @@ class SavingsProductsController extends Controller
                     $products[] = [
                         'id' => $auto->id,
                         'product_key' => 'AUTO',
-                        'name' => $auto->title ?: 'AutoSave',
+                        'name' => $auto->title ?: 'Auto Save',
+                        'description' => $auto->description ?: SavingsCatalog::description('AUTO'),
                         'type' => 'recurring',
                         'currency' => $auto->currency ?? config('savings.currency', 'NGN'),
                         'balance' => $autoBal,
@@ -202,6 +206,7 @@ class SavingsProductsController extends Controller
                     'id' => $target->id,
                     'product_key' => 'TARGET',
                     'name' => $target->title ?: 'Target Savings',
+                    'description' => $target->description ?: SavingsCatalog::description('TARGET'),
                     'type' => 'target',
                     'currency' => $target->currency ?? config('savings.currency', 'NGN'),
                     'balance' => $targetBal,
@@ -258,6 +263,7 @@ class SavingsProductsController extends Controller
                         'id' => $lock->id,
                         'product_key' => 'SAFELOCK',
                         'name' => $lock->title ?: 'SafeLock #' . $lock->id,
+                        'description' => SavingsCatalog::description('SAFELOCK'),
                         'type' => 'fixed',
                         'currency' => 'NGN',
                         'balance' => number_format((float) $lock->amount, 2, '.', ''),
@@ -300,6 +306,7 @@ class SavingsProductsController extends Controller
                         'id' => null,
                         'product_key' => 'USDT_EASYEARN',
                         'name' => 'USDT EasyEarn',
+                        'description' => SavingsCatalog::description('USDT_EASYEARN'),
                         'type' => 'crypto_earn',
                         'currency' => 'USDT',
                         'balance' => '0.00000000',
@@ -337,6 +344,7 @@ class SavingsProductsController extends Controller
                             'id' => $inv->id,
                             'product_key' => 'USDT_EASYEARN',
                             'name' => "USDT EasyEarn #{$inv->id}",
+                            'description' => SavingsCatalog::description('USDT_EASYEARN'),
                             'type' => 'crypto_earn',
                             'currency' => 'USDT',
                             'balance' => (string) $inv->amount,
