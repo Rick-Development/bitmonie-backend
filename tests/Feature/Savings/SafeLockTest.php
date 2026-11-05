@@ -5,6 +5,7 @@ namespace Tests\Feature\Savings;
 use App\Models\SafeLock;
 use App\Services\Savings\Contracts\SavingsFundingProviderInterface;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -213,5 +214,51 @@ class SafeLockTest extends SavingsTestCase
         $res->assertJsonPath('type', 'error');
         $this->assertSame('5000.00', $this->walletBalance($bob));
         $this->assertSame('active', SafeLock::first()->status);
+    }
+
+    public function test_daily_interest_accrues_and_appears_in_history(): void
+    {
+        Config::set('savings.scheduler.default_timezone', 'Africa/Lagos');
+        $user = $this->makeUser('5000.00');
+        $this->fakeProvider();
+
+        $this->actingAs($user, 'api')->postJson('/api/v1/savings/safelock/create', [
+            'plan_id' => 1, 'amount' => '3000.00', 'title' => 'Interest vault',
+        ])->assertJsonPath('type', 'success');
+
+        $lock = SafeLock::first();
+        $this->assertNull($lock->last_interest_date);
+        $this->assertSame('0.00', $lock->interest_earned_today);
+        $this->assertSame('3000.00', $lock->current_balance);
+
+        // First credit is the next calendar day (Lagos).
+        $this->travelTo(now('Africa/Lagos')->addDay()->setTime(0, 5));
+
+        $summary = app(\App\Services\SavingsService::class)->calculateDailyInterest((int) $user->id);
+
+        $lock->refresh();
+        $expectedDaily = $lock->daily_interest;
+
+        $this->assertSame(1, $summary['safe_locks']);
+        $this->assertTrue(bccomp((string) $lock->interest_accrued, '0', 8) > 0);
+        $this->assertSame($expectedDaily, $lock->interest_earned_today);
+        $this->assertSame(
+            number_format((float) bcadd('3000', (string) $lock->interest_accrued, 8), 2, '.', ''),
+            $lock->current_balance
+        );
+
+        $interestTx = \App\Models\SavingsTransaction::where('user_id', $user->id)
+            ->where('savingsable_type', SafeLock::class)
+            ->where('type', 'interest')
+            ->where('source', 'daily_interest')
+            ->first();
+
+        $this->assertNotNull($interestTx, 'SafeLock daily interest must drop a history row');
+        $this->assertTrue(bccomp((string) $interestTx->amount, '0', 8) > 0);
+
+        // Idempotent for the same Lagos day.
+        $again = app(\App\Services\SavingsService::class)->calculateDailyInterest((int) $user->id);
+        $this->assertSame(0, $again['safe_locks']);
+        $this->assertSame(1, \App\Models\SavingsTransaction::where('type', 'interest')->count());
     }
 }

@@ -53,7 +53,14 @@ class SafeLockController extends Controller
             ->latest()
             ->get();
 
-        $totalActiveBalance = $activeLocks->sum('amount') ?? 0;
+        $totalActiveBalance = $activeLocks->reduce(
+            fn ($carry, SafeLock $lock) => bcadd(
+                (string) $carry,
+                bcadd((string) ($lock->amount ?? '0'), (string) ($lock->interest_accrued ?? '0'), 8),
+                8
+            ),
+            '0'
+        );
 
         Log::info('SafeLock list retrieved', [
             'user_id' => $userId,
@@ -262,7 +269,9 @@ class SafeLockController extends Controller
                     'amount' => $request->amount,
                     'interest_rate' => $interestRate,
                     'interest_accrued' => 0,
-                    'last_interest_date' => $lockDate->copy()->startOfDay(),
+                    // Null until the first daily credit so interest_earned_today
+                    // is not faked on create day; lock_date is the accrual start.
+                    'last_interest_date' => null,
                     'lock_date' => $lockDate,
                     'maturity_date' => $maturityDate,
                     'status' => 'active',

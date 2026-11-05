@@ -171,13 +171,18 @@ class SavingsService
             return $summary;
         }
 
-        $today = now()->startOfDay();
+        // Accrue on the Lagos calendar day so midnight scheduler + UI agree.
+        // Store the calendar date string (not a zoned midnight) so app.timezone
+        // cannot shift the interest day when persisting timestamps.
+        $tz = (string) config('savings.scheduler.default_timezone', 'Africa/Lagos');
+        $todayDate = Carbon::now($tz)->toDateString();
+        $today = Carbon::parse($todayDate)->startOfDay();
         $query = SafeLock::where('status', 'active')
             ->where('is_redeemed', false)
             ->where('amount', '>', 0)
-            ->where(function ($query) use ($today) {
+            ->where(function ($query) use ($todayDate) {
                 $query->whereNull('last_interest_date')
-                    ->orWhereDate('last_interest_date', '<', $today->toDateString());
+                    ->orWhereDate('last_interest_date', '<', $todayDate);
             })
             ->lockForUpdate();
 
@@ -204,8 +209,25 @@ class SavingsService
             }
 
             $lock->interest_accrued = $this->formatDecimal($this->add($lock->interest_accrued, $interest));
-            $lock->last_interest_date = $interestEndDate;
+            $lock->last_interest_date = $interestEndDate->toDateString();
             $lock->save();
+
+            $balanceAfter = $this->formatDecimal($this->add($lock->amount, $lock->interest_accrued));
+
+            // Mirror Flex: write a visible daily-interest ledger row so history
+            // and "drops" show up for SafeLock the same way as other products.
+            SavingsTransaction::create([
+                'user_id' => $lock->user_id,
+                'savingsable_id' => $lock->id,
+                'savingsable_type' => SafeLock::class,
+                'amount' => $this->formatDecimal($interest),
+                'balance_after' => $balanceAfter,
+                'type' => 'interest',
+                'status' => 'success',
+                'source' => 'daily_interest',
+                'narration' => 'SafeLock Daily Interest: ' . $days . ' day(s) at '
+                    . $this->formatDecimal($lock->interest_rate) . '% over ' . $durationDays . ' days',
+            ]);
 
             $summary['count']++;
             $summary['interest'] = $this->formatDecimal($this->add($summary['interest'], $interest));
@@ -496,7 +518,18 @@ class SavingsService
 
         $flexBalance = $sum('FLEXI', ['ACTIVE']);
         $autoBalance = $sum('AUTO', ['ACTIVE', 'CANCELLED']);
-        $safeLockBalance = SafeLock::where('user_id', $userId)->where('status', 'active')->sum('amount') ?? 0;
+        $safeLockBalance = SafeLock::where('user_id', $userId)
+            ->where('status', 'active')
+            ->where('is_redeemed', false)
+            ->get()
+            ->reduce(
+                fn (string $carry, SafeLock $lock) => bcadd(
+                    $carry,
+                    bcadd((string) ($lock->amount ?? '0'), (string) ($lock->interest_accrued ?? '0'), 8),
+                    8
+                ),
+                '0'
+            );
         $targetBalance = $sum('TARGET', ['ACTIVE', 'PAUSED', 'COMPLETED', 'EXPIRED']);
 
         $totalNgn = bcadd(

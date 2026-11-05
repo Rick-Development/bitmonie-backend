@@ -23,7 +23,8 @@ class SafeLock extends Model
     protected $casts = [
         'amount' => 'decimal:2',
         'interest_rate' => 'decimal:2',
-        'interest_accrued' => 'decimal:2',
+        // Match DB precision (20,8) so daily accrual is not rounded away on set.
+        'interest_accrued' => 'decimal:8',
         'last_interest_date' => 'datetime',
         'lock_date' => 'datetime',
         'maturity_date' => 'datetime',
@@ -103,8 +104,14 @@ class SafeLock extends Model
             return '0.00';
         }
 
-        $tz = (string) config('app.timezone', 'Africa/Lagos');
-        $last = $this->last_interest_date->copy()->timezone($tz)->toDateString();
+        // Only show after a real accrual credit (create seeds nothing).
+        if (bccomp((string) ($this->interest_accrued ?? '0'), '0', 8) <= 0) {
+            return '0.00';
+        }
+
+        $tz = (string) config('savings.scheduler.default_timezone', 'Africa/Lagos');
+        // last_interest_date is stored as a Lagos calendar day marker (Y-m-d).
+        $last = $this->last_interest_date->toDateString();
         $today = now($tz)->toDateString();
 
         return $last === $today ? $this->daily_interest : '0.00';
