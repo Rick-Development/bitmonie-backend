@@ -17,6 +17,10 @@
 @endsection
 
 @section('content')
+    <div class="alert alert-info mb-3">
+        {{ __('These are SafeLock tenure plans only (duration + interest). Flexi / Auto / Target / EduSave rates and fees are under Savings Settings. Plan rate edits apply to newly created locks — existing locks keep the rate they were created with.') }}
+        <a href="{{ setRoute('admin.savings.settings.index') }}">{{ __('Open Savings Settings') }}</a>
+    </div>
     <div class="table-area">
         <div class="table-wrapper">
             <div class="table-header">

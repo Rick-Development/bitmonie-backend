@@ -78,14 +78,20 @@ class SafeLockController extends Controller
 
     public function plans()
     {
-        $plans = SavingsPlan::where('status', true)->get();
+        $enabled = (bool) \App\Models\SavingsSetting::current()->safelock_enabled;
+        $plans = $enabled
+            ? SavingsPlan::where('status', true)->get()
+            : collect();
 
         Log::info('Savings plans retrieved', [
             'count' => $plans->count(),
+            'enabled' => $enabled,
         ]);
 
         return Response::success([
             'plans' => $plans,
+            'enabled' => $enabled,
+            'early_break_penalty_percent' => \App\Models\SavingsSetting::current()->safelockBreakPenaltyPercent(),
         ]);
     }
 
@@ -126,12 +132,19 @@ class SafeLockController extends Controller
                 &$providerFundedReference
             ) {
                 $plan = SavingsPlan::where('id', $request->plan_id)
+                    ->where('status', true)
                     ->lockForUpdate()
                     ->first();
 
                 if (!$plan) {
                     throw new RuntimeException(
-                        'Savings plan not found.'
+                        'Savings plan not found or is inactive.'
+                    );
+                }
+
+                if (! \App\Models\SavingsSetting::current()->safelock_enabled) {
+                    throw new RuntimeException(
+                        'SafeLock is currently unavailable.'
                     );
                 }
 
@@ -450,9 +463,14 @@ class SafeLockController extends Controller
                     $lock->maturity_date &&
                     $lock->maturity_date->isFuture()
                 ) {
+                    $penaltyRate = bcdiv(
+                        \App\Models\SavingsSetting::current()->safelockBreakPenaltyPercent(),
+                        '100',
+                        8
+                    );
                     $penalty = bcmul(
                         $amountToReturn,
-                        '0.01',
+                        $penaltyRate,
                         8
                     );
 

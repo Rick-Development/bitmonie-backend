@@ -30,8 +30,14 @@ class EduSaveController extends Controller
      */
     public function create(Request $request, SavingsAutosaveSetupService $autosaveSetup)
     {
+        $settings = \App\Models\SavingsSetting::current();
+        if (! $settings->edusave_enabled) {
+            return Response::errorResponse('EduSave is currently unavailable.');
+        }
+
+        $minAmount = (float) $settings->edusaveMinAmount();
         $validator = Validator::make($request->all(), array_merge([
-            'amount' => 'required|numeric|min:100', // Assuming min amount
+            'amount' => 'required|numeric|min:' . $minAmount,
             'title' => 'required|string',
             'period' => 'required|in:termly,yearly',
             'graduation_date' => 'required|date|after:today',
@@ -54,9 +60,10 @@ class EduSaveController extends Controller
 
         // Determine next payout date
         $startDate = Carbon::now();
-        $nextPayout = $request->period === 'yearly' 
-            ? $startDate->copy()->addYear() 
-            : $startDate->copy()->addMonths(4); // Assuming 3 terms a year -> 4 months
+        $termMonths = max(1, (int) $settings->edusave_termly_months);
+        $nextPayout = $request->period === 'yearly'
+            ? $startDate->copy()->addYear()
+            : $startDate->copy()->addMonths($termMonths);
 
         // Check against graduation date
         if ($nextPayout->gt(Carbon::parse($request->graduation_date))) {

@@ -73,12 +73,13 @@ class SavingsMaintenance
     public function accrueFlexiInterest(Carbon $day): array
     {
         $out = ['accounts' => 0, 'interest' => '0.00', 'skipped' => 0];
-        if (! config('savings.flexi.interest_enabled')) {
+        $settings = \App\Models\SavingsSetting::current();
+        if (! $settings->flexi_interest_enabled) {
             return $out;
         }
 
         $tz = (string) config('savings.scheduler.default_timezone');
-        $apr = (string) config('savings.flexi.interest_apr_percent');
+        $apr = $settings->flexiApr();
         $start = Carbon::parse($day->toDateString(), $tz)->startOfDay()->utc();
 
         SavingsAccount::where('product', SavingsAccount::FLEXI)->where('status', SavingsAccount::ACTIVE)

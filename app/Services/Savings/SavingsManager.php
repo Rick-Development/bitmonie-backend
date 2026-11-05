@@ -67,7 +67,11 @@ class SavingsManager
 
     public function createAuto(User $user, array $in): array
     {
-        $this->assertCount($user, SavingsAccount::AUTO, (int) config('savings.limits.max_auto_plans'));
+        $productSettings = \App\Models\SavingsSetting::current();
+        if (! $productSettings->auto_enabled) {
+            throw new SavingsException('Auto Save is currently unavailable.', 'PRODUCT_DISABLED', 403);
+        }
+        $this->assertCount($user, SavingsAccount::AUTO, (int) $productSettings->max_auto_plans);
         $settings = $this->schedule->normalize($in);
 
         return DB::transaction(function () use ($user, $in, $settings) {
@@ -146,11 +150,15 @@ class SavingsManager
 
     public function createTarget(User $user, array $in): array
     {
-        $this->assertCount($user, SavingsAccount::TARGET, (int) config('savings.limits.max_active_targets'));
+        $settings = \App\Models\SavingsSetting::current();
+        if (! $settings->target_enabled) {
+            throw new SavingsException('Target Savings is currently unavailable.', 'PRODUCT_DISABLED', 403);
+        }
+        $this->assertCount($user, SavingsAccount::TARGET, (int) $settings->max_active_targets);
         $in = $this->mergeAutosaveAliases($in);
 
         $target = Money::parse($in['target_amount'] ?? null, 'target_amount');
-        if (Money::cmp($target, (string) config('savings.limits.max_target_amount')) > 0) {
+        if (Money::cmp($target, $settings->maxTargetAmount()) > 0) {
             throw new SavingsException('The target amount exceeds the maximum allowed.', 'TARGET_TOO_LARGE');
         }
 
@@ -215,7 +223,7 @@ class SavingsManager
             }
             if (array_key_exists('target_amount', $in)) {
                 $amount = Money::parse($in['target_amount'], 'target_amount');
-                if (Money::cmp($amount, (string) config('savings.limits.max_target_amount')) > 0) {
+                if (Money::cmp($amount, \App\Models\SavingsSetting::current()->maxTargetAmount()) > 0) {
                     throw new SavingsException('The target amount exceeds the maximum allowed.', 'TARGET_TOO_LARGE');
                 }
                 if (Money::cmp($amount, Money::norm($account->balance)) <= 0) {
@@ -331,7 +339,7 @@ class SavingsManager
 
         return [
             'balance' => $balance, 'fee' => $fee, 'net_amount' => Money::sub($balance, $fee),
-            'fee_percent' => (string) config('savings.target.early_closure_fee_percent'),
+            'fee_percent' => \App\Models\SavingsSetting::current()->targetEarlyClosureFeePercent(),
             'requires_acknowledgement' => Money::cmp($fee, '0.00') > 0,
         ];
     }
@@ -641,7 +649,7 @@ class SavingsManager
 
     private function earlyClosureFee(SavingsAccount $a, string $balance): string
     {
-        $percent = (string) config('savings.target.early_closure_fee_percent');
+        $percent = \App\Models\SavingsSetting::current()->targetEarlyClosureFeePercent();
         $early = in_array($a->status, [SavingsAccount::ACTIVE, SavingsAccount::PAUSED], true)
             && $a->deadline
             && Carbon::now(config('savings.scheduler.default_timezone'))->startOfDay()->lte(Carbon::parse($a->deadline->toDateString(), config('savings.scheduler.default_timezone')))

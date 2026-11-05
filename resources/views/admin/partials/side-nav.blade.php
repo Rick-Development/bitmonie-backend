@@ -249,7 +249,13 @@
                         ],
 
                         [
-                            'title' => "Savings Plans",
+                            'title' => "Savings Settings",
+                            'route' => "admin.savings.settings.index",
+                            'icon' => "menu-icon las la-sliders-h",
+                        ],
+
+                        [
+                            'title' => "SafeLock Plans",
                             'route' => "admin.savings.plans.index",
                             'icon' => "menu-icon las la-list-alt",
                         ],

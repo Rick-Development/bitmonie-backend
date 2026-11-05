@@ -8,6 +8,7 @@ use App\Http\Helpers\Response;
 use App\Models\EduSave;
 use App\Models\SafeLock;
 use App\Models\SavingsAccount;
+use App\Models\SavingsSetting;
 use App\Models\UsdtEasyearnInvestment;
 use App\Models\UsdtEasyearnSetting;
 use App\Services\Savings\Money;
@@ -44,8 +45,9 @@ class SavingsProductsController extends Controller
             $user = $request->user();
             $products = [];
 
-            $minTx = (string) config('savings.limits.min_transaction', '100.00');
-            $maxTx = (string) config('savings.limits.max_transaction', '5000000.00');
+            $settings = SavingsSetting::current();
+            $minTx = $settings->minTransaction();
+            $maxTx = $settings->maxTransaction();
 
             // 1. Flexi Save
             $flexi = $this->savings->flexi($user);
@@ -53,6 +55,7 @@ class SavingsProductsController extends Controller
             $flexiAvailable = Money::norm($flexi->availableBalance());
             $flexiInterest = Money::norm($flexi->interest_earned);
             $hasFlexiFunds = Money::cmp($flexiAvailable, '0.00') > 0;
+            $flexiSaveAllowed = $settings->flexi_enabled && $flexi->status === SavingsAccount::ACTIVE;
 
             $products[] = [
                 'id' => $flexi->id,
@@ -64,13 +67,14 @@ class SavingsProductsController extends Controller
                 'available_balance' => $flexiAvailable,
                 'interest_earned' => $flexiInterest,
                 'status' => $flexi->status,
-                'annual_rate' => config('savings.flexi.interest_apr_percent', '60') . '%',
+                'enabled' => (bool) $settings->flexi_enabled,
+                'annual_rate' => $settings->flexiApr() . '%',
                 'actions' => [
                     'save' => [
-                        'allowed' => $flexi->status === SavingsAccount::ACTIVE,
+                        'allowed' => $flexiSaveAllowed,
                         'min_amount' => $minTx,
                         'max_amount' => $maxTx,
-                        'reason' => $flexi->status === SavingsAccount::ACTIVE ? null : "Account is {$flexi->status}",
+                        'reason' => ! $settings->flexi_enabled ? 'Flexi Save is currently unavailable' : ($flexi->status === SavingsAccount::ACTIVE ? null : "Account is {$flexi->status}"),
                         'available_date' => null,
                     ],
                     'withdraw' => [
@@ -108,12 +112,13 @@ class SavingsProductsController extends Controller
                     'available_balance' => '0.00',
                     'interest_earned' => '0.00',
                     'status' => 'INACTIVE',
+                    'enabled' => (bool) $settings->auto_enabled,
                     'actions' => [
                         'save' => [
-                            'allowed' => true,
+                            'allowed' => (bool) $settings->auto_enabled,
                             'min_amount' => $minTx,
                             'max_amount' => $maxTx,
-                            'reason' => null,
+                            'reason' => $settings->auto_enabled ? null : 'Auto Save is currently unavailable',
                             'available_date' => null,
                         ],
                         'withdraw' => [
@@ -149,12 +154,13 @@ class SavingsProductsController extends Controller
                         'available_balance' => $autoAvail,
                         'interest_earned' => Money::norm($auto->interest_earned),
                         'status' => $auto->status,
+                        'enabled' => (bool) $settings->auto_enabled,
                         'actions' => [
                             'save' => [
-                                'allowed' => $isActive,
+                                'allowed' => $settings->auto_enabled && $isActive,
                                 'min_amount' => $minTx,
                                 'max_amount' => $maxTx,
-                                'reason' => $isActive ? null : "Plan is {$auto->status}",
+                                'reason' => ! $settings->auto_enabled ? 'Auto Save is currently unavailable' : ($isActive ? null : "Plan is {$auto->status}"),
                                 'available_date' => null,
                             ],
                             'withdraw' => [
@@ -204,12 +210,15 @@ class SavingsProductsController extends Controller
                     'deadline' => $target->deadline?->toDateString(),
                     'interest_earned' => Money::norm($target->interest_earned),
                     'status' => $target->status,
+                    'enabled' => (bool) $settings->target_enabled,
                     'actions' => [
                         'save' => [
-                            'allowed' => $isTargetActive && Money::cmp($remainingToGoal, '0.00') > 0,
+                            'allowed' => $settings->target_enabled && $isTargetActive && Money::cmp($remainingToGoal, '0.00') > 0,
                             'min_amount' => $minTx,
                             'max_amount' => $maxSave,
-                            'reason' => !$isTargetActive ? "Target is {$target->status}" : (Money::cmp($remainingToGoal, '0.00') <= 0 ? 'Target goal reached' : null),
+                            'reason' => ! $settings->target_enabled
+                                ? 'Target Savings is currently unavailable'
+                                : (! $isTargetActive ? "Target is {$target->status}" : (Money::cmp($remainingToGoal, '0.00') <= 0 ? 'Target goal reached' : null)),
                             'available_date' => null,
                         ],
                         'withdraw' => [

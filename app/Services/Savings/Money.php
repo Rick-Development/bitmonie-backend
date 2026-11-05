@@ -81,8 +81,9 @@ final class Money
     /** Enforce configured per-transaction limits. */
     public static function assertWithinLimits(string $amount): void
     {
-        $min = (string) config('savings.limits.min_transaction');
-        $max = (string) config('savings.limits.max_transaction');
+        $settings = \App\Models\SavingsSetting::current();
+        $min = $settings->minTransaction();
+        $max = $settings->maxTransaction();
 
         if (self::cmp($amount, $min) < 0) {
             throw new SavingsException("The minimum amount is ₦{$min}.", 'BELOW_MINIMUM');

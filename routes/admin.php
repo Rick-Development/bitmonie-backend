@@ -458,6 +458,11 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('/', 'index')->name('index');
     });
 
+    Route::controller(App\Http\Controllers\Admin\SavingsSettingsController::class)->prefix('savings-settings')->name('savings.settings.')->group(function () {
+        Route::get('/', 'index')->name('index');
+        Route::put('/', 'update')->name('update');
+    });
+
     Route::controller(App\Http\Controllers\Admin\SavingsPlanController::class)->prefix('savings-plans')->name('savings.plans.')->group(function () {
         Route::get('/', 'index')->name('index');
         Route::post('store', 'store')->name('store');
