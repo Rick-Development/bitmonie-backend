@@ -2,24 +2,29 @@
 
 > **Confidential & Internal Developer Reference**  
 > Direct URL Access: `/docs/api` (Interactive Scramble UI)  
-> *Notice: This documentation is not linked on any public landing page navigation.*
+> _Notice: This documentation is not linked on any public landing page navigation._
 
 ---
 
 ## 1. Global API Standards & Architecture
 
 ### Base URLs
+
 - **Local Development:** `http://127.0.0.1:8000/api`
 - **Staging:** `https://staging-api.bitmonie.com/api`
 - **Production:** `https://api.bitmonie.com/api`
 
 ### Mandatory Request Headers
+
 Every request sent to the API must include the following headers:
+
 ```http
 Accept: application/json
 Content-Type: application/json
 ```
+
 For authenticated endpoints, include the Bearer token returned during login/registration:
+
 ```http
 Authorization: Bearer <access_token>
 ```
@@ -29,51 +34,51 @@ Authorization: Bearer <access_token>
 ### Global Standard Response Schemas
 
 #### 1. Standard Success Response (`200 OK` / `201 Created`)
+
 ```json
 {
-  "status": "success",
-  "message": "Operation completed successfully.",
-  "data": {
-    "user": {
-      "id": 1,
-      "firstname": "John",
-      "lastname": "Doe",
-      "email": "john@example.com"
+    "status": "success",
+    "message": "Operation completed successfully.",
+    "data": {
+        "user": {
+            "id": 1,
+            "firstname": "John",
+            "lastname": "Doe",
+            "email": "john@example.com"
+        }
     }
-  }
 }
 ```
 
 #### 2. Standard Validation Error Response (`422 Unprocessable Entity`)
+
 ```json
 {
-  "status": "error",
-  "message": "The given data was invalid.",
-  "errors": {
-    "email": [
-      "The email has already been taken."
-    ],
-    "password": [
-      "The password must be at least 8 characters."
-    ]
-  }
+    "status": "error",
+    "message": "The given data was invalid.",
+    "errors": {
+        "email": ["The email has already been taken."],
+        "password": ["The password must be at least 8 characters."]
+    }
 }
 ```
 
 #### 3. Standard Business Logic / Action Error Response (`400 Bad Request` / `403 Forbidden`)
+
 ```json
 {
-  "status": "error",
-  "message": "Insufficient balance in your Flex Savings wallet.",
-  "data": null
+    "status": "error",
+    "message": "Insufficient balance in your Flex Savings wallet.",
+    "data": null
 }
 ```
 
 #### 4. Standard Unauthenticated Response (`401 Unauthorized`)
+
 ```json
 {
-  "status": "error",
-  "message": "Unauthenticated or session has expired. Please log in again."
+    "status": "error",
+    "message": "Unauthenticated or session has expired. Please log in again."
 }
 ```
 
@@ -82,161 +87,176 @@ Authorization: Bearer <access_token>
 ## 2. Authentication & Biometrics Module
 
 ### Flow Overview
+
 1. **User Registration** -> Receive Passport Bearer Token & User profile.
 2. **Email Verification** -> Check if `email_verified` is true; if not, request email OTP and verify.
 3. **Set PIN** -> Set up a 4-digit transaction/login PIN.
 4. **Biometric Enrollment** (Optional for Native Mobile):
-   - Generate device keypair (FaceID/Fingerprint) on mobile device.
-   - Send `public_key` and device identifiers to `/api/auth/biometric/register`.
-   - On subsequent logins, sign a server/device challenge and send signature to `/api/auth/biometric/login`.
+    - Generate device keypair (FaceID/Fingerprint) on mobile device.
+    - Send `public_key` and device identifiers to `/api/auth/biometric/register`.
+    - On subsequent logins, sign a server/device challenge and send signature to `/api/auth/biometric/login`.
 
 ---
 
 ### Endpoints
 
 #### 1. Register New User
+
 - **Method & Path:** `POST /api/register`
 - **Auth Required:** No
 
 **Request Body:**
+
 ```json
 {
-  "firstname": "Jane",
-  "lastname": "Doe",
-  "email": "jane.doe@example.com",
-  "mobile": "08012345678",
-  "country": "Nigeria",
-  "password": "SecurePassword123@",
-  "password_confirmation": "SecurePassword123@",
-  "referral_code": "REF8829",
-  "agree": "on"
+    "firstname": "Jane",
+    "lastname": "Doe",
+    "email": "jane.doe@example.com",
+    "mobile": "08012345678",
+    "country": "Nigeria",
+    "password": "SecurePassword123@",
+    "password_confirmation": "SecurePassword123@",
+    "referral_code": "REF8829",
+    "agree": "on"
 }
 ```
 
 **Success Response (`201 Created`):**
+
 ```json
 {
-  "status": "success",
-  "message": "Registration successful. Please verify your email.",
-  "data": {
-    "token": "1|eyJ0eXAiOiJKV1QiLC...",
-    "user": {
-      "id": 42,
-      "firstname": "Jane",
-      "lastname": "Doe",
-      "email": "jane.doe@example.com",
-      "mobile": "08012345678",
-      "email_verified": false,
-      "two_factor_verified": false,
-      "kyc_tier": 0
+    "status": "success",
+    "message": "Registration successful. Please verify your email.",
+    "data": {
+        "token": "1|eyJ0eXAiOiJKV1QiLC...",
+        "user": {
+            "id": 42,
+            "firstname": "Jane",
+            "lastname": "Doe",
+            "email": "jane.doe@example.com",
+            "mobile": "08012345678",
+            "email_verified": false,
+            "two_factor_verified": false,
+            "kyc_tier": 0
+        }
     }
-  }
 }
 ```
 
 **Error Responses:**
+
 - `422 Unprocessable Entity`: Duplicate email or password mismatch.
-  ```json
-  {
-    "status": "error",
-    "message": "Validation error",
-    "errors": { "email": ["The email has already been taken."] }
-  }
-  ```
+    ```json
+    {
+        "status": "error",
+        "message": "Validation error",
+        "errors": { "email": ["The email has already been taken."] }
+    }
+    ```
 
 ---
 
 #### 2. User Login
+
 - **Method & Path:** `POST /api/login`
 - **Auth Required:** No
 
 **Request Body:**
+
 ```json
 {
-  "credentials": "jane.doe@example.com",
-  "password": "SecurePassword123@"
+    "credentials": "jane.doe@example.com",
+    "password": "SecurePassword123@"
 }
 ```
 
 **Success Response (`200 OK`):**
+
 ```json
 {
-  "status": "success",
-  "message": "Login successful.",
-  "data": {
-    "token": "2|eyJ0eXAiOiJKV1QiLC...",
-    "user": {
-      "id": 42,
-      "firstname": "Jane",
-      "lastname": "Doe",
-      "email": "jane.doe@example.com",
-      "is_pin_set": true,
-      "two_factor_enabled": false
+    "status": "success",
+    "message": "Login successful.",
+    "data": {
+        "token": "2|eyJ0eXAiOiJKV1QiLC...",
+        "user": {
+            "id": 42,
+            "firstname": "Jane",
+            "lastname": "Doe",
+            "email": "jane.doe@example.com",
+            "is_pin_set": true,
+            "two_factor_enabled": false
+        }
     }
-  }
 }
 ```
 
 **Error Responses:**
+
 - `401 Unauthorized`: Invalid credentials.
-  ```json
-  {
-    "status": "error",
-    "message": "Invalid login credentials provided."
-  }
-  ```
+    ```json
+    {
+        "status": "error",
+        "message": "Invalid login credentials provided."
+    }
+    ```
 
 ---
 
 #### 3. Biometric Registration (Device Binding)
+
 - **Method & Path:** `POST /api/auth/biometric/register`
 - **Auth Required:** Yes (`Bearer <token>`)
 
 **Request Body:**
+
 ```json
 {
-  "device_id": "iPhone14,2-UUID-A8F9B2",
-  "public_key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...",
-  "device_name": "iPhone 13 Pro"
+    "device_id": "iPhone14,2-UUID-A8F9B2",
+    "public_key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...",
+    "device_name": "iPhone 13 Pro"
 }
 ```
 
 **Success Response (`200 OK`):**
+
 ```json
 {
-  "status": "success",
-  "message": "Biometric authentication registered successfully."
+    "status": "success",
+    "message": "Biometric authentication registered successfully."
 }
 ```
 
 ---
 
 #### 4. Biometric Login (Challenge Verification)
+
 - **Method & Path:** `POST /api/auth/biometric/login`
 - **Auth Required:** No
 
 **Request Body:**
+
 ```json
 {
-  "device_id": "iPhone14,2-UUID-A8F9B2",
-  "signature": "dGVzdC1zaWduYXR1cmUtZGF0YS12YWxpZGF0aW9u",
-  "timestamp": 1728234900
+    "device_id": "iPhone14,2-UUID-A8F9B2",
+    "signature": "dGVzdC1zaWduYXR1cmUtZGF0YS12YWxpZGF0aW9u",
+    "timestamp": 1728234900
 }
 ```
 
 **Success Response (`200 OK`):**
+
 ```json
 {
-  "status": "success",
-  "message": "Biometric login successful.",
-  "data": {
-    "token": "3|eyJ0eXAiOiJKV1QiLC...",
-    "user": {
-      "id": 42,
-      "firstname": "Jane",
-      "lastname": "Doe"
+    "status": "success",
+    "message": "Biometric login successful.",
+    "data": {
+        "token": "3|eyJ0eXAiOiJKV1QiLC...",
+        "user": {
+            "id": 42,
+            "firstname": "Jane",
+            "lastname": "Doe"
+        }
     }
-  }
 }
 ```
 
@@ -245,6 +265,7 @@ Authorization: Bearer <access_token>
 ## 3. KYC & Identity Verification Module
 
 ### Tier Levels:
+
 - **Tier 1 (Basic):** BVN / NIN verification with OTP confirmation.
 - **Tier 2 (Intermediate):** Address verification & ID card document upload (Passport / Driver's License / NIN Slip).
 - **Tier 3 (Advanced):** Proof of residence (Utility Bill) & source of funds.
@@ -254,84 +275,90 @@ Authorization: Bearer <access_token>
 ### Endpoints
 
 #### 1. Fetch User KYC Tier & Limits
+
 - **Method & Path:** `GET /api/kyc/user-tier`
 - **Auth Required:** Yes
 
 **Success Response (`200 OK`):**
+
 ```json
 {
-  "status": "success",
-  "data": {
-    "current_tier": 1,
-    "status": "verified",
-    "daily_transaction_limit": 500000,
-    "maximum_balance": 2000000,
-    "requirements_for_next_tier": [
-      "government_id",
-      "utility_bill"
-    ]
-  }
+    "status": "success",
+    "data": {
+        "current_tier": 1,
+        "status": "verified",
+        "daily_transaction_limit": 500000,
+        "maximum_balance": 2000000,
+        "requirements_for_next_tier": ["government_id", "utility_bill"]
+    }
 }
 ```
 
 ---
 
 #### 2. Tier 1 BVN Verification Initiation
+
 - **Method & Path:** `POST /api/kyc/tier1/initiate`
 - **Auth Required:** Yes
 
 **Request Body:**
+
 ```json
 {
-  "id_type": "bvn",
-  "id_number": "22233344455",
-  "date_of_birth": "1994-06-15"
+    "id_type": "bvn",
+    "id_number": "22233344455",
+    "date_of_birth": "1994-06-15"
 }
 ```
 
 **Success Response (`200 OK`):**
+
 ```json
 {
-  "status": "success",
-  "message": "OTP has been sent to the phone number linked with your BVN.",
-  "data": {
-    "verification_session_id": "v_sess_994821a0",
-    "masked_phone": "+23480******78"
-  }
+    "status": "success",
+    "message": "OTP has been sent to the phone number linked with your BVN.",
+    "data": {
+        "verification_session_id": "v_sess_994821a0",
+        "masked_phone": "+23480******78"
+    }
 }
 ```
 
 **Error Response (`400 Bad Request`):**
+
 ```json
 {
-  "status": "error",
-  "message": "BVN date of birth does not match account profile date of birth."
+    "status": "error",
+    "message": "BVN date of birth does not match account profile date of birth."
 }
 ```
 
 ---
 
 #### 3. Tier 1 OTP Verification & Upgrade
+
 - **Method & Path:** `POST /api/kyc/tier1/verify`
 - **Auth Required:** Yes
 
 **Request Body:**
+
 ```json
 {
-  "verification_session_id": "v_sess_994821a0",
-  "otp": "123456"
+    "verification_session_id": "v_sess_994821a0",
+    "otp": "123456"
 }
 ```
 
 **Success Response (`200 OK`):**
+
 ```json
 {
-  "status": "success",
-  "message": "Tier 1 KYC verification successful.",
-  "data": {
-    "tier": 1,
-    "status": "approved"
-  }
+    "status": "success",
+    "message": "Tier 1 KYC verification successful.",
+    "data": {
+        "tier": 1,
+        "status": "approved"
+    }
 }
 ```
 
@@ -340,6 +367,7 @@ Authorization: Bearer <access_token>
 ## 4. Wallet & Dedicated Virtual Accounts Module
 
 ### Step-by-Step Flow:
+
 1. When a user is verified, an automatic NGN Dedicated Virtual Account (SafeHaven / Payscribe) is provisioned.
 2. Frontend displays Account Number, Bank Name (e.g. SafeHaven MFB / Wema Bank), and Account Name for bank transfers.
 3. Once the user sends money from their bank app, the backend receives a webhook, credits the wallet, and pushes an FCM notification.
@@ -349,68 +377,72 @@ Authorization: Bearer <access_token>
 ### Endpoints
 
 #### 1. Fetch Wallets Overview
+
 - **Method & Path:** `GET /api/user/wallets`
 - **Auth Required:** Yes
 
 **Success Response (`200 OK`):**
+
 ```json
 {
-  "status": "success",
-  "data": {
-    "fiat_wallets": [
-      {
-        "currency": "NGN",
-        "symbol": "₦",
-        "balance": "145000.50",
-        "virtual_account": {
-          "bank_name": "SafeHaven Microfinance Bank",
-          "account_number": "9012345678",
-          "account_name": "Jane Doe / Bitmonie"
-        }
-      },
-      {
-        "currency": "USD",
-        "symbol": "$",
-        "balance": "350.00"
-      }
-    ]
-  }
+    "status": "success",
+    "data": {
+        "fiat_wallets": [
+            {
+                "currency": "NGN",
+                "symbol": "₦",
+                "balance": "145000.50",
+                "virtual_account": {
+                    "bank_name": "SafeHaven Microfinance Bank",
+                    "account_number": "9012345678",
+                    "account_name": "Jane Doe / Bitmonie"
+                }
+            },
+            {
+                "currency": "USD",
+                "symbol": "$",
+                "balance": "350.00"
+            }
+        ]
+    }
 }
 ```
 
 ---
 
 #### 2. Fetch Account Statement / Transaction History
+
 - **Method & Path:** `GET /api/statement?page=1&per_page=15&type=all`
 - **Query Params:**
-  - `type`: `all`, `credit`, `debit`, `savings`, `crypto`
-  - `start_date`: `YYYY-MM-DD`
-  - `end_date`: `YYYY-MM-DD`
+    - `type`: `all`, `credit`, `debit`, `savings`, `crypto`
+    - `start_date`: `YYYY-MM-DD`
+    - `end_date`: `YYYY-MM-DD`
 
 **Success Response (`200 OK`):**
+
 ```json
 {
-  "status": "success",
-  "data": {
-    "transactions": [
-      {
-        "trx_id": "TRX-20261006-8812",
-        "type": "credit",
-        "category": "bank_transfer_deposit",
-        "amount": "25000.00",
-        "charge": "0.00",
-        "currency": "NGN",
-        "status": "completed",
-        "remark": "Deposit via NGN Virtual Account",
-        "created_at": "2026-10-06T14:22:10Z"
-      }
-    ],
-    "pagination": {
-      "current_page": 1,
-      "total_pages": 4,
-      "total_items": 58
+    "status": "success",
+    "data": {
+        "transactions": [
+            {
+                "trx_id": "TRX-20261006-8812",
+                "type": "credit",
+                "category": "bank_transfer_deposit",
+                "amount": "25000.00",
+                "charge": "0.00",
+                "currency": "NGN",
+                "status": "completed",
+                "remark": "Deposit via NGN Virtual Account",
+                "created_at": "2026-10-06T14:22:10Z"
+            }
+        ],
+        "pagination": {
+            "current_page": 1,
+            "total_pages": 4,
+            "total_items": 58
+        }
     }
-  }
 }
 ```
 
@@ -422,12 +454,13 @@ Base path: `/api/user/multi/currency`
 Auth: Bearer token required.
 
 ### Enabled currencies
-| Code | Name | KYC sent to Fincra |
-|------|------|--------------------|
-| `NGN` | Nigerian Naira | `firstName`, `lastName`, `bvn` (email optional) |
-| `GHS` | Ghanaian Cedi | `firstName`, `lastName`, `email` |
-| `KES` | Kenyan Shilling | `firstName`, `lastName` only |
-| `TZS` | Tanzanian Shilling | `firstName`, `lastName` only |
+
+| Code  | Name               | KYC sent to Fincra                              |
+| ----- | ------------------ | ----------------------------------------------- |
+| `NGN` | Nigerian Naira     | `firstName`, `lastName`, `bvn` (email optional) |
+| `GHS` | Ghanaian Cedi      | `firstName`, `lastName`, `email`                |
+| `KES` | Kenyan Shilling    | `firstName`, `lastName` only                    |
+| `TZS` | Tanzanian Shilling | `firstName`, `lastName` only                    |
 
 Fincra also documents `USD`, `EUR`, `GBP` virtual accounts, but those are **not enabled** yet (extra foreign KYC).
 
@@ -436,6 +469,7 @@ Fincra also documents `USD`, `EUR`, `GBP` virtual accounts, but those are **not 
 > `phoneNumber` is optional. Bitmonie only forwards it when the user's phone country matches the wallet currency (`GHS=+233`, `KES=+254`, `TZS=+255`). A Nigerian `+234` number is **never** sent for KES/TZS/GHS (that caused `422 phoneNumber must be a valid phone number for country`).
 
 ### Endpoints
+
 - `GET /currencies` — enabled currencies + provider-only offers
 - `GET /balances` — all wallet balances for the user
 - `GET /wallets` — list wallets (includes balances)
@@ -446,26 +480,27 @@ Fincra also documents `USD`, `EUR`, `GBP` virtual accounts, but those are **not 
 - `GET /rates`, `GET /banks`, `POST /quotes`, `POST /payin`, `POST /transfers/wallet`, `POST /payouts/bank`, `POST /conversions`
 
 ### Balance response shape
+
 ```json
 {
-  "status": true,
-  "message": "Currency balances fetched successfully.",
-  "data": [
-    {
-      "currency": "GHS",
-      "status": "active",
-      "available_balance": "1500.00",
-      "ledger_balance": "1500.00",
-      "locked_balance": "0.00",
-      "virtual_account_number": "1234567890",
-      "account_name": "John Doe",
-      "bank_name": "Fincra MFB",
-      "bank_code": "090286",
-      "provider": "fincraservice",
-      "can_receive": true,
-      "can_send": true
-    }
-  ]
+    "status": true,
+    "message": "Currency balances fetched successfully.",
+    "data": [
+        {
+            "currency": "GHS",
+            "status": "active",
+            "available_balance": "1500.00",
+            "ledger_balance": "1500.00",
+            "locked_balance": "0.00",
+            "virtual_account_number": "1234567890",
+            "account_name": "John Doe",
+            "bank_name": "Fincra MFB",
+            "bank_code": "090286",
+            "provider": "fincraservice",
+            "can_receive": true,
+            "can_send": true
+        }
+    ]
 }
 ```
 
@@ -478,6 +513,7 @@ Note: Fincra virtual accounts settle into the merchant wallet. Per-user `availab
 All core savings operations run on an immutable double-entry ledger with transactional safety and idempotency support (`Idempotency-Key` header or request body field).
 
 ### Products Available:
+
 1. **Flexi Save (`flexi`):** Flexible savings with instant deposits, free withdrawals back to your Naira wallet, and optional transfers to other savings accounts. Accrues daily interest (10% p.a.).
 2. **Auto Save (`auto`):** Automated recurring savings (daily, weekly, or monthly) with fixed scheduled contributions and manual top-ups/withdrawals.
 3. **Target Savings (`target`):** Goal-oriented savings with target amounts, optional automated recurring deductions, target maturity dates, progress tracking, and lock protection. Early cancellation before target date incurs an acknowledged 2% penalty.
@@ -489,134 +525,147 @@ All core savings operations run on an immutable double-entry ledger with transac
 ### Endpoints: Flexi Save
 
 #### 1. Get Flexi Save Details
+
 - **Method & Path:** `GET /api/v1/savings/flexi`
 - **Auth Required:** Yes
 
 **Success Response (`200 OK`):**
+
 ```json
 {
-  "status": "success",
-  "message": "Flexi Save fetched.",
-  "data": {
-    "account": {
-      "id": 1,
-      "product_type": "flexi",
-      "name": "Flexi Save",
-      "balance": "55000.00",
-      "currency": "NGN",
-      "status": "active",
-      "interest_rate_pa": "10.00",
-      "total_interest_earned": "120.45"
+    "status": "success",
+    "message": "Flexi Save fetched.",
+    "data": {
+        "account": {
+            "id": 1,
+            "product_type": "flexi",
+            "name": "Flexi Save",
+            "balance": "55000.00",
+            "currency": "NGN",
+            "status": "active",
+            "interest_rate_pa": "10.00",
+            "total_interest_earned": "120.45"
+        }
     }
-  }
 }
 ```
 
 #### 2. Flexi Save - Deposit Funds
+
 - **Method & Path:** `POST /api/v1/savings/flexi/deposit`
 - **Auth Required:** Yes
 - **Rate Limit:** 20/min
 
 **Request Body:**
+
 ```json
 {
-  "amount": 20000,
-  "source": "wallet",
-  "idempotency_key": "optional-unique-uuid-or-key"
+    "amount": 20000,
+    "source": "wallet",
+    "idempotency_key": "optional-unique-uuid-or-key"
 }
 ```
 
 **Success Response (`200 OK`):**
+
 ```json
 {
-  "status": "success",
-  "message": "Deposit posted successfully.",
-  "data": {
-    "account": {
-      "id": 1,
-      "product_type": "flexi",
-      "balance": "75000.00"
-    },
-    "entry": {
-      "reference": "SAV-DEP-98127391",
-      "type": "deposit",
-      "amount": "20000.00",
-      "status": "posted"
+    "status": "success",
+    "message": "Deposit posted successfully.",
+    "data": {
+        "account": {
+            "id": 1,
+            "product_type": "flexi",
+            "balance": "75000.00"
+        },
+        "entry": {
+            "reference": "SAV-DEP-98127391",
+            "type": "deposit",
+            "amount": "20000.00",
+            "status": "posted"
+        }
     }
-  }
 }
 ```
 
 #### 3. Flexi Save - Withdraw Funds
+
 - **Method & Path:** `POST /api/v1/savings/flexi/withdraw`
 - **Auth Required:** Yes
 - **Rate Limit:** 20/min
 
 **Request Body:**
+
 ```json
 {
-  "amount": 10000,
-  "destination": "wallet",
-  "idempotency_key": "optional-unique-uuid-or-key"
+    "amount": 10000,
+    "destination": "wallet",
+    "idempotency_key": "optional-unique-uuid-or-key"
 }
 ```
 
 **Success Response (`200 OK`):**
+
 ```json
 {
-  "status": "success",
-  "message": "Withdrawal posted successfully.",
-  "data": {
-    "account": {
-      "id": 1,
-      "product_type": "flexi",
-      "balance": "65000.00"
-    },
-    "entry": {
-      "reference": "SAV-WTH-88127311",
-      "type": "withdrawal",
-      "amount": "10000.00"
+    "status": "success",
+    "message": "Withdrawal posted successfully.",
+    "data": {
+        "account": {
+            "id": 1,
+            "product_type": "flexi",
+            "balance": "65000.00"
+        },
+        "entry": {
+            "reference": "SAV-WTH-88127311",
+            "type": "withdrawal",
+            "amount": "10000.00"
+        }
     }
-  }
 }
 ```
 
 #### 4. Flexi Save - Internal Transfer to Target or Auto Save
+
 - **Method & Path:** `POST /api/v1/savings/flexi/transfer`
 - **Auth Required:** Yes
 
 **Request Body:**
+
 ```json
 {
-  "destination_account_id": 5,
-  "amount": 5000,
-  "idempotency_key": "optional-unique-key"
+    "destination_account_id": 5,
+    "amount": 5000,
+    "idempotency_key": "optional-unique-key"
 }
 ```
 
 #### 5. Flexi Save - Auto-debit (schedule / autosave)
+
 - `PUT /api/v1/savings/flexi/schedule` (alias: `PUT /api/v1/savings/flexi/autosave`)
 - `POST /api/v1/savings/flexi/schedule/pause` (alias: `.../autosave/pause`)
 - `POST /api/v1/savings/flexi/schedule/resume` (alias: `.../autosave/resume`)
 - `DELETE /api/v1/savings/flexi/schedule` (alias: `DELETE .../autosave`)
 
 **Request Body (either shape):**
+
 ```json
 {
-  "amount": 5000,
-  "frequency": "daily",
-  "run_time": "08:00"
-}
-```
-```json
-{
-  "autosave": {
-    "enabled": true,
-    "mode": "scheduled",
     "amount": 5000,
     "frequency": "daily",
     "run_time": "08:00"
-  }
+}
+```
+
+```json
+{
+    "autosave": {
+        "enabled": true,
+        "mode": "scheduled",
+        "amount": 5000,
+        "frequency": "daily",
+        "run_time": "08:00"
+    }
 }
 ```
 
@@ -627,33 +676,38 @@ All core savings operations run on an immutable double-entry ledger with transac
 ### Endpoints: Auto Save
 
 #### 1. List Auto Save Accounts
+
 - **Method & Path:** `GET /api/v1/savings/auto`
 - **Auth Required:** Yes
 
 #### 2. Create Auto Save Plan
+
 - **Method & Path:** `POST /api/v1/savings/auto`
 - **Auth Required:** Yes
 
 **Request Body:**
+
 ```json
 {
-  "name": "Emergency Fund",
-  "amount": 5000,
-  "frequency": "weekly",
-  "day_of_week": 1,
-  "time_of_day": "08:00",
-  "start_date": "2026-11-01",
-  "target_amount": 200000,
-  "initial_deposit": 10000
+    "name": "Emergency Fund",
+    "amount": 5000,
+    "frequency": "weekly",
+    "day_of_week": 1,
+    "time_of_day": "08:00",
+    "start_date": "2026-11-01",
+    "target_amount": 200000,
+    "initial_deposit": 10000
 }
 ```
 
 #### 3. Pause / Resume / Cancel Auto Save Plan
+
 - `POST /api/v1/savings/auto/{id}/pause`
 - `POST /api/v1/savings/auto/{id}/resume`
 - `POST /api/v1/savings/auto/{id}/cancel`
 
 #### 4. Manual Contribute & Withdraw
+
 - `POST /api/v1/savings/auto/{id}/contribute` (`{"amount": 5000}`)
 - `POST /api/v1/savings/auto/{id}/withdraw` (`{"amount": 5000, "destination": "wallet"}`)
 
@@ -662,39 +716,44 @@ All core savings operations run on an immutable double-entry ledger with transac
 ### Endpoints: Target Savings
 
 #### 1. List / Create Target
+
 - **Method & Path:** `GET /api/v1/savings/targets`
 - **Method & Path:** `POST /api/v1/savings/targets`
 
 **Request Body** (preferred + aliases):
+
 ```json
 {
-  "title": "December Trip to Kigali",
-  "target_amount": 300000,
-  "deadline": "2026-12-20",
-  "category": "vacation",
-  "initial_deposit": 50000,
-  "schedule": {
-    "amount": 25000,
-    "frequency": "weekly",
-    "day_of_week": 1,
-    "run_time": "08:00"
-  }
+    "title": "December Trip to Kigali",
+    "target_amount": 300000,
+    "deadline": "2026-12-20",
+    "category": "vacation",
+    "initial_deposit": 50000,
+    "schedule": {
+        "amount": 25000,
+        "frequency": "weekly",
+        "day_of_week": 1,
+        "run_time": "08:00"
+    }
 }
 ```
 
 Aliases still accepted:
+
 - `name` → `title`, `target_date` → `deadline`
 - Flat: `auto_save: true`, `schedule_amount`, `frequency`
 - Nested SafeLock-style: `autosave: { enabled, mode, amount, frequency, ... }`
 - Schedule manage: `PUT/POST/DELETE /api/v1/savings/targets/{id}/schedule` (also accepts `autosave` body)
 
 #### 2. Target Progress & Early Closure Quote
+
 - `GET /api/v1/savings/targets/{id}/progress`
 - `GET /api/v1/savings/targets/{id}/closure-quote`
 
 Progress / target payloads include **`debited_today`** (sum of completed credits for today in `Africa/Lagos`).
 
 #### 3. Target Contribute, Withdraw (at maturity) & Early Cancel
+
 - `POST /api/v1/savings/targets/{id}/contribute` (`{"amount": 10000}`)
 - `POST /api/v1/savings/targets/{id}/withdraw` (valid when target reached or date reached)
 - `POST /api/v1/savings/targets/{id}/cancel` (`{"acknowledge_penalty": true, "reason": "Emergency"}`)
@@ -702,6 +761,7 @@ Progress / target payloads include **`debited_today`** (sum of completed credits
 ---
 
 ### Endpoints: Shared Transactions & Transfers
+
 - `GET /api/v1/savings/transactions` (query params: `product_type`, `type`, `status`, `from`, `to`, `per_page`)
 - `GET /api/v1/savings/transactions/{reference}`
 - `GET /api/v1/savings/transactions/{reference}/status`
@@ -710,28 +770,32 @@ Progress / target payloads include **`debited_today`** (sum of completed credits
 ---
 
 #### 3. SafeLock - Create Fixed Term Lock
+
 - **Method & Path:** `POST /api/v1/savings/safelock/create`
 - **Auth Required:** Yes
 
 **Request Body:**
+
 ```json
 {
-  "title": "House Rent 2027",
-  "amount": 150000,
-  "plan_id": 1,
-  "autosave": {
-    "enabled": true,
-    "mode": "scheduled",
-    "amount": 10000,
-    "frequency": "weekly"
-  }
+    "title": "House Rent 2027",
+    "amount": 150000,
+    "plan_id": 1,
+    "autosave": {
+        "enabled": true,
+        "mode": "scheduled",
+        "amount": 10000,
+        "frequency": "weekly"
+    }
 }
 ```
 
-SafeLock interest accrues daily onto `interest_accrued` (not the NGN wallet) until maturity. List/detail now expose:
+SafeLock interest accrues daily onto `interest_accrued` (not the NGN wallet) until maturity. Each accrual also writes a `SavingsTransaction` (`type=interest`, `source=daily_interest`) so history shows the daily drop. List/detail expose:
+
 - `amount` — principal
 - `interest_accrued` / `interest_earned_today` / `daily_interest`
 - `current_balance` — principal + accrued interest (so daily interest is visible like Flex / USDT earn)
+- `total_locked_balance` — sum of active `current_balance` values
 - `expected_interest`, `total_payout`
 
 **Autosave availability by product**
@@ -746,26 +810,29 @@ SafeLock interest accrues daily onto `interest_accrued` (not the NGN wallet) unt
 ---
 
 #### 4. SafeLock - Emergency Break / Early Liquidation
+
 - **Method & Path:** `POST /api/v1/savings/safelock/break`
 - **Auth Required:** Yes
 
 **Request Body:**
+
 ```json
 {
-  "safelock_id": "SL-99201",
-  "pin": "1234"
+    "safelock_id": "SL-99201",
+    "pin": "1234"
 }
 ```
 
 **Success Response (`200 OK`):**
+
 ```json
 {
-  "status": "success",
-  "message": "SafeLock plan liquidated. Early break penalty of 2.5% applied.",
-  "data": {
-    "refunded_amount": "146250.00",
-    "penalty_fee": "3750.00"
-  }
+    "status": "success",
+    "message": "SafeLock plan liquidated. Early break penalty of 2.5% applied.",
+    "data": {
+        "refunded_amount": "146250.00",
+        "penalty_fee": "3750.00"
+    }
 }
 ```
 
@@ -774,6 +841,7 @@ SafeLock interest accrues daily onto `interest_accrued` (not the NGN wallet) unt
 ## 6. Virtual Cards Module (Payscribe / Sudo)
 
 ### Features:
+
 - Create Dollar or Naira Virtual MasterCards / Visa cards.
 - Instant card funding from wallet and withdrawals back to wallet.
 - Fetch card PAN, CVV, and expiration date securely.
@@ -784,81 +852,89 @@ SafeLock interest accrues daily onto `interest_accrued` (not the NGN wallet) unt
 ### Endpoints
 
 #### 1. Create Virtual Card
+
 - **Method & Path:** `POST /api/payscribe/create-card`
 - **Auth Required:** Yes
 
 **Request Body:**
+
 ```json
 {
-  "currency": "USD",
-  "card_type": "mastercard",
-  "initial_funding_amount": 15,
-  "card_holder_name": "Jane Doe",
-  "pin": "1234"
+    "currency": "USD",
+    "card_type": "mastercard",
+    "initial_funding_amount": 15,
+    "card_holder_name": "Jane Doe",
+    "pin": "1234"
 }
 ```
 
 **Success Response (`201 Created`):**
+
 ```json
 {
-  "status": "success",
-  "message": "Virtual card created successfully.",
-  "data": {
-    "card_id": "crd_881920ae",
-    "masked_pan": "5399 •••• •••• 4120",
-    "currency": "USD",
-    "balance": "15.00",
-    "status": "active",
-    "created_at": "2026-10-06T14:30:00Z"
-  }
+    "status": "success",
+    "message": "Virtual card created successfully.",
+    "data": {
+        "card_id": "crd_881920ae",
+        "masked_pan": "5399 •••• •••• 4120",
+        "currency": "USD",
+        "balance": "15.00",
+        "status": "active",
+        "created_at": "2026-10-06T14:30:00Z"
+    }
 }
 ```
 
 ---
 
 #### 2. Reveal Sensitive Card Details (PAN, CVV, Expiry)
+
 - **Method & Path:** `POST /api/payscribe/card-details/{card_id}`
 - **Auth Required:** Yes
 
 **Request Body:**
+
 ```json
 {
-  "pin": "1234"
+    "pin": "1234"
 }
 ```
 
 **Success Response (`200 OK`):**
+
 ```json
 {
-  "status": "success",
-  "data": {
-    "card_id": "crd_881920ae",
-    "card_pan": "5399420011224120",
-    "cvv": "481",
-    "expiration_month": "09",
-    "expiration_year": "2029",
-    "billing_address": {
-      "street": "1200 S Figueroa St",
-      "city": "Los Angeles",
-      "state": "CA",
-      "zip": "90015",
-      "country": "US"
+    "status": "success",
+    "data": {
+        "card_id": "crd_881920ae",
+        "card_pan": "5399420011224120",
+        "cvv": "481",
+        "expiration_month": "09",
+        "expiration_year": "2029",
+        "billing_address": {
+            "street": "1200 S Figueroa St",
+            "city": "Los Angeles",
+            "state": "CA",
+            "zip": "90015",
+            "country": "US"
+        }
     }
-  }
 }
 ```
 
 ---
 
 #### 3. Freeze / Unfreeze Card
+
 - **Method & Path:** `POST /api/payscribe/freeze-card/{card_id}` (or `/unfreeze-card/{card_id}`)
 - **Auth Required:** Yes
 
 **Success Response (`200 OK`):**
+
 ```json
 {
-  "status": "success",
-  "message": "Card status updated to frozen."
+    "status": "success",
+    "message": "Card status updated to frozen."
 }
 ```
 
@@ -867,6 +943,7 @@ SafeLock interest accrues daily onto `interest_accrued` (not the NGN wallet) unt
 ## 7. Utility & Bill Payments Module (Payscribe)
 
 ### Step-by-Step Flow:
+
 1. **Validate Recipient:** Before debiting the user, validate the meter number / smartcard number / phone network.
 2. **Execute Payment:** Submit bill payment with transaction PIN.
 3. **Display Token/Receipt:** Return purchased token / confirmation to the user.
@@ -876,88 +953,97 @@ SafeLock interest accrues daily onto `interest_accrued` (not the NGN wallet) unt
 ### Endpoints
 
 #### 1. Buy Airtime
+
 - **Method & Path:** `POST /api/payscribe/airtime/purchase`
 - **Auth Required:** Yes
 
 **Request Body:**
+
 ```json
 {
-  "network": "MTN",
-  "phone": "08031234567",
-  "amount": 1000,
-  "pin": "1234"
+    "network": "MTN",
+    "phone": "08031234567",
+    "amount": 1000,
+    "pin": "1234"
 }
 ```
 
 **Success Response (`200 OK`):**
+
 ```json
 {
-  "status": "success",
-  "message": "₦1,000 MTN Airtime sent successfully to 08031234567.",
-  "data": {
-    "reference": "PS-AIR-99210",
-    "cashback_earned": "20.00"
-  }
+    "status": "success",
+    "message": "₦1,000 MTN Airtime sent successfully to 08031234567.",
+    "data": {
+        "reference": "PS-AIR-99210",
+        "cashback_earned": "20.00"
+    }
 }
 ```
 
 ---
 
 #### 2. Electricity - Validate Meter Number
+
 - **Method & Path:** `POST /api/payscribe/electricity/validate`
 - **Auth Required:** Yes
 
 **Request Body:**
+
 ```json
 {
-  "service": "ikeja-electric",
-  "meter_number": "01011500293",
-  "meter_type": "prepaid"
+    "service": "ikeja-electric",
+    "meter_number": "01011500293",
+    "meter_type": "prepaid"
 }
 ```
 
 **Success Response (`200 OK`):**
+
 ```json
 {
-  "status": "success",
-  "data": {
-    "customer_name": "ADEMOLA JOHNSON",
-    "meter_number": "01011500293",
-    "address": "12 Olumo Street, Ikeja, Lagos",
-    "minimum_purchase": 1000
-  }
+    "status": "success",
+    "data": {
+        "customer_name": "ADEMOLA JOHNSON",
+        "meter_number": "01011500293",
+        "address": "12 Olumo Street, Ikeja, Lagos",
+        "minimum_purchase": 1000
+    }
 }
 ```
 
 ---
 
 #### 3. Electricity - Purchase Token
+
 - **Method & Path:** `POST /api/payscribe/electricity/pay`
 - **Auth Required:** Yes
 
 **Request Body:**
+
 ```json
 {
-  "service": "ikeja-electric",
-  "meter_number": "01011500293",
-  "meter_type": "prepaid",
-  "amount": 5000,
-  "phone": "08031234567",
-  "pin": "1234"
+    "service": "ikeja-electric",
+    "meter_number": "01011500293",
+    "meter_type": "prepaid",
+    "amount": 5000,
+    "phone": "08031234567",
+    "pin": "1234"
 }
 ```
 
 **Success Response (`200 OK`):**
+
 ```json
 {
-  "status": "success",
-  "message": "Electricity token purchased successfully.",
-  "data": {
-    "token": "4920-1192-3849-2019-4820",
-    "units": "54.8 kWh",
-    "amount": "5000.00",
-    "reference": "PS-ELEC-882910"
-  }
+    "status": "success",
+    "message": "Electricity token purchased successfully.",
+    "data": {
+        "token": "4920-1192-3849-2019-4820",
+        "units": "54.8 kWh",
+        "amount": "5000.00",
+        "reference": "PS-ELEC-882910"
+    }
 }
 ```
 
@@ -968,79 +1054,87 @@ SafeLock interest accrues daily onto `interest_accrued` (not the NGN wallet) unt
 ### Endpoints
 
 #### 1. Fetch Crypto Deposit Address
+
 - **Method & Path:** `GET /api/user/quidax/fetch-payment-address?currency=usdt&network=trc20`
 - **Auth Required:** Yes
 
 **Success Response (`200 OK`):**
+
 ```json
 {
-  "status": "success",
-  "data": {
-    "currency": "USDT",
-    "network": "TRC20",
-    "address": "TX9vC84X1yJ...gK2",
-    "qr_code_url": "https://api.bitmonie.com/qr/TX9vC84X1yJ...gK2",
-    "minimum_deposit": "10.00"
-  }
+    "status": "success",
+    "data": {
+        "currency": "USDT",
+        "network": "TRC20",
+        "address": "TX9vC84X1yJ...gK2",
+        "qr_code_url": "https://api.bitmonie.com/qr/TX9vC84X1yJ...gK2",
+        "minimum_deposit": "10.00"
+    }
 }
 ```
 
 ---
 
 #### 2. Instant Crypto Swap Quotation
+
 - **Method & Path:** `POST /api/user/quidax/create-swap-quotation`
 - **Auth Required:** Yes
 
 **Request Body:**
+
 ```json
 {
-  "from_currency": "usdt",
-  "to_currency": "ngn",
-  "from_amount": 100
+    "from_currency": "usdt",
+    "to_currency": "ngn",
+    "from_amount": 100
 }
 ```
 
 **Success Response (`200 OK`):**
+
 ```json
 {
-  "status": "success",
-  "data": {
-    "quotation_id": "QUO-991204-TRX",
-    "from_currency": "USDT",
-    "from_amount": "100.00",
-    "to_currency": "NGN",
-    "to_amount": "154000.00",
-    "rate": "1540.00",
-    "expires_in_seconds": 30
-  }
+    "status": "success",
+    "data": {
+        "quotation_id": "QUO-991204-TRX",
+        "from_currency": "USDT",
+        "from_amount": "100.00",
+        "to_currency": "NGN",
+        "to_amount": "154000.00",
+        "rate": "1540.00",
+        "expires_in_seconds": 30
+    }
 }
 ```
 
 ---
 
 #### 3. Execute Swap
+
 - **Method & Path:** `POST /api/user/quidax/swap`
 - **Auth Required:** Yes
 
 **Request Body:**
+
 ```json
 {
-  "quotation_id": "QUO-991204-TRX",
-  "pin": "1234"
+    "quotation_id": "QUO-991204-TRX",
+    "pin": "1234"
 }
 ```
 
 **Success Response (`200 OK`):**
+
 ```json
 {
-  "status": "success",
-  "message": "Swap executed successfully.",
-  "data": {
-    "transaction_id": "SWP-20261006-0012",
-    "from_amount": "100.00 USDT",
-    "to_amount": "154000.00 NGN",
-    "status": "completed"
-  }
+    "status": "success",
+    "message": "Swap executed successfully.",
+    "data": {
+        "transaction_id": "SWP-20261006-0012",
+        "from_amount": "100.00 USDT",
+        "to_amount": "154000.00 NGN",
+        "status": "completed"
+    }
 }
 ```
 
@@ -1076,177 +1170,222 @@ To provide instant UI response times and seamless UX without blocking on cross-n
 ---
 
 ### 9.2 Get Available Card Charges & Fees
+
 - **Method & Path:** `GET /api/user/crypto-cards/charges`
 - **Auth Required:** Yes (`Bearer <token>`)
 
 Retrieves the currently active fees configured by admin for virtual/physical card issuance, funding, and maintenance. All fees are debited in USDT.
 
 **Success Response (`200 OK`):**
+
 ```json
 {
-  "success": true,
-  "data": {
-    "virtual_issuance_fee": "2.00",
-    "virtual_funding_fee": "1.00",
-    "virtual_maintenance_fee": "1.00",
-    "physical_order_fee": "5.00",
-    "physical_funding_fee": "1.00",
-    "physical_maintenance_fee": "1.50"
-  }
+    "success": true,
+    "data": {
+        "virtual_issuance_fee": "2.00",
+        "virtual_funding_fee": "1.00",
+        "virtual_maintenance_fee": "1.00",
+        "physical_order_fee": "5.00",
+        "physical_funding_fee": "1.00",
+        "physical_maintenance_fee": "1.50"
+    }
 }
 ```
 
 ---
 
 ### 9.3 Create Card (Virtual or Physical)
+
 - **Method & Path:** `POST /api/user/crypto-cards/create`
 - **Auth Required:** Yes (`Bearer <token>`)
 
-Creates a new card for the user. If the user does not yet have a Sudo Card Holder, the backend automatically generates one using verified KYC data (BVN/NIN/Address).
+Creates a new card **asynchronously**. The API returns immediately with `status: pending` (HTTP **202**). A background worker then:
 
-> **Fee & Balance Note:** The configured issuance fee (e.g. 2 USDT) is checked against the user's USDT balance and debited. If provider issuance fails, the fee is automatically refunded back to the user's USDT balance.
+1. Converts the user's USDT issuance fee → NGN into the Sudo settlement account (Quidax offramp)
+2. Calls Sudo to issue the card
+3. On failure, reverses USDT back to the user and notifies them
 
-**Request Body:**
+If the user does not yet have a Sudo Card Holder, the backend auto-creates one from verified KYC data.
+
+> **Frontend UX:** Show the same card object with `status: "pending"` (spinner / “Creating…”). Listen for push/in-app/email (`CRYPTO_CARD_CREATION_SUCCESS` / `CRYPTO_CARD_CREATION_FAILED`), or poll `GET /api/user/crypto-cards/show/{id}` until `status` is `active` or `failed`.
+
+**Request Body:** (unchanged)
+
 ```json
 {
-  "provider": "sudo",
-  "type": "virtual",
-  "currency": "NGN",
-  "brand": "Visa",
-  "status": "active"
+    "provider": "sudo",
+    "type": "virtual",
+    "currency": "NGN",
+    "brand": "Visa",
+    "status": "active"
 }
 ```
 
-| Field | Type | Required | Description |
-| :--- | :--- | :--- | :--- |
-| `provider` | `string` | Optional | Provider identifier (`sudo`, default: `sudo`). |
-| `type` | `string` | **Yes** | Card type: `virtual` or `physical`. |
-| `currency` | `string` | **Yes** | Card settlement currency: `NGN` or `USD`. |
-| `brand` | `string` | Optional | Card brand (`Visa`, `MasterCard`, `Verve`, `AfriGo`). Default: `Visa`. |
-| `status` | `string` | Optional | Initial status: `active` or `inactive`. Default: `active`. |
-| `number` | `string` | Required if physical | Card PAN printed on physical card. |
+| Field      | Type     | Required             | Description                                                            |
+| :--------- | :------- | :------------------- | :--------------------------------------------------------------------- |
+| `provider` | `string` | Optional             | Provider identifier (`sudo`, default: `sudo`).                         |
+| `type`     | `string` | **Yes**              | Card type: `virtual` or `physical`.                                    |
+| `currency` | `string` | **Yes**              | Card settlement currency: `NGN` or `USD`.                              |
+| `brand`    | `string` | Optional             | Card brand (`Visa`, `MasterCard`, `Verve`, `AfriGo`). Default: `Visa`. |
+| `status`   | `string` | Optional             | Desired final status: `active` or `inactive`. Default: `active`.       |
+| `number`   | `string` | Required if physical | Card PAN printed on physical card.                                     |
 
-**Success Response (`201 Created`):**
+**Accepted Response (`202 Accepted`) — pending:**
+
 ```json
 {
-  "success": true,
-  "message": "Card created successfully.",
-  "data": {
-    "card": {
-      "id": 12,
-      "user_id": 84,
-      "card_provider": "sudo",
-      "card_provider_id": "crd_01h8abcdef123456",
-      "card_type": "virtual",
-      "card_currency": "NGN",
-      "card_brand": "Visa",
-      "card_status": "active",
-      "card_balance": 0,
-      "masked_pan": "411111******1111",
-      "expiry_month": "12",
-      "expiry_year": "28",
-      "created_at": "2026-11-02T12:00:00.000000Z"
+    "success": true,
+    "message": "Card creation started. You will be notified when it is ready.",
+    "data": {
+        "card": {
+            "id": 12,
+            "card_holder_id": 5,
+            "provider": "sudo",
+            "provider_card_id": null,
+            "type": "virtual",
+            "brand": "Visa",
+            "currency": "NGN",
+            "balance": 0,
+            "status": "pending",
+            "masked_pan": null,
+            "last_four": null
+        },
+        "status": "pending",
+        "transaction_id": 901,
+        "escrow_id": 440,
+        "provider": "sudo"
     }
-  }
+}
+```
+
+**Later (after worker succeeds) the card looks like:**
+
+```json
+{
+        "card": {
+            "id": 12,
+            "user_id": 84,
+            "card_provider": "sudo",
+            "card_provider_id": "crd_01h8abcdef123456",
+            "card_type": "virtual",
+            "card_currency": "NGN",
+            "card_brand": "Visa",
+            "card_status": "active",
+            "card_balance": 0,
+            "masked_pan": "411111******1111",
+            "expiry_month": "12",
+            "expiry_year": "28",
+            "created_at": "2026-11-02T12:00:00.000000Z"
+        }
+    }
 }
 ```
 
 **Insufficient USDT Balance Response (`400 Bad Request`):**
+
 ```json
 {
-  "success": false,
-  "message": "Insufficient USDT balance to cover the card fee. Required: 2.00 USDT, Available: 0.50 USDT."
+    "success": false,
+    "message": "Insufficient USDT balance to cover the card fee. Required: 2.00 USDT, Available: 0.50 USDT."
 }
 ```
 
 ---
 
 ### 9.4 Fund Card (USDT -> NGN Card Balance)
+
 - **Method & Path:** `POST /api/user/crypto-cards/{id}/fund`
 - **Auth Required:** Yes (`Bearer <token>`)
 
 Funds an active crypto card. The user specifies the funding amount in USDT. The backend deducts the funding fee + funds, initiates an escrow, and dispatches `InitiateQuidaxCardFundingJob` to off-ramp USDT to Sudo's settlement bank in the background.
 
 **Request Body:**
+
 ```json
 {
-  "amount": 25.00,
-  "description": "Weekly shopping funding"
+    "amount": 25.0,
+    "description": "Weekly shopping funding"
 }
 ```
 
-| Field | Type | Required | Description |
-| :--- | :--- | :--- | :--- |
-| `amount` | `numeric` | **Yes** | Amount in USDT to fund onto the card (must be > 0). |
-| `description` | `string` | Optional | Description / narration for the funding transaction. |
+| Field         | Type      | Required | Description                                          |
+| :------------ | :-------- | :------- | :--------------------------------------------------- |
+| `amount`      | `numeric` | **Yes**  | Amount in USDT to fund onto the card (must be > 0).  |
+| `description` | `string`  | Optional | Description / narration for the funding transaction. |
 
 **Success Response (`200 OK` - Accepted for processing):**
+
 ```json
 {
-  "success": true,
-  "message": "Card funding initiated. You will be notified once the funds are credited.",
-  "data": {
-    "card_id": 12,
-    "amount": 25,
-    "transaction_id": 1045,
-    "escrow_id": 312,
-    "status": "initiated",
-    "current_balance": "0.00"
-  }
+    "success": true,
+    "message": "Card funding initiated. You will be notified once the funds are credited.",
+    "data": {
+        "card_id": 12,
+        "amount": 25,
+        "transaction_id": 1045,
+        "escrow_id": 312,
+        "status": "initiated",
+        "current_balance": "0.00"
+    }
 }
 ```
 
 **Error Responses:**
+
 - **400 Bad Request:** Insufficient USDT balance:
-  ```json
-  {
-    "success": false,
-    "message": "Insufficient USDT balance to fund this card. Required: 25.00 USDT, Available: 10.00 USDT."
-  }
-  ```
+    ```json
+    {
+        "success": false,
+        "message": "Insufficient USDT balance to fund this card. Required: 25.00 USDT, Available: 10.00 USDT."
+    }
+    ```
 - **422 Unprocessable Entity:** Card not active:
-  ```json
-  {
-    "success": false,
-    "message": "Only active cards can be funded."
-  }
-  ```
+    ```json
+    {
+        "success": false,
+        "message": "Only active cards can be funded."
+    }
+    ```
 
 ---
 
 ### 9.5 List User Cards
+
 - **Method & Path:** `GET /api/user/crypto-cards`
 - **Auth Required:** Yes (`Bearer <token>`)
 
 **Success Response (`200 OK`):**
+
 ```json
 {
-  "success": true,
-  "data": [
-    {
-      "id": 12,
-      "card_provider": "sudo",
-      "card_provider_id": "crd_01h8abcdef123456",
-      "card_type": "virtual",
-      "card_currency": "NGN",
-      "card_brand": "Visa",
-      "card_status": "active",
-      "card_balance": 38500.00,
-      "masked_pan": "411111******1111",
-      "expiry_month": "12",
-      "expiry_year": "28"
-    }
-  ]
+    "success": true,
+    "data": [
+        {
+            "id": 12,
+            "card_provider": "sudo",
+            "card_provider_id": "crd_01h8abcdef123456",
+            "card_type": "virtual",
+            "card_currency": "NGN",
+            "card_brand": "Visa",
+            "card_status": "active",
+            "card_balance": 38500.0,
+            "masked_pan": "411111******1111",
+            "expiry_month": "12",
+            "expiry_year": "28"
+        }
+    ]
 }
 ```
 
 ---
 
 ### 9.6 View Card Details & Sensitive Credentials
+
 - **Method & Path:** `GET /api/user/crypto-cards/show/{id}`
 - **Auth Required:** Yes (`Bearer <token>`)
 
 Retrieves full card details including real-time balance and spending limits. For PCI-DSS sensitive data (CVV, full PAN, PIN), use the tokenized endpoint:
+
 - **Token Endpoint:** `GET /api/user/crypto-cards/{id}/token` (returns single-use iframe/widget token).
 - **Activate Card:** `POST /api/user/crypto-cards/{id}/activate`
 - **Change PIN:** `POST /api/user/crypto-cards/{id}/change-pin` (payload: `{"pin": "1234"}`)
@@ -1254,6 +1393,7 @@ Retrieves full card details including real-time balance and spending limits. For
 ---
 
 ## 10. Developer Testing Checklist for Frontend
+
 - [ ] Save Bearer token securely in Encrypted SecureStore / Keychain.
 - [ ] Implement interceptors to attach `Authorization: Bearer <token>` and auto-refresh on 401.
 - [ ] For form validations, map the `errors` object directly to individual input error hints.

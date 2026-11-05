@@ -635,41 +635,63 @@ public function createCard(Request $request): JsonResponse
         }
     }
 
+    if (! $holder) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Card holder could not be resolved.',
+        ], 422);
+    }
+
     /*
     |--------------------------------------------------------------------------
-    | Charge card issuance fee in USDT AFTER holder is confirmed
+    | Async create: check USDT for issuance fee, return pending, worker does
+    | USDT→fiat (Quidax offramp to Sudo settlement) → Sudo create → notify.
     |--------------------------------------------------------------------------
     */
 
     $cardType = $request->input('type', 'virtual');
     $issuanceChargeType = ($cardType === 'physical') ? 'physical_card_fee' : 'virtual_card_issuance_fee';
-    $charge = $this->transferCardChargeUsdt($issuanceChargeType);
+    $charge = $this->quoteCardChargeUsdt($issuanceChargeType);
 
-    if (!$charge['success']) {
+    if (! ($charge['success'] ?? false)) {
         return $this->serviceResponse($charge);
     }
 
-    $request->merge([
-        'currency' => 'NGN',
-        'status' => $request->input('status', 'active'),
-        'brand' => $request->input('brand', 'Visa'),
-    ]);
-
-    $effectiveCardHolderId = $cardHolderId ?: ($holder?->id ?? null);
-
-    $result = $this->cardService->createCard(
-        userId: $userId,
-        provider: $provider,
-        payload: $request->except(['provider', 'cardHolderId']),
-        cardHolderId: $effectiveCardHolderId
+    $payload = array_merge(
+        $request->except(['provider', 'cardHolderId']),
+        [
+            'currency' => 'NGN',
+            'status' => $request->input('status', 'active'),
+            'brand' => $request->input('brand', 'Visa'),
+            'type' => $cardType,
+        ]
     );
 
-    if (!($result['success'] ?? false) && ($charge['charged'] ?? false)) {
-        // Rollback / refund card fee in USDT
-        $this->refundCardChargeUsdt($charge);
+    $result = $this->cardService->queueCardCreation(
+        userId: $userId,
+        provider: $provider,
+        holder: $holder,
+        payload: $payload,
+        charge: $charge
+    );
+
+    if (! ($result['success'] ?? false)) {
+        return $this->serviceResponse($result);
     }
 
-    return $this->serviceResponse($result, 201);
+    $card = $result['data']['card'] ?? null;
+
+    return response()->json([
+        'success' => true,
+        'message' => $result['message'] ?? 'Card creation started. You will be notified when it is ready.',
+        'data' => [
+            'card' => $card ? $this->formatCard($card) : null,
+            'status' => 'pending',
+            'transaction_id' => $result['data']['transaction_id'] ?? null,
+            'escrow_id' => $result['data']['escrow_id'] ?? null,
+            'provider' => $provider,
+        ],
+    ], 202);
 }
 
     /**
@@ -2884,9 +2906,33 @@ protected function refundCardCharge(array $charge): void
 }
 
 /**
- * Transfer configured card fee in USDT from user's balance to platform escrow.
+ * Quote issuance fee and verify the user has enough USDT (no debit yet).
+ * The worker converts USDT→fiat via Quidax offramp into the Sudo settlement account.
  */
-protected function transferCardChargeUsdt(string $chargeType): array
+protected function quoteCardChargeUsdt(string $chargeType): array
+{
+    $quoted = $this->transferCardChargeUsdt($chargeType, dryRun: true);
+
+    if (! ($quoted['success'] ?? false)) {
+        return $quoted;
+    }
+
+    // Money is taken by the offramp worker, not escrowed here.
+    $quoted['charged'] = false;
+    $quoted['escrow_deducted'] = false;
+    $quoted['message'] = bccomp((string) ($quoted['usdt_amount'] ?? '0'), '0', 2) > 0
+        ? 'USDT issuance fee reserved for async offramp.'
+        : 'No charge configured.';
+
+    return $quoted;
+}
+
+/**
+ * Transfer configured card fee in USDT from user's balance to platform escrow.
+ *
+ * @param  bool  $dryRun  When true, only validate balance / return quote (no debit).
+ */
+protected function transferCardChargeUsdt(string $chargeType, bool $dryRun = false): array
 {
     $user = auth()->user();
 
@@ -3005,6 +3051,20 @@ protected function transferCardChargeUsdt(string $chargeType): array
     }
 
     $reference = 'CARD-FEE-' . Str::uuid()->toString();
+
+    if ($dryRun) {
+        return [
+            'success' => true,
+            'charged' => false,
+            'amount' => $amount,
+            'usdt_amount' => $amount,
+            'currency' => 'USDT',
+            'charge_type' => $chargeType,
+            'reference' => $reference,
+            'escrow_deducted' => false,
+            'message' => 'Card fee quote ready.',
+        ];
+    }
 
     // Debit from Quidax Sub-account to Escrow
     $escrowDeducted = false;

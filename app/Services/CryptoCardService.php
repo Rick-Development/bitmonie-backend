@@ -3345,4 +3345,417 @@ protected function getSpendableBalance(
         - (float) $card->pending_holds
     );
 }
+
+    /*
+    |--------------------------------------------------------------------------
+    | ASYNC SUDO CARD CREATION
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * Queue async card creation: pending local card → worker debits USDT→fiat → funds Sudo → creates card.
+     *
+     * @param  array<string, mixed>  $payload  Provider create payload (type, brand, currency, amount, …)
+     * @param  array<string, mixed>  $charge   Result of USDT debit (usdt_amount, reference, escrow_deducted, …)
+     */
+    public function queueCardCreation(
+        int $userId,
+        string $provider,
+        CryptoCardHolders $holder,
+        array $payload,
+        array $charge = []
+    ): array {
+        $provider = $this->normalizeProvider($provider);
+        $customerId = $holder->getProviderCustomerId($provider);
+
+        if (! $customerId) {
+            return [
+                'success' => false,
+                'message' => "No {$provider} customer ID is associated with this card holder.",
+                'statusCode' => 422,
+            ];
+        }
+
+        $cardType = strtolower((string) ($payload['type'] ?? 'virtual'));
+        $brand = $payload['brand'] ?? 'Visa';
+        $currency = strtoupper((string) ($payload['currency'] ?? 'NGN'));
+        $usdtAmount = (float) ($charge['usdt_amount'] ?? $charge['amount'] ?? 0);
+        $initialAmount = (float) ($payload['amount'] ?? 0);
+
+        return DB::transaction(function () use (
+            $userId,
+            $provider,
+            $holder,
+            $customerId,
+            $payload,
+            $charge,
+            $cardType,
+            $brand,
+            $currency,
+            $usdtAmount,
+            $initialAmount
+        ) {
+            $card = CryptoCardsModel::create([
+                'user_id' => $userId,
+                'card_holder_id' => $holder->id,
+                'card_provider' => $provider,
+                'card_provider_customer_id' => $customerId,
+                'card_type' => $cardType,
+                'card_brand' => $brand,
+                'card_currency' => $currency,
+                'card_status' => 'pending',
+                'card_balance' => 0,
+                'pending_holds' => 0,
+                'ledger_balance' => 0,
+                'metadata' => [
+                    'create_payload' => $payload,
+                    'charge' => $charge,
+                    'queued_at' => now()->toIso8601String(),
+                ],
+            ]);
+
+            $transaction = CryptoCardTransactions::create([
+                'user_id' => $userId,
+                'crypto_card_id' => $card->id,
+                'card_provider' => $provider,
+                'provider_customer_id' => $customerId,
+                'transaction_type' => 'issuance',
+                'transaction_status' => 'initiated',
+                'entry_type' => 'debit',
+                'amount' => $usdtAmount > 0 ? $usdtAmount : max($initialAmount, 0),
+                'fee' => $usdtAmount,
+                'currency' => 'USDT',
+                'channel' => 'platform',
+                'transaction_date' => now(),
+                'metadata' => [
+                    'purpose' => 'card_creation',
+                    'create_payload' => $payload,
+                    'charge' => $charge,
+                ],
+            ]);
+
+            $escrow = CryptoCardEscrow::create([
+                'user_id' => $userId,
+                'crypto_card_id' => $card->id,
+                'crypto_card_transaction_id' => $transaction->id,
+                'card_provider' => $provider,
+                'type' => 'issuance',
+                'direction' => 'debit',
+                'status' => 'initiated',
+                'amount' => $transaction->amount,
+                'currency' => 'USDT',
+                'description' => 'Card creation USDT→fiat funding',
+                'metadata' => [
+                    'purpose' => 'card_creation',
+                    'charge' => $charge,
+                ],
+            ]);
+
+            \App\Jobs\ProcessSudoCardCreationJob::dispatch(
+                $userId,
+                $card->id,
+                $transaction->id,
+                $escrow->id,
+                [
+                    'purpose' => 'card_creation',
+                    'usdt_amount' => $usdtAmount,
+                    'charge' => $charge,
+                    'create_payload' => $payload,
+                ]
+            );
+
+            $this->sendNotification($userId, 'CRYPTO_CARD_CREATION_PENDING', [
+                'card_id' => $card->id,
+                'type' => $cardType,
+                'brand' => $brand,
+                'status' => 'Pending',
+                'provider' => ucfirst($provider),
+            ]);
+
+            return [
+                'success' => true,
+                'message' => 'Card creation started. You will be notified when it is ready.',
+                'data' => [
+                    'card' => $card->fresh(),
+                    'holder' => $holder,
+                    'provider' => $provider,
+                    'status' => 'pending',
+                    'transaction_id' => $transaction->id,
+                    'escrow_id' => $escrow->id,
+                ],
+            ];
+        });
+    }
+
+    /**
+     * After fiat has funded Sudo (or zero-fee path): create the provider card and activate the local row.
+     */
+    public function finalizePendingCardCreation(
+        CryptoCardsModel $card,
+        CryptoCardTransactions $transaction,
+        ?CryptoCardEscrow $escrow,
+        array $context = []
+    ): array {
+        if (! in_array(strtolower((string) $card->card_status), ['pending', 'processing'], true)) {
+            return [
+                'success' => true,
+                'message' => 'Card already finalized.',
+                'data' => ['card' => $card],
+            ];
+        }
+
+        $metadata = is_array($card->metadata) ? $card->metadata : [];
+        $payload = $context['create_payload']
+            ?? data_get($transaction->metadata, 'create_payload')
+            ?? ($metadata['create_payload'] ?? []);
+
+        if (! is_array($payload) || $payload === []) {
+            $this->failPendingCardCreation($card, $transaction, $escrow, 'Missing create payload for pending card.', $context);
+
+            return [
+                'success' => false,
+                'message' => 'Missing create payload for pending card.',
+                'statusCode' => 422,
+            ];
+        }
+
+        $holder = CryptoCardHolders::where('id', $card->card_holder_id)
+            ->where('user_id', $card->user_id)
+            ->first();
+
+        if (! $holder) {
+            $this->failPendingCardCreation($card, $transaction, $escrow, 'Card holder not found during finalize.', $context);
+
+            return [
+                'success' => false,
+                'message' => 'Card holder not found.',
+                'statusCode' => 404,
+            ];
+        }
+
+        $provider = $this->normalizeProvider((string) $card->card_provider);
+        $customerId = $holder->getProviderCustomerId($provider);
+        $payload['customerId'] = $customerId;
+        $payload['currency'] = $payload['currency'] ?? 'NGN';
+        $payload['status'] = $payload['status'] ?? 'active';
+        $payload['brand'] = $payload['brand'] ?? 'Visa';
+        $payload = $this->removeNullValues($payload);
+
+        $service = $this->resolveProvider($provider);
+        $response = $service->createCard($payload);
+
+        $providerStatusCode = $response['response']['statusCode']
+            ?? $response['statusCode']
+            ?? null;
+        $providerSuccess = ($response['success'] ?? false)
+            && (! $providerStatusCode || (int) $providerStatusCode < 400);
+
+        if (! $providerSuccess) {
+            $message = $response['message'] ?? 'Unable to create card at provider.';
+            $this->failPendingCardCreation($card, $transaction, $escrow, $message, $context);
+
+            return [
+                'success' => false,
+                'message' => $message,
+                'statusCode' => $response['statusCode'] ?? 422,
+                'data' => $response['data'] ?? null,
+            ];
+        }
+
+        $data = $response['data'] ?? $response;
+        $maskedPan = $data['maskedPan'] ?? null;
+        $lastFour = $maskedPan ? substr((string) $maskedPan, -4) : null;
+        $spendingLimits = $data['spendingControls']['spendingLimits'][0] ?? [];
+
+        $card->update([
+            'card_provider_id' => $data['_id'] ?? $card->card_provider_id,
+            'card_provider_customer_id' => is_array($data['customer'] ?? null)
+                ? ($data['customer']['_id'] ?? $card->card_provider_customer_id)
+                : ($data['customer'] ?? $card->card_provider_customer_id),
+            'card_provider_account_id' => is_array($data['account'] ?? null)
+                ? ($data['account']['_id'] ?? null)
+                : ($data['account'] ?? null),
+            'card_provider_funding_source_id' => is_array($data['fundingSource'] ?? null)
+                ? ($data['fundingSource']['_id'] ?? null)
+                : ($data['fundingSource'] ?? null),
+            'card_type' => $data['type'] ?? $card->card_type,
+            'card_brand' => $data['brand'] ?? $card->card_brand,
+            'card_currency' => $data['currency'] ?? $card->card_currency,
+            'card_status' => $data['status'] ?? 'active',
+            'masked_pan' => $maskedPan,
+            'card_last_four' => $lastFour,
+            'expiry_month' => $data['expiryMonth'] ?? null,
+            'expiry_year' => $data['expiryYear'] ?? null,
+            'spending_limits_amount' => $spendingLimits['amount'] ?? null,
+            'spending_limits_interval' => $spendingLimits['interval'] ?? null,
+            'spending_controls' => $data['spendingControls'] ?? null,
+            'is_2fa_enrolled' => $data['is2FAEnrolled'] ?? false,
+            'is_default_pin_changed' => $data['isDefaultPINChanged'] ?? false,
+            'is_disposable' => $data['disposable'] ?? false,
+            'raw_response' => $response,
+            'metadata' => array_merge($metadata, [
+                'finalized_at' => now()->toIso8601String(),
+                'quidax' => $context['quidax'] ?? data_get($transaction->metadata, 'quidax'),
+            ]),
+        ]);
+
+        $txMeta = is_array($transaction->metadata) ? $transaction->metadata : [];
+        $transaction->update([
+            'transaction_status' => 'approved',
+            'provider_card_id' => $card->card_provider_id,
+            'provider_transaction_id' => data_get($response, 'data._id'),
+            'metadata' => array_merge($txMeta, [
+                'finalized_at' => now()->toIso8601String(),
+                'provider_response' => $response,
+            ]),
+        ]);
+
+        if ($escrow) {
+            $escrow->update([
+                'status' => 'completed',
+                'master_account_reference' => data_get($transaction->metadata, 'quidax.merchant_reference'),
+            ]);
+        }
+
+        $this->sendNotification((int) $card->user_id, 'CRYPTO_CARD_CREATION_SUCCESS', [
+            'card_id' => $card->id,
+            'card' => $card->card_last_four ?? $card->masked_pan ?? '****',
+            'type' => $card->card_type,
+            'brand' => $card->card_brand,
+            'status' => 'Active',
+            'provider' => ucfirst((string) $card->card_provider),
+        ]);
+
+        Log::info('Sudo card creation finalized.', [
+            'card_id' => $card->id,
+            'provider_card_id' => $card->card_provider_id,
+            'user_id' => $card->user_id,
+        ]);
+
+        return [
+            'success' => true,
+            'message' => 'Card created successfully.',
+            'data' => ['card' => $card->fresh()],
+        ];
+    }
+
+    /**
+     * Mark pending creation failed, reverse USDT to the user, and notify.
+     */
+    public function failPendingCardCreation(
+        CryptoCardsModel $card,
+        CryptoCardTransactions $transaction,
+        ?CryptoCardEscrow $escrow,
+        string $reason,
+        array $context = []
+    ): void {
+        if (in_array(strtolower((string) $card->card_status), ['active', 'failed', 'cancelled'], true)
+            && strtolower((string) $transaction->transaction_status) === 'failed') {
+            return;
+        }
+
+        $charge = $context['charge']
+            ?? data_get($transaction->metadata, 'charge')
+            ?? data_get($card->metadata, 'charge')
+            ?? [];
+
+        $this->refundIssuanceUsdt((int) $card->user_id, is_array($charge) ? $charge : []);
+
+        $cardMeta = is_array($card->metadata) ? $card->metadata : [];
+        $card->update([
+            'card_status' => 'failed',
+            'metadata' => array_merge($cardMeta, [
+                'failure_reason' => $reason,
+                'failed_at' => now()->toIso8601String(),
+            ]),
+        ]);
+
+        $txMeta = is_array($transaction->metadata) ? $transaction->metadata : [];
+        $transaction->update([
+            'transaction_status' => 'failed',
+            'metadata' => array_merge($txMeta, [
+                'failure_reason' => $reason,
+                'failed_at' => now()->toIso8601String(),
+            ]),
+        ]);
+
+        if ($escrow) {
+            $escrow->update(['status' => 'failed']);
+        }
+
+        $this->sendNotification((int) $card->user_id, 'CRYPTO_CARD_CREATION_FAILED', [
+            'card_id' => $card->id,
+            'status' => 'Failed',
+            'reason' => $reason,
+            'provider' => ucfirst((string) $card->card_provider),
+        ]);
+
+        Log::warning('Sudo card creation failed and USDT refund attempted.', [
+            'card_id' => $card->id,
+            'user_id' => $card->user_id,
+            'reason' => $reason,
+        ]);
+    }
+
+    /**
+     * Reverse issuance USDT: Quidax escrow release + local USDT mirror credit.
+     *
+     * @param  array<string, mixed>  $charge
+     */
+    public function refundIssuanceUsdt(int $userId, array $charge): void
+    {
+        if (empty($charge['charged']) || empty($charge['usdt_amount'])) {
+            return;
+        }
+
+        $user = User::find($userId);
+        if (! $user) {
+            return;
+        }
+
+        $usdtAmount = (string) $charge['usdt_amount'];
+        $originalRef = (string) ($charge['reference'] ?? 'unknown');
+
+        try {
+            if (($charge['escrow_deducted'] ?? false) && $user->quidax_id) {
+                $quidax = app(QuidaxService::class);
+                $release = $quidax->releaseFromEscrow(
+                    (string) $user->quidax_id,
+                    $usdtAmount,
+                    'usdt',
+                    'CARD-FEE-REFUND-' . $originalRef,
+                    'refund'
+                );
+
+                Log::info('Card issuance Quidax escrow release attempted.', [
+                    'user_id' => $userId,
+                    'amount' => $usdtAmount,
+                    'reference' => $originalRef,
+                    'status' => $release['status'] ?? null,
+                    'message' => $release['message'] ?? null,
+                ]);
+            }
+
+            $localWallet = \App\Models\UserWallet::where('user_id', $user->id)
+                ->where(function ($query) {
+                    $query->where('currency_code', 'USDT')
+                        ->orWhere('currency_code', 'usdt')
+                        ->orWhere('quote_currency_code', 'USDT')
+                        ->orWhere('quote_currency_code', 'usdt')
+                        ->orWhereHas('currency', fn ($c) => $c->where('code', 'USDT')->orWhere('code', 'usdt'));
+                })
+                ->first();
+
+            if ($localWallet) {
+                $localWallet->balance = (float) bcadd((string) $localWallet->balance, $usdtAmount, 8);
+                $localWallet->save();
+            }
+        } catch (Throwable $e) {
+            Log::error('Card issuance USDT refund failed.', [
+                'user_id' => $userId,
+                'charge' => $charge,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
 }

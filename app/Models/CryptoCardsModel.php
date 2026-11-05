@@ -16,6 +16,7 @@ class CryptoCardsModel extends Model
     protected $fillable = [
         // Local ownership
         'user_id',
+        'card_holder_id',
 
         // Provider identification
         'card_provider',

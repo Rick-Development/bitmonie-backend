@@ -76,8 +76,11 @@ class ProcessQuidaxOfframpForCardFunding implements ShouldQueue
             'event_log_id' => $this->eventLogId,
         ]);
 
+        $postAction = null; // create_success | create_failure | fund_success | fund_failure
+        $escrow = null;
+
         try {
-            DB::transaction(function () use (&$transaction, $status) {
+            DB::transaction(function () use (&$transaction, &$escrow, &$postAction, $status) {
                 $transaction = CryptoCardTransactions::query()
                     ->with(['card'])
                     ->lockForUpdate()
@@ -139,9 +142,18 @@ class ProcessQuidaxOfframpForCardFunding implements ShouldQueue
                         'transaction_id' => $transaction->id,
                         'merchant_reference' => $this->merchantReference,
                         'provider_status' => $status,
+                        'transaction_type' => $transaction->transaction_type,
                     ]);
 
-                    $this->completeFunding($transaction, $escrow);
+                    if ($this->isCardCreationTransaction($transaction)) {
+                        // Persist Quidax settlement metadata only; Sudo HTTP runs after commit.
+                        $this->stampQuidaxSuccessMetadata($transaction);
+                        $postAction = 'create_success';
+                    } else {
+                        $this->completeFunding($transaction, $escrow);
+                        $postAction = 'fund_success';
+                    }
+
                     return;
                 }
 
@@ -150,9 +162,16 @@ class ProcessQuidaxOfframpForCardFunding implements ShouldQueue
                         'transaction_id' => $transaction->id,
                         'merchant_reference' => $this->merchantReference,
                         'provider_status' => $status,
+                        'transaction_type' => $transaction->transaction_type,
                     ]);
 
-                    $this->failFunding($transaction, $escrow);
+                    if ($this->isCardCreationTransaction($transaction)) {
+                        $postAction = 'create_failure';
+                    } else {
+                        $this->failFunding($transaction, $escrow);
+                        $postAction = 'fund_failure';
+                    }
+
                     return;
                 }
 
@@ -170,12 +189,21 @@ class ProcessQuidaxOfframpForCardFunding implements ShouldQueue
             });
 
             $transaction?->refresh();
+            $escrow = $escrow
+                ? $escrow->fresh()
+                : ($transaction
+                    ? CryptoCardEscrow::where('crypto_card_transaction_id', $transaction->id)->first()
+                    : null);
 
             if (!$transaction) {
                 return;
             }
 
-            if ($this->isSuccessfulStatus($status)) {
+            if ($postAction === 'create_success') {
+                $this->completeCardCreation($transaction, $escrow);
+            } elseif ($postAction === 'create_failure') {
+                $this->failCardCreation($transaction, $escrow);
+            } elseif ($postAction === 'fund_success') {
                 try {
                     $this->sendSuccessNotification($transaction);
                 } catch (Throwable $e) {
@@ -185,7 +213,7 @@ class ProcessQuidaxOfframpForCardFunding implements ShouldQueue
                         'error' => $e->getMessage(),
                     ]);
                 }
-            } elseif ($this->isFailedStatus($status)) {
+            } elseif ($postAction === 'fund_failure') {
                 try {
                     $this->sendFailureNotification($transaction);
                 } catch (Throwable $e) {
@@ -217,6 +245,102 @@ class ProcessQuidaxOfframpForCardFunding implements ShouldQueue
 
             throw $e;
         }
+    }
+
+    protected function isCardCreationTransaction(CryptoCardTransactions $transaction): bool
+    {
+        $type = strtolower((string) $transaction->transaction_type);
+        $purpose = strtolower((string) data_get($transaction->metadata, 'purpose', ''));
+
+        return $type === 'issuance' || $purpose === 'card_creation';
+    }
+
+    protected function stampQuidaxSuccessMetadata(CryptoCardTransactions $transaction): void
+    {
+        $metadata = $this->metadata($transaction);
+        $metadata['quidax_webhook'] = $this->sanitizeWebhookData($this->data);
+        $metadata['quidax'] = array_merge(
+            is_array($metadata['quidax'] ?? null) ? $metadata['quidax'] : [],
+            [
+                'merchant_reference' => $this->merchantReference,
+                'event' => $this->eventName,
+                'provider_status' => $this->firstDataValue($this->data, ['status', 'state', 'event_status']),
+                'settled_at' => now()->toIso8601String(),
+            ]
+        );
+        $transaction->update(['metadata' => $metadata]);
+    }
+
+    /**
+     * After USDT→NGN settles into Sudo's bank: create the card at Sudo.
+     * Runs outside the DB lock so provider HTTP is not held in a transaction.
+     */
+    protected function completeCardCreation(
+        CryptoCardTransactions $transaction,
+        ?CryptoCardEscrow $escrow
+    ): void {
+        $card = $transaction->relationLoaded('card')
+            ? $transaction->card
+            : $transaction->card()->first();
+
+        if (! $card) {
+            throw new \RuntimeException(
+                "Card not found for issuance transaction {$transaction->id}."
+            );
+        }
+
+        $metadata = $this->metadata($transaction);
+
+        // Offramp succeeded — treat as charged for refund path if Sudo create fails.
+        $charge = is_array(data_get($metadata, 'charge')) ? data_get($metadata, 'charge') : [];
+        $charge['charged'] = true;
+        $charge['escrow_deducted'] = true;
+        $charge['usdt_amount'] = $charge['usdt_amount'] ?? (string) $transaction->amount;
+
+        /** @var \App\Services\CryptoCardService $cards */
+        $cards = app(\App\Services\CryptoCardService::class);
+        $result = $cards->finalizePendingCardCreation($card, $transaction->fresh(), $escrow, [
+            'create_payload' => data_get($metadata, 'create_payload', []),
+            'charge' => $charge,
+            'quidax' => $metadata['quidax'] ?? [],
+        ]);
+
+        if (! ($result['success'] ?? false)) {
+            throw new \RuntimeException($result['message'] ?? 'Sudo card create failed after offramp.');
+        }
+
+        $this->log('info', 'Card creation completed after Quidax settlement.', [
+            'transaction_id' => $transaction->id,
+            'card_id' => $card->id,
+            'merchant_reference' => $this->merchantReference,
+        ]);
+    }
+
+    protected function failCardCreation(
+        CryptoCardTransactions $transaction,
+        ?CryptoCardEscrow $escrow
+    ): void {
+        $card = $transaction->card;
+        if (! $card) {
+            $this->failFunding($transaction, $escrow);
+
+            return;
+        }
+
+        $reason = $this->firstDataValue($this->data, [
+            'reason', 'failure_reason', 'reject_reason', 'message', 'error',
+        ]) ?: 'Quidax USDT→fiat settlement failed for card creation.';
+
+        $charge = data_get($transaction->metadata, 'charge', []);
+        // Offramp failed before settlement — user USDT typically not taken; still attempt local restore if any.
+        $charge = is_array($charge) ? $charge : [];
+        $charge['charged'] = (bool) ($charge['charged'] ?? false);
+
+        /** @var \App\Services\CryptoCardService $cards */
+        $cards = app(\App\Services\CryptoCardService::class);
+        $cards->failPendingCardCreation($card, $transaction, $escrow, (string) $reason, [
+            'charge' => $charge,
+        ]);
     }
 
     protected function completeFunding(
