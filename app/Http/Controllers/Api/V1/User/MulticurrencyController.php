@@ -32,8 +32,6 @@ class MulticurrencyController extends Controller
                 'enabled' => $this->walletService->supportedCurrencies(),
                 'provider_also_offers' => [
                     ['code' => 'USD', 'name' => 'US Dollar', 'status' => 'not_enabled'],
-                    ['code' => 'EUR', 'name' => 'Euro', 'status' => 'not_enabled'],
-                    ['code' => 'GBP', 'name' => 'British Pound', 'status' => 'not_enabled'],
                 ],
             ],
         ]);
@@ -71,7 +69,7 @@ class MulticurrencyController extends Controller
     {
         $currency = strtoupper($currency);
 
-        if (! in_array($currency, ['NGN', 'GHS', 'KES', 'TZS'], true)) {
+        if (! in_array($currency, $this->walletService->enabledCurrencyCodes(), true)) {
             return response()->json([
                 'status' => false,
                 'message' => 'Unsupported currency.',
@@ -114,12 +112,7 @@ class MulticurrencyController extends Controller
                 'required',
                 'string',
                 'size:3',
-                Rule::in([
-                    'NGN',
-                    'GHS',
-                    'KES',
-                    'TZS',
-                ]),
+                Rule::in($this->walletService->enabledCurrencyCodes()),
             ],
 
             'account_type' => [
@@ -130,13 +123,39 @@ class MulticurrencyController extends Controller
                     'corporate',
                 ]),
             ],
+
+            // Foreign-currency (EUR/GBP) supporting docs + KYC extras
+            'means_of_id' => ['nullable'],
+            'utility_bill' => ['nullable', 'string'],
+            'bank_statement' => ['nullable', 'string'],
+            'birth_date' => ['nullable', 'date'],
+            'nationality' => ['nullable', 'string', 'size:2'],
+            'email' => ['nullable', 'email'],
+            'address' => ['nullable', 'array'],
+            'address.country' => ['nullable', 'string', 'size:2'],
+            'address.country_of_residence' => ['nullable', 'string', 'size:2'],
+            'address.state' => ['nullable', 'string'],
+            'address.city' => ['nullable', 'string'],
+            'address.street' => ['nullable', 'string'],
+            'address.number' => ['nullable', 'string'],
+            'address.zip' => ['nullable', 'string'],
+            'phone' => ['nullable', 'string'],
+            'employment_status' => ['nullable', 'string'],
+            'occupation' => ['nullable', 'string'],
+            'source_of_income' => ['nullable', 'string'],
+            'account_designation' => ['nullable', 'string'],
+            'income_band' => ['nullable'],
+            'document' => ['nullable', 'array'],
+            'tax_country' => ['nullable', 'string', 'size:2'],
+            'tax_number' => ['nullable', 'string'],
         ]);
 
         try {
             $wallet = $this->walletService->createWallet(
                 user: $request->user(),
                 currency: strtoupper($validated['currency']),
-                accountType: $validated['account_type'] ?? 'individual'
+                accountType: $validated['account_type'] ?? 'individual',
+                options: collect($validated)->except(['currency', 'account_type'])->all()
             );
 
             return response()->json([
@@ -194,12 +213,7 @@ class MulticurrencyController extends Controller
     ): JsonResponse {
         $currency = strtoupper($currency);
 
-        if (!in_array($currency, [
-            'NGN',
-            'GHS',
-            'KES',
-            'TZS',
-        ], true)) {
+        if (! in_array($currency, $this->walletService->enabledCurrencyCodes(), true)) {
             return response()->json([
                 'status' => false,
                 'message' => 'Unsupported currency.',
@@ -246,12 +260,7 @@ class MulticurrencyController extends Controller
     ): JsonResponse {
         $currency = strtoupper($currency);
 
-        if (!in_array($currency, [
-            'NGN',
-            'GHS',
-            'KES',
-            'TZS',
-        ], true)) {
+        if (! in_array($currency, $this->walletService->enabledCurrencyCodes(), true)) {
             return response()->json([
                 'status' => false,
                 'message' => 'Unsupported currency.',

@@ -34,13 +34,13 @@
                         <div class="row">
                             <div class="col-xl-6 col-lg-6 form-group">
                                 <label>{{ __("Monthly Interest Rate (%)") }}*</label>
-                                <input type="number" step="0.01" name="current_monthly_rate" class="form--control" value="{{ $settings->current_monthly_rate }}" required>
-                                <small class="text--info">{{ __("Standard monthly return rate") }}</small>
+                                <input type="number" step="0.01" min="0" max="100" name="current_monthly_rate" class="form--control" value="{{ $settings->current_monthly_rate }}" required>
+                                <small class="text--info">{{ __("Standard monthly return rate (0–100)") }}</small>
                             </div>
                             <div class="col-xl-6 col-lg-6 form-group">
                                 <label>{{ __("Base Vault APY (%)") }}*</label>
-                                <input type="number" step="0.01" name="base_apy" class="form--control" value="{{ $settings->base_apy ?? 15.00 }}" required>
-                                <small class="text--info">{{ __("Vault base APY e.g. 15.00") }}</small>
+                                <input type="number" step="0.01" min="0" max="1000" name="base_apy" class="form--control" value="{{ $settings->base_apy ?? 15.00 }}" required>
+                                <small class="text--info">{{ __("Vault base APY e.g. 15.00 (0–1000)") }}</small>
                             </div>
                             <div class="col-xl-6 col-lg-6 form-group">
                                 <label>{{ __("PowerBonus Multiplier (X)") }}*</label>

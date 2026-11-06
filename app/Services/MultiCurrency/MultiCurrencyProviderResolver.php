@@ -21,6 +21,9 @@ class MultiCurrencyProviderResolver
         'GHS' => 'fincra',
         'KES' => 'fincra',
         'TZS' => 'fincra',
+        'EUR' => 'fincra',
+        'GBP' => 'fincra',
+        'ZAR' => 'fincra',
     ];
 
     /**

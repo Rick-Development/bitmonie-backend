@@ -25,7 +25,16 @@ class MultiCurrencyWalletService
         'GHS',
         'KES',
         'TZS',
+        'EUR',
+        'GBP',
+        'ZAR',
     ];
+
+    /** @return list<string> */
+    public function enabledCurrencyCodes(): array
+    {
+        return $this->supportedCurrencies;
+    }
 
     public function __construct(
         protected MultiCurrencyProviderResolver $providerResolver
@@ -41,7 +50,8 @@ class MultiCurrencyWalletService
     public function createWallet(
         User $user,
         string $currency,
-        string $accountType = 'individual'
+        string $accountType = 'individual',
+        array $options = []
     ): mixed {
         $currency = strtoupper($currency);
 
@@ -61,7 +71,8 @@ class MultiCurrencyWalletService
         return DB::transaction(function () use (
             $user,
             $currency,
-            $accountType
+            $accountType,
+            $options
         ) {
 
             /*
@@ -79,6 +90,30 @@ class MultiCurrencyWalletService
                 return $existingWallet;
             }
 
+            // ZAR: Fincra has no permanent VA. Create a local balance wallet for
+            // conversions/payouts; collections stay on card/EFT pay-in rails.
+            if ($currency === 'ZAR') {
+                return MultiCurrencyWallet::create([
+                    'user_id' => $user->id,
+                    'currency' => 'ZAR',
+                    'account_type' => $accountType,
+                    'provider' => 'fincra',
+                    'virtual_account_number' => null,
+                    'provider_reference' => 'MCW-ZAR-' . $user->id . '-' . time(),
+                    'status' => 'active',
+                    'available_balance' => '0.00000000',
+                    'ledger_balance' => '0.00000000',
+                    'locked_balance' => '0.00000000',
+                    'can_receive' => false,
+                    'can_send' => true,
+                    'provider_metadata' => [
+                        'collections' => ['card', 'eft'],
+                        'virtual_account' => false,
+                        'note' => 'ZAR permanent virtual accounts are not offered by Fincra.',
+                    ],
+                ]);
+            }
+
             $provider = $this->providerResolver->resolve(
                 $currency
             );
@@ -88,7 +123,8 @@ class MultiCurrencyWalletService
                 $result = $provider->createVirtualAccount(
                     user: $user,
                     currency: $currency,
-                    accountType: $accountType
+                    accountType: $accountType,
+                    options: $options
                 );
 
                 /*
@@ -126,10 +162,7 @@ class MultiCurrencyWalletService
     }
 
     /**
-     * Currencies currently enabled for user-facing virtual accounts.
-     *
-     * Fincra also documents USD/EUR/GBP virtual accounts, but those require
-     * extra foreign-currency KYC/documents and are not enabled here yet.
+     * Currencies currently enabled for user-facing multicurrency wallets.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -142,6 +175,7 @@ class MultiCurrencyWalletService
                 'provider' => 'fincra',
                 'kyc' => ['firstName', 'lastName', 'bvn'],
                 'notes' => 'BVN required. Email optional.',
+                'virtual_account' => true,
             ],
             [
                 'code' => 'GHS',
@@ -149,6 +183,7 @@ class MultiCurrencyWalletService
                 'provider' => 'fincra',
                 'kyc' => ['firstName', 'lastName', 'email'],
                 'notes' => 'Email required. BVN not allowed.',
+                'virtual_account' => true,
             ],
             [
                 'code' => 'KES',
@@ -156,6 +191,7 @@ class MultiCurrencyWalletService
                 'provider' => 'fincra',
                 'kyc' => ['firstName', 'lastName'],
                 'notes' => 'Email and BVN are not allowed by Fincra.',
+                'virtual_account' => true,
             ],
             [
                 'code' => 'TZS',
@@ -163,6 +199,40 @@ class MultiCurrencyWalletService
                 'provider' => 'fincra',
                 'kyc' => ['firstName', 'lastName'],
                 'notes' => 'Email and BVN are not allowed by Fincra API validation.',
+                'virtual_account' => true,
+            ],
+            [
+                'code' => 'EUR',
+                'name' => 'Euro',
+                'provider' => 'fincra',
+                'kyc' => [
+                    'firstName', 'lastName', 'email', 'birthDate', 'nationality',
+                    'address', 'meansOfId', 'utilityBill', 'bankStatement',
+                ],
+                'notes' => 'Foreign-currency VA. Requires ID + proof of address documents. May stay pending until Fincra approves.',
+                'virtual_account' => true,
+                'kyc_type' => 'foreign',
+            ],
+            [
+                'code' => 'GBP',
+                'name' => 'British Pound',
+                'provider' => 'fincra',
+                'kyc' => [
+                    'firstName', 'lastName', 'email', 'birthDate', 'nationality',
+                    'address', 'meansOfId', 'utilityBill', 'bankStatement',
+                ],
+                'notes' => 'Foreign-currency VA. Requires ID + proof of address documents. May stay pending until Fincra approves.',
+                'virtual_account' => true,
+                'kyc_type' => 'foreign',
+            ],
+            [
+                'code' => 'ZAR',
+                'name' => 'South African Rand',
+                'provider' => 'fincra',
+                'kyc' => ['firstName', 'lastName', 'email'],
+                'notes' => 'Enabled for multicurrency balances, rates, banks and payouts. Permanent ZAR virtual accounts are not listed by Fincra; collections use card/EFT pay-in rails.',
+                'virtual_account' => false,
+                'collections' => ['card', 'eft'],
             ],
         ];
     }
@@ -576,9 +646,13 @@ protected function findUserWallet(
         'provider_reference'
     );
 
+    $status = strtolower((string) data_get($providerResponse, 'status', 'pending'));
+    $isPendingFcy = in_array(strtoupper($currency), ['EUR', 'GBP'], true)
+        && in_array($status, ['pending', 'reviewed'], true);
+
     if (
-        !is_string($virtualAccountNumber)
-        || trim($virtualAccountNumber) === ''
+        (! is_string($virtualAccountNumber) || trim($virtualAccountNumber) === '')
+        && ! $isPendingFcy
     ) {
         throw new RuntimeException(
             'Provider did not return a virtual account number.'
@@ -611,8 +685,9 @@ protected function findUserWallet(
                 'provider_business_id'
             ),
 
-        'virtual_account_number' =>
-            trim($virtualAccountNumber),
+        'virtual_account_number' => is_string($virtualAccountNumber)
+            ? trim($virtualAccountNumber)
+            : null,
 
         'account_name' =>
             data_get(

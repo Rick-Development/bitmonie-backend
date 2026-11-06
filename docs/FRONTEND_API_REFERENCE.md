@@ -455,29 +455,44 @@ Auth: Bearer token required.
 
 ### Enabled currencies
 
-| Code  | Name               | KYC sent to Fincra                              |
-| ----- | ------------------ | ----------------------------------------------- |
-| `NGN` | Nigerian Naira     | `firstName`, `lastName`, `bvn` (email optional) |
-| `GHS` | Ghanaian Cedi      | `firstName`, `lastName`, `email`                |
-| `KES` | Kenyan Shilling    | `firstName`, `lastName` only                    |
-| `TZS` | Tanzanian Shilling | `firstName`, `lastName` only                    |
+| Code  | Name               | KYC / notes                                                              |
+| ----- | ------------------ | ------------------------------------------------------------------------ |
+| `NGN` | Nigerian Naira     | `firstName`, `lastName`, `bvn` (email optional)                          |
+| `GHS` | Ghanaian Cedi      | `firstName`, `lastName`, `email`                                         |
+| `KES` | Kenyan Shilling    | `firstName`, `lastName` only; merchant must be KES-VA onboarded at Fincra |
+| `TZS` | Tanzanian Shilling | `firstName`, `lastName` only                                             |
+| `EUR` | Euro               | Foreign KYC + `means_of_id`, `utility_bill`, `bank_statement`, address   |
+| `GBP` | British Pound      | Same foreign KYC as EUR                                                  |
+| `ZAR` | South African Rand | Local balance wallet (no permanent VA). Collections via card/EFT         |
 
-Fincra also documents `USD`, `EUR`, `GBP` virtual accounts, but those are **not enabled** yet (extra foreign KYC).
+`USD` remains listed under `provider_also_offers` as `not_enabled`.
 
 > Important: For **KES/TZS**, do not send `email` or `bvn`. Fincra returns `422 KYCInformation.email is not allowed`.
 >
 > `phoneNumber` is optional. Bitmonie only forwards it when the user's phone country matches the wallet currency (`GHS=+233`, `KES=+254`, `TZS=+255`). A Nigerian `+234` number is **never** sent for KES/TZS/GHS (that caused `422 phoneNumber must be a valid phone number for country`).
+>
+> **KES banks:** `GET /banks?currency=KES&country=KE` (optional `payment_destination=mobile_money_wallet`). Failures now return the upstream Fincra message instead of a generic error.
 
 ### Endpoints
 
 - `GET /currencies` — enabled currencies + provider-only offers
 - `GET /balances` — all wallet balances for the user
 - `GET /wallets` — list wallets (includes balances)
-- `POST /wallets` — create wallet `{ "currency": "KES", "account_type": "individual" }` (no phone/email/bvn required from FE for KES/TZS)
+- `POST /wallets` — create wallet `{ "currency": "KES", "account_type": "individual" }` (no phone/email/bvn required from FE for KES/TZS; EUR/GBP need docs)
 - `GET /wallets/{currency}` — one wallet with balances
 - `GET /wallets/{currency}/balance` — one currency balance
 - `GET /wallets/{currency}/collections` — deposits into that VA
 - `GET /rates`, `GET /banks`, `POST /quotes`, `POST /payin`, `POST /transfers/wallet`, `POST /payouts/bank`, `POST /conversions`
+
+### Referral withdrawals
+
+Base path: `/api/user/referral`
+
+- `GET /info` and `GET /balance` include `wallet.withdrawal_methods` (`bank` + `crypto`/USDT).
+- `POST /withdraw`:
+  - Bank: `{ "method": "bank", "amount": 2000, "bank_name": "...", "account_number": "...", "account_name": "..." }`
+  - Crypto: `{ "method": "crypto", "amount": 2000, "crypto_currency": "USDT", "network": "TRC20", "wallet_address": "..." }`  
+    (`network`: `TRC20` \| `ERC20` \| `BEP20`). Admin-approved, not auto-broadcast.
 
 ### Balance response shape
 

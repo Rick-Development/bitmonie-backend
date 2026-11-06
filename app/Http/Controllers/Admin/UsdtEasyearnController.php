@@ -147,9 +147,9 @@ class UsdtEasyearnController extends Controller
     public function updateSettings(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'current_monthly_rate' => 'required|numeric|min:1|max:50',
-            'base_apy' => 'nullable|numeric|min:1|max:100',
-            'power_bonus_multiplier' => 'nullable|numeric|min:1|max:10',
+            'current_monthly_rate' => 'required|numeric|min:0|max:100',
+            'base_apy' => 'nullable|numeric|min:0|max:1000',
+            'power_bonus_multiplier' => 'nullable|numeric|min:0|max:100',
             'min_investment' => 'required|numeric|min:1',
             'max_investment' => 'nullable|numeric|min:1',
             'payout_day' => 'required|integer|min:1|max:28',

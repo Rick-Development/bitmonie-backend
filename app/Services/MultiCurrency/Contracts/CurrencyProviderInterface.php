@@ -7,13 +7,16 @@ use App\Models\User;
 interface CurrencyProviderInterface
 {
     /**
-     * Create a local-currency virtual account
+     * Create a local/foreign-currency virtual account
      * for the authenticated user.
+     *
+     * @param  array<string, mixed>  $options  Extra KYC/documents for FCY (EUR/GBP) etc.
      */
     public function createVirtualAccount(
         User $user,
         string $currency,
-        string $accountType = 'individual'
+        string $accountType = 'individual',
+        array $options = []
     ): array;
 
     /**

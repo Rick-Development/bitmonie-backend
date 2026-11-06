@@ -43,7 +43,7 @@
                                 <th>@lang('User')</th>
                                 <th>@lang('Reference')</th>
                                 <th>@lang('Amount')</th>
-                                <th>@lang('Bank Details')</th>
+                                <th>@lang('Payout Details')</th>
                                 <th>@lang('Status')</th>
                                 <th>@lang('Submitted')</th>
                                 <th>@lang('Admin Note')</th>
@@ -66,10 +66,17 @@
                                     <td data-label="@lang('Amount')">
                                         <strong>{{ get_amount($withdrawal->amount) }} {{ $withdrawal->currency_code }}</strong>
                                     </td>
-                                    <td data-label="@lang('Bank Details')">
-                                        <strong>{{ $withdrawal->bank_name }}</strong>
-                                        <br>{{ $withdrawal->account_name }}
-                                        <br>{{ $withdrawal->account_number }}
+                                    <td data-label="@lang('Payout Details')">
+                                        @if(($withdrawal->method ?? 'bank') === 'crypto')
+                                            <span class="badge badge--info">@lang('Crypto')</span>
+                                            <br><strong>{{ $withdrawal->crypto_currency }} / {{ $withdrawal->network }}</strong>
+                                            <br><small>{{ $withdrawal->wallet_address }}</small>
+                                        @else
+                                            <span class="badge badge--dark">@lang('Bank')</span>
+                                            <br><strong>{{ $withdrawal->bank_name }}</strong>
+                                            <br>{{ $withdrawal->account_name }}
+                                            <br>{{ $withdrawal->account_number }}
+                                        @endif
                                     </td>
                                     <td data-label="@lang('Status')">
                                         @if($withdrawal->status === 'pending')

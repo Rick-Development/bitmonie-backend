@@ -32,6 +32,38 @@ class ReferralWalletService
             'completed_withdrawals' => (float) $metrics['completed_withdrawals'],
             'ledger_balance' => (float) $metrics['ledger_balance'],
             'wallet_balance' => (float) $metrics['wallet_balance'],
+            'withdrawal_methods' => $this->withdrawalMethods(),
+            'min_withdrawal_amount' => (float) config('referral_wallet.min_withdrawal_amount', 1000),
+            'max_withdrawal_amount' => config('referral_wallet.max_withdrawal_amount') !== null
+                ? (float) config('referral_wallet.max_withdrawal_amount')
+                : null,
+        ];
+    }
+
+    /**
+     * Methods the mobile app can offer for referral payouts.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function withdrawalMethods(): array
+    {
+        return [
+            [
+                'method' => 'bank',
+                'label' => 'Bank Transfer',
+                'enabled' => true,
+                'currency' => $this->currency(),
+                'required_fields' => ['amount', 'bank_name', 'account_number', 'account_name'],
+            ],
+            [
+                'method' => 'crypto',
+                'label' => 'Crypto Wallet',
+                'enabled' => true,
+                'currencies' => ['USDT'],
+                'networks' => ['TRC20', 'ERC20', 'BEP20'],
+                'required_fields' => ['amount', 'crypto_currency', 'network', 'wallet_address'],
+                'notes' => 'Submitted for admin review, then paid out to the supplied address.',
+            ],
         ];
     }
 
@@ -162,17 +194,25 @@ class ReferralWalletService
     public function requestWithdrawal(User $user, array $payload): WalletWithdrawalRequest
     {
         return DB::transaction(function () use ($user, $payload) {
+            $method = strtolower((string) ($payload['method'] ?? 'bank'));
+            if (! in_array($method, ['bank', 'crypto'], true)) {
+                throw new RuntimeException('Unsupported withdrawal method. Use bank or crypto.');
+            }
+
             $amount = $this->normalizeAmount((string) $payload['amount']);
             $wallet = $this->getWallet($user, true);
             $metrics = $this->getMetrics($user, $wallet, true);
 
             $this->validateWithdrawalAmount($amount, $metrics['available']);
 
+            $destination = $this->normalizeWithdrawalDestination($method, $payload);
+
             $reference = $this->generateReference('RWD');
 
             WalletService::debitToReserve($wallet->id, $amount, $reference, [
                 'type' => 'referral_withdrawal_request',
                 'description' => 'Referral wallet withdrawal request created',
+                'method' => $method,
             ]);
 
             $ledger = WalletLedger::create([
@@ -186,12 +226,10 @@ class ReferralWalletService
                 'pending_before' => $metrics['pending'],
                 'pending_after' => $this->add($metrics['pending'], $amount),
                 'reference' => $reference,
-                'description' => 'Withdrawal request submitted',
-                'metadata' => [
-                    'bank_name' => $payload['bank_name'],
-                    'account_number' => $payload['account_number'],
-                    'account_name' => $payload['account_name'],
-                ],
+                'description' => $method === 'crypto'
+                    ? 'Crypto withdrawal request submitted'
+                    : 'Withdrawal request submitted',
+                'metadata' => $destination,
                 'transaction_at' => now(),
             ]);
 
@@ -201,12 +239,65 @@ class ReferralWalletService
                 'reference' => $reference,
                 'amount' => $amount,
                 'currency_code' => $this->currency(),
-                'bank_name' => $payload['bank_name'],
-                'account_number' => $payload['account_number'],
-                'account_name' => $payload['account_name'],
+                'method' => $method,
+                'crypto_currency' => $destination['crypto_currency'] ?? null,
+                'network' => $destination['network'] ?? null,
+                'wallet_address' => $destination['wallet_address'] ?? null,
+                // Keep legacy bank columns populated for admin UI / NOT NULL constraints.
+                'bank_name' => $destination['bank_name'],
+                'account_number' => $destination['account_number'],
+                'account_name' => $destination['account_name'],
                 'status' => 'pending',
             ])->load(['ledger', 'user']);
         });
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    protected function normalizeWithdrawalDestination(string $method, array $payload): array
+    {
+        if ($method === 'crypto') {
+            $crypto = strtoupper((string) ($payload['crypto_currency'] ?? 'USDT'));
+            $network = strtoupper((string) ($payload['network'] ?? ''));
+            $address = trim((string) ($payload['wallet_address'] ?? ''));
+
+            if (! in_array($crypto, ['USDT'], true)) {
+                throw new RuntimeException('Only USDT crypto withdrawals are supported for now.');
+            }
+            if (! in_array($network, ['TRC20', 'ERC20', 'BEP20'], true)) {
+                throw new RuntimeException('Network must be one of TRC20, ERC20, BEP20.');
+            }
+            if ($address === '' || strlen($address) < 10) {
+                throw new RuntimeException('A valid crypto wallet address is required.');
+            }
+
+            return [
+                'method' => 'crypto',
+                'crypto_currency' => $crypto,
+                'network' => $network,
+                'wallet_address' => $address,
+                'bank_name' => 'CRYPTO',
+                'account_number' => substr($address, 0, 30),
+                'account_name' => "{$crypto}/{$network}",
+            ];
+        }
+
+        $bankName = trim((string) ($payload['bank_name'] ?? ''));
+        $accountNumber = trim((string) ($payload['account_number'] ?? ''));
+        $accountName = trim((string) ($payload['account_name'] ?? ''));
+
+        if ($bankName === '' || $accountNumber === '' || $accountName === '') {
+            throw new RuntimeException('bank_name, account_number and account_name are required for bank withdrawals.');
+        }
+
+        return [
+            'method' => 'bank',
+            'bank_name' => $bankName,
+            'account_number' => $accountNumber,
+            'account_name' => $accountName,
+        ];
     }
 
     public function approveWithdrawal(int $withdrawalRequestId, ?Admin $admin = null, ?string $note = null): WalletWithdrawalRequest
@@ -312,9 +403,13 @@ class ReferralWalletService
                     'transaction_at' => optional($entry->transaction_at)->format('Y-m-d H:i:s'),
                     'referred_user' => $entry->referral?->referred?->username,
                     'withdrawal' => $entry->withdrawalRequest ? [
+                        'method' => $entry->withdrawalRequest->method ?? 'bank',
                         'bank_name' => $entry->withdrawalRequest->bank_name,
                         'account_number' => $entry->withdrawalRequest->account_number,
                         'account_name' => $entry->withdrawalRequest->account_name,
+                        'crypto_currency' => $entry->withdrawalRequest->crypto_currency,
+                        'network' => $entry->withdrawalRequest->network,
+                        'wallet_address' => $entry->withdrawalRequest->wallet_address,
                         'admin_note' => $entry->withdrawalRequest->admin_note,
                     ] : null,
                 ];

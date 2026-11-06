@@ -24,6 +24,9 @@ class FincraService implements CurrencyProviderInterface
         'GHS',
         'KES',
         'TZS',
+        'EUR',
+        'GBP',
+        'ZAR',
     ];
 
     /**
@@ -117,11 +120,18 @@ class FincraService implements CurrencyProviderInterface
 public function createVirtualAccount(
     User $user,
     string $currency,
-    string $accountType = 'individual'
+    string $accountType = 'individual',
+    array $options = []
 ): array {
     $currency = strtoupper(trim($currency));
 
     $this->validateCurrency($currency);
+
+    if ($currency === 'ZAR') {
+        throw new RuntimeException(
+            'ZAR permanent virtual accounts are not available on Fincra. ZAR is enabled for balances, rates, banks and payouts; fund via card/EFT pay-in.'
+        );
+    }
 
     $accountType = strtolower(trim($accountType));
 
@@ -142,14 +152,15 @@ public function createVirtualAccount(
     /*
      * Fincra KYC fields differ by currency (individual accounts):
      * - NGN: firstName, lastName, bvn (required); email optional
-     * - GHS: firstName, lastName, email (required)
-     * - KES: firstName, lastName only (email/bvn NOT allowed)
-     * - TZS: firstName, lastName only (email/bvn rejected by API)
+     * - GHS/ZAR-style: firstName, lastName, email (required)
+     * - KES/TZS: firstName, lastName only (email/bvn NOT allowed)
+     * - EUR/GBP: foreign KYC + supporting documents (meansOfId, utilityBill, bankStatement)
      */
     $kycInformation = $this->buildVirtualAccountKyc(
         $user,
         $currency,
-        $accountType
+        $accountType,
+        $options
     );
 
     $payload = [
@@ -158,6 +169,28 @@ public function createVirtualAccount(
         'KYCInformation' => $kycInformation,
         'merchantReference' => $merchantReference,
     ];
+
+    if (in_array($currency, ['EUR', 'GBP'], true)) {
+        foreach (['meansOfId', 'utilityBill', 'bankStatement', 'leaseAgreement', 'sourceOfFunds'] as $docKey) {
+            if (! empty($options[$docKey])) {
+                $payload[$docKey] = $options[$docKey];
+            }
+        }
+
+        foreach (['means_of_id' => 'meansOfId', 'utility_bill' => 'utilityBill', 'bank_statement' => 'bankStatement'] as $snake => $camel) {
+            if (! isset($payload[$camel]) && ! empty($options[$snake])) {
+                $payload[$camel] = $options[$snake];
+            }
+        }
+
+        foreach (['meansOfId', 'utilityBill', 'bankStatement'] as $requiredDoc) {
+            if (empty($payload[$requiredDoc])) {
+                throw new RuntimeException(
+                    "{$requiredDoc} is required to create a {$currency} virtual account."
+                );
+            }
+        }
+    }
 
     // phoneNumber is optional for GHS/KES/TZS, but when sent it MUST match
     // that currency's country. Nigerian (+234) numbers cause 422 for KES/TZS/GHS.
@@ -223,29 +256,23 @@ public function createVirtualAccount(
         'provider_account_id' =>
             data_get($data, '_id'),
 
+        // KES (and some other locals) may put accountNumber at the top level
+        // as well as under accountInformation — accept either.
         'virtual_account_number' =>
-            data_get(
-                $accountInformation,
-                'accountNumber'
-            ),
+            data_get($accountInformation, 'accountNumber')
+            ?? data_get($data, 'accountNumber'),
 
         'account_name' =>
-            data_get(
-                $accountInformation,
-                'accountName'
-            ),
+            data_get($accountInformation, 'accountName')
+            ?? data_get($data, 'accountName'),
 
         'bank_name' =>
-            data_get(
-                $accountInformation,
-                'bankName'
-            ),
+            data_get($accountInformation, 'bankName')
+            ?? data_get($data, 'bankName'),
 
         'bank_code' =>
-            data_get(
-                $accountInformation,
-                'bankCode'
-            ),
+            data_get($accountInformation, 'bankCode')
+            ?? data_get($data, 'bankCode'),
 
         'provider_wallet_number' =>
             data_get(
@@ -388,36 +415,52 @@ public function createVirtualAccount(
             $destination = null;
         }
 
-        if ($destination === null && $currency === 'NGN') {
-            $destination = 'bank_account';
-        }
-
-        $attempts = [];
+        // Build query variants. KES/GHS/TZS often fail when both currency+country
+        // are combined with bank_account; try mobile money and single-filter queries.
+        $destinations = [];
         if ($destination !== null) {
-            $attempts[] = $destination;
+            $destinations[] = $destination;
+        } elseif ($currency === 'NGN') {
+            $destinations[] = 'bank_account';
+        } elseif (in_array($currency, ['KES', 'GHS', 'TZS'], true)) {
+            $destinations = [null, 'mobile_money_wallet', 'bank_account'];
+        } elseif (in_array($currency, ['EUR', 'GBP', 'ZAR'], true)) {
+            $destinations = [null, 'bank_account'];
         } else {
-            // Unfiltered first, then explicit rails as fallback.
-            $attempts[] = null;
-            if (in_array($currency, ['KES', 'GHS', 'TZS'], true)) {
-                $attempts[] = 'mobile_money_wallet';
-                $attempts[] = 'bank_account';
-            }
+            $destinations[] = null;
         }
 
-        $lastError = null;
-        $attempts = array_values(array_unique($attempts, SORT_REGULAR));
-        $lastIndex = count($attempts) - 1;
-
-        foreach ($attempts as $index => $attempt) {
-            $query = [
+        $queryVariants = [];
+        foreach ($destinations as $dest) {
+            $queryVariants[] = array_filter([
                 'currency' => $currency,
                 'country' => $country,
-            ];
+                'paymentDestination' => $dest,
+            ], fn ($v) => $v !== null && $v !== '');
 
-            if ($attempt !== null) {
-                $query['paymentDestination'] = $attempt;
-            }
+            // Fallbacks: currency-only, then country-only.
+            $queryVariants[] = array_filter([
+                'currency' => $currency,
+                'paymentDestination' => $dest,
+            ], fn ($v) => $v !== null && $v !== '');
 
+            $queryVariants[] = array_filter([
+                'country' => $country,
+                'paymentDestination' => $dest,
+            ], fn ($v) => $v !== null && $v !== '');
+        }
+
+        // De-dupe identical query arrays.
+        $unique = [];
+        foreach ($queryVariants as $q) {
+            $key = json_encode($q);
+            $unique[$key] = $q;
+        }
+        $queryVariants = array_values($unique);
+        $lastIndex = count($queryVariants) - 1;
+        $lastError = null;
+
+        foreach ($queryVariants as $index => $query) {
             try {
                 $response = $this->get('/core/banks', $query);
                 $banks = data_get($response, 'data');
@@ -434,7 +477,7 @@ public function createVirtualAccount(
                         'message' => data_get($response, 'message', 'Banks fetched successfully'),
                         'currency' => $currency,
                         'country' => $country,
-                        'payment_destination' => $attempt,
+                        'payment_destination' => $query['paymentDestination'] ?? null,
                         'data' => array_values($banks),
                     ];
                 }
@@ -857,9 +900,10 @@ public function initiatePayin(
             $headers['x-business-id'] = $this->businessId;
         }
 
+        // Do NOT use asJson() here — it sets Content-Type: application/json on
+        // every request including GET /core/banks, which some Fincra edges reject.
         return Http::baseUrl($this->baseUrl)
             ->acceptJson()
-            ->asJson()
             ->withHeaders($headers)
             ->timeout($this->timeout)
             ->retry(
@@ -970,6 +1014,7 @@ public function initiatePayin(
             );
 
             $response = $this->client()
+                ->asJson()
                 ->post(
                     $endpoint,
                     $payload
@@ -1003,6 +1048,25 @@ public function initiatePayin(
         $body = $response->json();
 
         if ($response->successful()) {
+            // Some Fincra endpoints return HTTP 200 with success:false.
+            if (is_array($body) && array_key_exists('success', $body) && $body['success'] === false) {
+                $message = data_get($body, 'message')
+                    ?? data_get($body, 'error')
+                    ?? 'Fincra request was not successful.';
+
+                Log::channel($this->logChannel)
+                    ->error('Fincra API returned success=false.', [
+                        'method' => $method,
+                        'endpoint' => $endpoint,
+                        'status' => $response->status(),
+                        'response' => $body,
+                    ]);
+
+                throw new RuntimeException(
+                    "Fincra API error ({$response->status()}): " . $message
+                );
+            }
+
             return is_array($body)
                 ? $body
                 : [];
@@ -1012,6 +1076,14 @@ public function initiatePayin(
             data_get($body, 'message')
             ?? data_get($body, 'error')
             ?? $response->body();
+
+        // Prefer nested error details when present (common on 422 KYC failures).
+        $errors = data_get($body, 'error');
+        if (is_array($errors) && $errors !== []) {
+            $message = is_string(data_get($body, 'message'))
+                ? data_get($body, 'message') . ' ' . json_encode($errors)
+                : json_encode($errors);
+        }
 
         Log::channel($this->logChannel)
             ->error(
@@ -1062,7 +1134,8 @@ public function initiatePayin(
     protected function buildVirtualAccountKyc(
         User $user,
         string $currency,
-        string $accountType
+        string $accountType,
+        array $options = []
     ): array {
         $currency = strtoupper($currency);
         $accountType = strtolower($accountType);
@@ -1082,11 +1155,11 @@ public function initiatePayin(
 
             $kyc = ['businessName' => $businessName];
 
-            if ($currency === 'GHS') {
-                $email = trim((string) $user->email);
+            if (in_array($currency, ['GHS', 'EUR', 'GBP'], true)) {
+                $email = trim((string) ($options['email'] ?? $user->email));
                 if ($email === '') {
                     throw new RuntimeException(
-                        'Email is required to create a GHS corporate virtual account.'
+                        "Email is required to create a {$currency} corporate virtual account."
                     );
                 }
                 $kyc['email'] = $email;
@@ -1103,8 +1176,8 @@ public function initiatePayin(
             return $kyc;
         }
 
-        $firstName = trim((string) $user->firstname);
-        $lastName = trim((string) $user->lastname);
+        $firstName = trim((string) ($options['firstName'] ?? $options['first_name'] ?? $user->firstname));
+        $lastName = trim((string) ($options['lastName'] ?? $options['last_name'] ?? $user->lastname));
 
         if ($firstName === '' || $lastName === '') {
             throw new RuntimeException(
@@ -1139,7 +1212,96 @@ public function initiatePayin(
             return $kyc;
         }
 
+        if (in_array($currency, ['EUR', 'GBP'], true)) {
+            return array_merge($kyc, $this->buildForeignCurrencyKyc($user, $currency, $options));
+        }
+
         // KES / TZS: firstName + lastName only. Do not send email or bvn.
+        return $kyc;
+    }
+
+    /**
+     * Build Fincra foreign-currency (EUR/GBP) KYC payload.
+     *
+     * @param  array<string, mixed>  $options
+     * @return array<string, mixed>
+     */
+    protected function buildForeignCurrencyKyc(User $user, string $currency, array $options): array
+    {
+        $email = trim((string) ($options['email'] ?? $user->email));
+        if ($email === '') {
+            throw new RuntimeException("Email is required to create a {$currency} virtual account.");
+        }
+
+        $birthDate = (string) ($options['birthDate'] ?? $options['birth_date'] ?? $user->date_of_birth ?? $user->dob ?? '');
+        $nationality = strtoupper((string) ($options['nationality'] ?? $user->nationality ?? ''));
+        $address = $options['address'] ?? $options['KYCInformation']['address'] ?? null;
+
+        if ($birthDate === '') {
+            throw new RuntimeException("birthDate is required to create a {$currency} virtual account.");
+        }
+        if ($nationality === '' || strlen($nationality) !== 2) {
+            throw new RuntimeException("nationality (ISO-2) is required to create a {$currency} virtual account.");
+        }
+        if (! is_array($address)) {
+            throw new RuntimeException("address object is required to create a {$currency} virtual account.");
+        }
+
+        $requiredAddress = ['countryOfResidence', 'state', 'city', 'street', 'number', 'zip'];
+        foreach ($requiredAddress as $key) {
+            $alt = match ($key) {
+                'countryOfResidence' => $address['country'] ?? $address['country_of_residence'] ?? null,
+                default => $address[$key] ?? $address[Str::snake($key)] ?? null,
+            };
+            if ($key === 'countryOfResidence' && empty($address[$key]) && ! empty($alt)) {
+                $address['countryOfResidence'] = $alt;
+            }
+            if (empty($address[$key]) && $alt !== null) {
+                $address[$key] = $alt;
+            }
+            if (empty($address[$key])) {
+                throw new RuntimeException("address.{$key} is required to create a {$currency} virtual account.");
+            }
+        }
+
+        $kyc = [
+            'email' => $email,
+            'birthDate' => $birthDate,
+            'nationality' => $nationality,
+            'address' => [
+                'countryOfResidence' => strtoupper((string) $address['countryOfResidence']),
+                'state' => (string) $address['state'],
+                'city' => (string) $address['city'],
+                'street' => (string) $address['street'],
+                'number' => (string) $address['number'],
+                'zip' => (string) $address['zip'],
+            ],
+        ];
+
+        foreach ([
+            'taxCountry' => 'tax_country',
+            'taxNumber' => 'tax_number',
+            'phone' => 'phone',
+            'employmentStatus' => 'employment_status',
+            'occupation' => 'occupation',
+            'sourceOfIncome' => 'source_of_income',
+            'accountDesignation' => 'account_designation',
+            'incomeBand' => 'income_band',
+            'document' => 'document',
+        ] as $camel => $snake) {
+            $value = $options[$camel] ?? $options[$snake] ?? null;
+            if ($value !== null && $value !== '') {
+                $kyc[$camel] = $value;
+            }
+        }
+
+        if (empty($kyc['phone'])) {
+            $phone = $this->resolveInternationalPhone($user);
+            if ($phone) {
+                $kyc['phone'] = $phone;
+            }
+        }
+
         return $kyc;
     }
 
@@ -1190,6 +1352,9 @@ public function initiatePayin(
             'GHS' => '233',
             'KES' => '254',
             'TZS' => '255',
+            'ZAR' => '27',
+            'GBP' => '44',
+            // EUR spans many countries — omit unless caller supplies matching phone.
         ];
 
         if (! isset($dialCodes[$currency])) {

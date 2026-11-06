@@ -160,22 +160,36 @@ class ReferralController extends Controller
     /**
      * Create a withdrawal request from referral wallet
      * POST /api/user/referral/withdraw
+     *
+     * Bank:   { method: "bank", amount, bank_name, account_number, account_name }
+     * Crypto: { method: "crypto", amount, crypto_currency, network, wallet_address }
      */
     public function requestWithdrawal(Request $request)
     {
+        $method = strtolower((string) $request->input('method', 'bank'));
+        $request->merge(['method' => $method]);
+
         $request->validate([
             'amount' => 'required|numeric|min:0.00000001',
-            'bank_name' => 'required|string|max:150',
-            'account_number' => 'required|string|min:10|max:30',
-            'account_name' => 'required|string|max:150',
+            'method' => 'required|string|in:bank,crypto',
+            'bank_name' => 'required_if:method,bank|nullable|string|max:150',
+            'account_number' => 'required_if:method,bank|nullable|string|min:10|max:30',
+            'account_name' => 'required_if:method,bank|nullable|string|max:150',
+            'crypto_currency' => 'required_if:method,crypto|nullable|string|in:USDT,usdt',
+            'network' => 'required_if:method,crypto|nullable|string|in:TRC20,ERC20,BEP20,trc20,erc20,bep20',
+            'wallet_address' => 'required_if:method,crypto|nullable|string|min:10|max:255',
         ]);
 
         try {
             $withdrawal = $this->referralWalletService->requestWithdrawal(auth()->user(), $request->only([
                 'amount',
+                'method',
                 'bank_name',
                 'account_number',
                 'account_name',
+                'crypto_currency',
+                'network',
+                'wallet_address',
             ]));
 
             return Response::successResponse('Withdrawal request submitted successfully', [
@@ -185,9 +199,13 @@ class ReferralController extends Controller
                     'amount' => (float) $withdrawal->amount,
                     'currency' => $withdrawal->currency_code,
                     'status' => $withdrawal->status,
+                    'method' => $withdrawal->method ?? 'bank',
                     'bank_name' => $withdrawal->bank_name,
                     'account_number' => $withdrawal->account_number,
                     'account_name' => $withdrawal->account_name,
+                    'crypto_currency' => $withdrawal->crypto_currency,
+                    'network' => $withdrawal->network,
+                    'wallet_address' => $withdrawal->wallet_address,
                     'created_at' => optional($withdrawal->created_at)->format('Y-m-d H:i:s'),
                 ],
                 'wallet' => $this->referralWalletService->getBalanceSummary(auth()->user()),
