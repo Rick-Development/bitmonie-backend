@@ -154,6 +154,14 @@ Route::middleware('auth:api')->prefix('v1/savings')->group(function () {
         Route::post('withdraw', [\App\Http\Controllers\Api\Savings\SafeLockController::class, 'withdraw']);
         Route::post('break', [\App\Http\Controllers\Api\Savings\SafeLockController::class, 'break']);
         Route::get('history', [\App\Http\Controllers\Api\Savings\SafeLockController::class, 'history']);
+        // Optional auto-debit (also accepted nested under create as `autosave`)
+        Route::get('{id}/autosave', [\App\Http\Controllers\Api\Savings\SafeLockController::class, 'getAutosave'])->whereNumber('id');
+        Route::put('{id}/autosave', [\App\Http\Controllers\Api\Savings\SafeLockController::class, 'setAutosave'])->whereNumber('id');
+        Route::put('{id}/schedule', [\App\Http\Controllers\Api\Savings\SafeLockController::class, 'setAutosave'])->whereNumber('id');
+        Route::post('{id}/autosave/pause', [\App\Http\Controllers\Api\Savings\SafeLockController::class, 'pauseAutosave'])->whereNumber('id');
+        Route::post('{id}/autosave/resume', [\App\Http\Controllers\Api\Savings\SafeLockController::class, 'resumeAutosave'])->whereNumber('id');
+        Route::delete('{id}/autosave', [\App\Http\Controllers\Api\Savings\SafeLockController::class, 'cancelAutosave'])->whereNumber('id');
+        Route::delete('{id}/schedule', [\App\Http\Controllers\Api\Savings\SafeLockController::class, 'cancelAutosave'])->whereNumber('id');
     });
 
     // EduSave

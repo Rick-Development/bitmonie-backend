@@ -63,16 +63,29 @@ class SavingsMaintenance
     }
 
     /**
-     * Credit Flexi interest for calendar day $day (app timezone).
+     * Credit daily interest for Flexi, Auto Save, and Target pots for calendar
+     * day $day (app timezone).
+     *
      * Basis: money present for the WHOLE day (opening balance minus that day's
      * debits). Simple daily accrual, rate = APR/365, rounded DOWN to 2dp.
      * Idempotent per (account, day) through the unique entry reference.
      *
-     * @return array{accounts:int, interest:string, skipped:int}
+     * SafeLock keeps its own tenure-based accrual in ProcessDailyInterestJob.
+     *
+     * @return array{accounts:int, interest:string, skipped:int, by_product:array<string,int>}
      */
     public function accrueFlexiInterest(Carbon $day): array
     {
-        $out = ['accounts' => 0, 'interest' => '0.00', 'skipped' => 0];
+        $out = [
+            'accounts' => 0,
+            'interest' => '0.00',
+            'skipped' => 0,
+            'by_product' => [
+                SavingsAccount::FLEXI => 0,
+                SavingsAccount::AUTO => 0,
+                SavingsAccount::TARGET => 0,
+            ],
+        ];
         $settings = \App\Models\SavingsSetting::current();
         if (! $settings->flexi_interest_enabled) {
             return $out;
@@ -82,8 +95,15 @@ class SavingsMaintenance
         $apr = $settings->flexiApr();
         $start = Carbon::parse($day->toDateString(), $tz)->startOfDay()->utc();
 
-        SavingsAccount::where('product', SavingsAccount::FLEXI)->where('status', SavingsAccount::ACTIVE)
-            ->where('balance', '>', 0)->orderBy('id')->each(function (SavingsAccount $a) use (&$out, $start, $apr, $day) {
+        SavingsAccount::whereIn('product', [
+            SavingsAccount::FLEXI,
+            SavingsAccount::AUTO,
+            SavingsAccount::TARGET,
+        ])
+            ->where('status', SavingsAccount::ACTIVE)
+            ->where('balance', '>', 0)
+            ->orderBy('id')
+            ->each(function (SavingsAccount $a) use (&$out, $start, $apr, $day) {
                 $since = SavingsEntry::where('account_id', $a->id)->where('created_at', '>=', $start)->get();
                 $opening = Money::norm($a->balance);
                 $debitsToday = '0.00';
@@ -108,11 +128,22 @@ class SavingsMaintenance
                     return;
                 }
 
+                $label = SavingsCatalog::label($a->product);
                 $ref = 'INT-' . $a->id . '-' . $day->format('Ymd');
                 try {
-                    $r = $this->ledger->interest($a->user_id, $a->id, $interest, $ref, 'Flexi Save daily interest ' . $day->toDateString());
+                    $r = $this->ledger->interest(
+                        $a->user_id,
+                        $a->id,
+                        $interest,
+                        $ref,
+                        "{$label} daily interest " . $day->toDateString()
+                    );
                 } catch (\Throwable $e) {
-                    Log::error('savings.interest_failed', ['account_id' => $a->id, 'error' => $e->getMessage()]);
+                    Log::error('savings.interest_failed', [
+                        'account_id' => $a->id,
+                        'product' => $a->product,
+                        'error' => $e->getMessage(),
+                    ]);
 
                     return;
                 }
@@ -122,6 +153,7 @@ class SavingsMaintenance
                     return;
                 }
                 $out['accounts']++;
+                $out['by_product'][$a->product] = ($out['by_product'][$a->product] ?? 0) + 1;
                 $out['interest'] = Money::add($out['interest'], $interest);
             });
 

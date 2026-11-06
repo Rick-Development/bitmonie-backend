@@ -19896,7 +19896,7 @@
                     "Savings & Vaults"
                 ],
                 "summary": "Create a SafeLock",
-                "description": "Debits the NGN wallet immediately and locks the funds until maturity.\n\nThe amount is first transferred at the funding provider (SafeHaven). If any local step fails afterwards, the provider transfer is automatically reversed and the wallet is left unchanged. If the provider rejects the transfer, nothing is debited. Amount must be within the plan's `min_amount`/`max_amount`. Daily interest accrues to interest_accrued; current_balance = principal + accrued. Response fields include interest_earned_today and daily_interest. Nested autosave is supported.",
+                "description": "Debits the NGN wallet immediately and locks the funds until maturity.\n\nThe amount is first transferred at the funding provider (SafeHaven). If any local step fails afterwards, the provider transfer is automatically reversed and the wallet is left unchanged. If the provider rejects the transfer, nothing is debited. Amount must be within the plan's `min_amount`/`max_amount`. Daily interest accrues to interest_accrued; current_balance = principal + accrued. Response fields include interest_earned_today and daily_interest. Nested autosave is supported.\n\nOptional auto-debit: pass nested `autosave` on create, or manage later via PUT /safelock/{id}/autosave.",
                 "security": [
                     {
                         "bearerAuth": []
@@ -23035,6 +23035,407 @@
                                     "status": true,
                                     "message": "Referral earnings converted successfully",
                                     "data": {}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/savings/safelock/{id}/autosave": {
+            "get": {
+                "tags": [
+                    "Savings - SafeLock"
+                ],
+                "summary": "Get SafeLock auto-debit plan",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "status": true,
+                                    "message": "OK",
+                                    "data": {
+                                        "lock_id": 1,
+                                        "autosave_plan": {
+                                            "id": 9,
+                                            "mode": "scheduled",
+                                            "amount": "5000.00",
+                                            "frequency": "weekly",
+                                            "status": "active"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "tags": [
+                    "Savings - SafeLock"
+                ],
+                "summary": "Set or replace SafeLock auto-debit",
+                "description": "Optional recurring wallet debit into this SafeLock. Also accepted nested under POST /safelock/create as `autosave`. Alias: PUT /safelock/{id}/schedule.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "enabled": {
+                                        "type": "boolean",
+                                        "example": true
+                                    },
+                                    "mode": {
+                                        "type": "string",
+                                        "enum": [
+                                            "scheduled",
+                                            "percentage",
+                                            "both"
+                                        ],
+                                        "example": "scheduled"
+                                    },
+                                    "amount": {
+                                        "type": "number",
+                                        "example": 5000
+                                    },
+                                    "frequency": {
+                                        "type": "string",
+                                        "enum": [
+                                            "daily",
+                                            "weekly",
+                                            "monthly"
+                                        ],
+                                        "example": "daily"
+                                    },
+                                    "percentage": {
+                                        "type": "number"
+                                    },
+                                    "name": {
+                                        "type": "string"
+                                    },
+                                    "goal_amount": {
+                                        "type": "number"
+                                    },
+                                    "maturity_date": {
+                                        "type": "string",
+                                        "format": "date"
+                                    },
+                                    "autosave": {
+                                        "type": "object",
+                                        "description": "Optional nested alias of the same fields"
+                                    }
+                                }
+                            },
+                            "example": {
+                                "enabled": true,
+                                "mode": "scheduled",
+                                "amount": 5000,
+                                "frequency": "weekly"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "status": true,
+                                    "message": "SafeLock auto-debit saved.",
+                                    "data": {
+                                        "lock_id": 1,
+                                        "autosave_plan": {
+                                            "id": 9,
+                                            "status": "active"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "Savings - SafeLock"
+                ],
+                "summary": "Cancel SafeLock auto-debit",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "status": true,
+                                    "message": "SafeLock auto-debit cancelled.",
+                                    "data": {
+                                        "lock_id": 1
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/savings/safelock/{id}/autosave/pause": {
+            "post": {
+                "tags": [
+                    "Savings - SafeLock"
+                ],
+                "summary": "Pause SafeLock auto-debit",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "status": true,
+                                    "message": "SafeLock auto-debit paused.",
+                                    "data": {
+                                        "lock_id": 1
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/savings/safelock/{id}/autosave/resume": {
+            "post": {
+                "tags": [
+                    "Savings - SafeLock"
+                ],
+                "summary": "Resume SafeLock auto-debit",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "status": true,
+                                    "message": "SafeLock auto-debit resumed.",
+                                    "data": {
+                                        "lock_id": 1
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/savings/safelock/{id}/schedule": {
+            "put": {
+                "tags": [
+                    "Savings - SafeLock"
+                ],
+                "summary": "Set SafeLock schedule (alias of autosave)",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "enabled": {
+                                        "type": "boolean",
+                                        "example": true
+                                    },
+                                    "mode": {
+                                        "type": "string",
+                                        "enum": [
+                                            "scheduled",
+                                            "percentage",
+                                            "both"
+                                        ],
+                                        "example": "scheduled"
+                                    },
+                                    "amount": {
+                                        "type": "number",
+                                        "example": 5000
+                                    },
+                                    "frequency": {
+                                        "type": "string",
+                                        "enum": [
+                                            "daily",
+                                            "weekly",
+                                            "monthly"
+                                        ],
+                                        "example": "daily"
+                                    },
+                                    "percentage": {
+                                        "type": "number"
+                                    },
+                                    "name": {
+                                        "type": "string"
+                                    },
+                                    "goal_amount": {
+                                        "type": "number"
+                                    },
+                                    "maturity_date": {
+                                        "type": "string",
+                                        "format": "date"
+                                    },
+                                    "autosave": {
+                                        "type": "object",
+                                        "description": "Optional nested alias of the same fields"
+                                    }
+                                }
+                            },
+                            "example": {
+                                "enabled": true,
+                                "mode": "scheduled",
+                                "amount": 5000,
+                                "frequency": "weekly"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "status": true,
+                                    "message": "SafeLock auto-debit saved.",
+                                    "data": {
+                                        "lock_id": 1
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "Savings - SafeLock"
+                ],
+                "summary": "Cancel SafeLock schedule (alias of autosave)",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "status": true,
+                                    "message": "SafeLock auto-debit cancelled.",
+                                    "data": {
+                                        "lock_id": 1
+                                    }
                                 }
                             }
                         }

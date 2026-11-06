@@ -10,7 +10,7 @@ class AccrueFlexiInterest extends Command
 {
     protected $signature = 'savings:flexi-interest {--date= : Day to accrue (YYYY-MM-DD, default: yesterday)}';
 
-    protected $description = 'Credit idempotent daily Flexi Save interest';
+    protected $description = 'Credit idempotent daily interest for Flexi, Auto Save, and Target pots';
 
     public function handle(SavingsMaintenance $maintenance): int
     {

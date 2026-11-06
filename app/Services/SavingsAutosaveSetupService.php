@@ -179,6 +179,122 @@ class SavingsAutosaveSetupService
         ]);
     }
 
+    /**
+     * Find the active/paused autosave plan linked to a savings target.
+     */
+    public function findForTarget(User $user, Model $target, ?string $targetType = null): ?AutosavePlan
+    {
+        $plans = AutosavePlan::where('user_id', $user->id)
+            ->whereIn('status', [AutosavePlan::STATUS_ACTIVE, AutosavePlan::STATUS_PAUSED])
+            ->latest('id')
+            ->get();
+
+        foreach ($plans as $plan) {
+            $meta = is_array($plan->metadata) ? $plan->metadata : [];
+            $matchesModel = ($meta['target_model'] ?? null) === $target::class
+                || ($meta['target_model'] ?? null) === ltrim($target::class, '\\');
+            $matchesId = (string) ($meta['target_id'] ?? '') === (string) $target->getKey();
+            $matchesType = $targetType === null
+                || ($meta['target_type'] ?? null) === $targetType;
+
+            if ($matchesModel && $matchesId && $matchesType) {
+                return $plan;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Create or replace autosave for a target (SafeLock, EduSave, …).
+     */
+    public function upsertForTarget(
+        User $user,
+        Model $target,
+        string $targetType,
+        ?array $config = [],
+        array $defaults = []
+    ): ?AutosavePlan {
+        $config = $this->normalizeConfig($config);
+
+        $existing = $this->findForTarget($user, $target, $targetType);
+
+        if (array_key_exists('enabled', $config) && ! $this->truthy($config['enabled'])) {
+            if ($existing) {
+                return $this->autosaveService->cancelPlan($existing);
+            }
+
+            return null;
+        }
+
+        if (empty($config)) {
+            return $existing;
+        }
+
+        $this->validateConfig($config);
+
+        if ($existing) {
+            $mode = $config['mode'] ?? $existing->mode;
+            $maturityDate = $config['maturity_date']
+                ?? $this->parseMaturityDate($defaults['maturity_date'] ?? null)
+                ?? $existing->maturity_date;
+
+            return $this->autosaveService->updatePlan($existing, [
+                'name' => $config['name'] ?? $existing->name,
+                'mode' => $mode,
+                'amount' => $config['amount'] ?? $existing->amount,
+                'percentage' => $config['percentage'] ?? $existing->percentage,
+                'frequency' => $config['frequency'] ?? $existing->frequency,
+                'goal_amount' => $config['goal_amount'] ?? $existing->goal_amount,
+                'maturity_date' => $maturityDate,
+                'status' => AutosavePlan::STATUS_ACTIVE,
+                'metadata' => array_merge(is_array($existing->metadata) ? $existing->metadata : [], [
+                    'target_type' => $targetType,
+                    'target_model' => $target::class,
+                    'target_id' => $target->getKey(),
+                    'target_title' => $defaults['title'] ?? $target->title ?? $this->defaultName($targetType),
+                    'updated_from' => 'savings_option',
+                ]),
+            ]);
+        }
+
+        return $this->createForTarget($user, $target, $targetType, $config, $defaults);
+    }
+
+    public function pauseForTarget(User $user, Model $target, ?string $targetType = null): AutosavePlan
+    {
+        $plan = $this->findForTarget($user, $target, $targetType);
+        if (! $plan) {
+            throw new \InvalidArgumentException('No AutoSave plan found for this product.');
+        }
+
+        return $this->autosaveService->updatePlan($plan, [
+            'status' => AutosavePlan::STATUS_PAUSED,
+        ]);
+    }
+
+    public function resumeForTarget(User $user, Model $target, ?string $targetType = null): AutosavePlan
+    {
+        $plan = $this->findForTarget($user, $target, $targetType);
+        if (! $plan) {
+            throw new \InvalidArgumentException('No AutoSave plan found for this product.');
+        }
+
+        return $this->autosaveService->updatePlan($plan, [
+            'status' => AutosavePlan::STATUS_ACTIVE,
+        ]);
+    }
+
+    public function cancelForTarget(User $user, Model $target, ?string $targetType = null): AutosavePlan
+    {
+        $plan = $this->findForTarget($user, $target, $targetType);
+        if (! $plan) {
+            throw new \InvalidArgumentException('No AutoSave plan found for this product.');
+        }
+
+        return $this->autosaveService->cancelPlan($plan);
+    }
+
     protected function defaultName(string $targetType): string
     {
         return match ($targetType) {

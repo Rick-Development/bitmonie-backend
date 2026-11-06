@@ -892,4 +892,137 @@ class SafeLockController extends Controller
             'transactions' => $transactions,
         ]);
     }
+
+    /**
+     * Get AutoSave / auto-debit plan linked to a SafeLock.
+     * GET /api/v1/savings/safelock/{id}/autosave
+     */
+    public function getAutosave(int $id, SavingsAutosaveSetupService $autosaveSetup)
+    {
+        $user = auth()->user();
+        $lock = SafeLock::where('user_id', $user->id)->whereKey($id)->first();
+        if (! $lock) {
+            return Response::error(['SafeLock not found'], [], 404);
+        }
+
+        $plan = $autosaveSetup->findForTarget($user, $lock, 'safe_lock');
+
+        return Response::success([
+            'lock_id' => $lock->id,
+            'autosave_plan' => $plan,
+        ]);
+    }
+
+    /**
+     * Create or replace SafeLock auto-debit.
+     * PUT /api/v1/savings/safelock/{id}/autosave
+     * Body: { enabled, mode, amount, frequency, … } or nested { autosave: {…} }
+     */
+    public function setAutosave(Request $request, int $id, SavingsAutosaveSetupService $autosaveSetup)
+    {
+        $payload = $request->input('autosave', $request->all());
+        $validator = Validator::make(
+            ['autosave' => $payload],
+            $autosaveSetup->rules()
+        );
+        if ($validator->fails()) {
+            return Response::error($validator->errors()->all());
+        }
+
+        $user = auth()->user();
+        $lock = SafeLock::where('user_id', $user->id)->whereKey($id)->first();
+        if (! $lock) {
+            return Response::error(['SafeLock not found'], [], 404);
+        }
+        if ($lock->status !== 'active' || $lock->is_redeemed) {
+            return Response::error(['Auto-debit can only be set on an active SafeLock.']);
+        }
+
+        try {
+            $plan = $autosaveSetup->upsertForTarget(
+                $user,
+                $lock,
+                'safe_lock',
+                is_array($payload) ? $payload : [],
+                [
+                    'name' => ($lock->title ?: 'SafeLock') . ' AutoSave',
+                    'title' => $lock->title,
+                    'maturity_date' => $lock->end_date ?? $lock->maturity_date ?? null,
+                ]
+            );
+
+            return Response::success([
+                'message' => 'SafeLock auto-debit saved.',
+                'lock_id' => $lock->id,
+                'autosave_plan' => $plan,
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            return Response::error([$e->getMessage()]);
+        } catch (\Throwable $e) {
+            Log::error('SafeLock autosave update failed', [
+                'user_id' => $user->id,
+                'lock_id' => $id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return Response::error([$e->getMessage() ?: 'Unable to save SafeLock auto-debit.']);
+        }
+    }
+
+    /** POST /api/v1/savings/safelock/{id}/autosave/pause */
+    public function pauseAutosave(int $id, SavingsAutosaveSetupService $autosaveSetup)
+    {
+        return $this->mutateAutosave($id, $autosaveSetup, 'pause', 'SafeLock auto-debit paused.');
+    }
+
+    /** POST /api/v1/savings/safelock/{id}/autosave/resume */
+    public function resumeAutosave(int $id, SavingsAutosaveSetupService $autosaveSetup)
+    {
+        return $this->mutateAutosave($id, $autosaveSetup, 'resume', 'SafeLock auto-debit resumed.');
+    }
+
+    /** DELETE /api/v1/savings/safelock/{id}/autosave */
+    public function cancelAutosave(int $id, SavingsAutosaveSetupService $autosaveSetup)
+    {
+        return $this->mutateAutosave($id, $autosaveSetup, 'cancel', 'SafeLock auto-debit cancelled.');
+    }
+
+    protected function mutateAutosave(
+        int $id,
+        SavingsAutosaveSetupService $autosaveSetup,
+        string $action,
+        string $message
+    ) {
+        $user = auth()->user();
+        $lock = SafeLock::where('user_id', $user->id)->whereKey($id)->first();
+        if (! $lock) {
+            return Response::error(['SafeLock not found'], [], 404);
+        }
+
+        try {
+            $plan = match ($action) {
+                'pause' => $autosaveSetup->pauseForTarget($user, $lock, 'safe_lock'),
+                'resume' => $autosaveSetup->resumeForTarget($user, $lock, 'safe_lock'),
+                'cancel' => $autosaveSetup->cancelForTarget($user, $lock, 'safe_lock'),
+                default => throw new \InvalidArgumentException('Unknown autosave action.'),
+            };
+
+            return Response::success([
+                'message' => $message,
+                'lock_id' => $lock->id,
+                'autosave_plan' => $plan,
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            return Response::error([$e->getMessage()]);
+        } catch (\Throwable $e) {
+            Log::error('SafeLock autosave mutate failed', [
+                'user_id' => $user->id,
+                'lock_id' => $id,
+                'action' => $action,
+                'error' => $e->getMessage(),
+            ]);
+
+            return Response::error([$e->getMessage() ?: 'Unable to update SafeLock auto-debit.']);
+        }
+    }
 }

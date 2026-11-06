@@ -533,6 +533,18 @@ All core savings operations run on an immutable double-entry ledger with transac
 2. **Auto Save (`auto`):** Automated recurring savings (daily, weekly, or monthly) with fixed scheduled contributions and manual top-ups/withdrawals.
 3. **Target Savings (`target`):** Goal-oriented savings with target amounts, optional automated recurring deductions, target maturity dates, progress tracking, and lock protection. Early cancellation before target date incurs an acknowledged 2% penalty.
 4. **SafeLock (Locked Savings):** Fixed term vaults (30–365 days).
+### Daily interest (Flexi / Auto / Target)
+
+`savings:flexi-interest` (00:30 Africa/Lagos) credits **Flexi Save, Auto Save, and Target** pots using the admin Flexi APR (`flexi_interest_apr_percent` / 365). SafeLock keeps its own tenure accrual via `savings:process-interest`.
+
+### SafeLock auto-debit
+
+- On create: optional nested `autosave` `{ enabled, mode, amount, frequency, … }`
+- Manage later:
+  - `GET /api/v1/savings/safelock/{id}/autosave`
+  - `PUT /api/v1/savings/safelock/{id}/autosave` (alias `…/schedule`)
+  - `POST …/autosave/pause` · `POST …/autosave/resume` · `DELETE …/autosave`
+
 5. **USDT EasyEarn:** Crypto stablecoin savings earning interest in USDT.
 
 ---

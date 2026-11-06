@@ -74,7 +74,7 @@
                             <div class="col-md-4 form-group">
                                 <label>{{ __('Interest APR (%)') }}*</label>
                                 <input type="number" step="0.01" name="flexi_interest_apr_percent" class="form--control" value="{{ old('flexi_interest_apr_percent', $settings->flexi_interest_apr_percent) }}" required>
-                                <small class="text--info">{{ __('Shown on the app and used for daily Flexi accrual (e.g. 60 ≈ 5% monthly).') }}</small>
+                                <small class="text--info">{{ __('Used for daily Flexi, Auto Save, and Target accrual (APR/365). e.g. 60 ≈ 5% monthly. SafeLock uses plan tenure rates.') }}</small>
                             </div>
                         </div>
                     </div>
