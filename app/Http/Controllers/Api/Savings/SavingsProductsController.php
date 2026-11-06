@@ -268,7 +268,7 @@ class SavingsProductsController extends Controller
                         'currency' => 'NGN',
                         'balance' => number_format((float) $lock->amount, 2, '.', ''),
                         'available_balance' => '0.00',
-                        'interest_earned' => number_format((float) ($lock->total_interest_earned ?? 0), 2, '.', ''),
+                        'interest_earned' => number_format((float) ($lock->interest_accrued ?? 0), 2, '.', ''),
                         'status' => 'ACTIVE',
                         'actions' => [
                             'save' => [
