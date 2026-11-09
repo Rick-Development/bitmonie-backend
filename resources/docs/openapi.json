@@ -22618,36 +22618,26 @@
                                             "max_withdrawal_amount": null,
                                             "withdrawal_methods": [
                                                 {
-                                                    "method": "bank",
-                                                    "label": "Bank Transfer",
+                                                    "method": "fiat",
+                                                    "label": "App Wallet & Safe Haven Account",
                                                     "enabled": true,
                                                     "currency": "NGN",
                                                     "required_fields": [
-                                                        "amount",
-                                                        "bank_name",
-                                                        "account_number",
-                                                        "account_name"
-                                                    ]
+                                                        "amount"
+                                                    ],
+                                                    "notes": "Instant transfer to your Safe Haven account and Bitmonie app wallet."
                                                 },
                                                 {
                                                     "method": "crypto",
-                                                    "label": "Crypto Wallet",
+                                                    "label": "Quidax Wallet",
                                                     "enabled": true,
                                                     "currencies": [
                                                         "USDT"
                                                     ],
-                                                    "networks": [
-                                                        "TRC20",
-                                                        "ERC20",
-                                                        "BEP20"
-                                                    ],
                                                     "required_fields": [
-                                                        "amount",
-                                                        "crypto_currency",
-                                                        "network",
-                                                        "wallet_address"
+                                                        "amount"
                                                     ],
-                                                    "notes": "Submitted for admin review, then paid out to the supplied address."
+                                                    "notes": "Instant credit to your Quidax USDT wallet."
                                                 }
                                             ]
                                         }
@@ -22706,36 +22696,26 @@
                                         "max_withdrawal_amount": null,
                                         "withdrawal_methods": [
                                             {
-                                                "method": "bank",
-                                                "label": "Bank Transfer",
+                                                "method": "fiat",
+                                                "label": "App Wallet & Safe Haven Account",
                                                 "enabled": true,
                                                 "currency": "NGN",
                                                 "required_fields": [
-                                                    "amount",
-                                                    "bank_name",
-                                                    "account_number",
-                                                    "account_name"
-                                                ]
+                                                    "amount"
+                                                ],
+                                                "notes": "Instant transfer to your Safe Haven account and Bitmonie app wallet."
                                             },
                                             {
                                                 "method": "crypto",
-                                                "label": "Crypto Wallet",
+                                                "label": "Quidax Wallet",
                                                 "enabled": true,
                                                 "currencies": [
                                                     "USDT"
                                                 ],
-                                                "networks": [
-                                                    "TRC20",
-                                                    "ERC20",
-                                                    "BEP20"
-                                                ],
                                                 "required_fields": [
-                                                    "amount",
-                                                    "crypto_currency",
-                                                    "network",
-                                                    "wallet_address"
+                                                    "amount"
                                                 ],
-                                                "notes": "Submitted for admin review, then paid out to the supplied address."
+                                                "notes": "Instant credit to your Quidax USDT wallet."
                                             }
                                         ]
                                     }
@@ -22751,8 +22731,8 @@
                 "tags": [
                     "Referral"
                 ],
-                "summary": "Request referral withdrawal (bank or crypto)",
-                "description": "Bank: method=bank + bank_name/account_number/account_name. Crypto: method=crypto + crypto_currency/network/wallet_address (USDT TRC20|ERC20|BEP20). Admin-approved.",
+                "summary": "Withdraw referral bonus (Fiat to Safe Haven / App Wallet, or Crypto to Quidax USDT)",
+                "description": "Withdrawals are automatically and instantly credited. Fiat (default): method=fiat + amount (transfers directly to user's Safe Haven account and Bitmonie app wallet). Crypto: method=crypto + amount (funds directly to user's Quidax USDT sub-account). External bank accounts and external crypto addresses are not accepted.",
                 "security": [
                     {
                         "bearerAuth": []
@@ -22775,19 +22755,10 @@
                                     "method": {
                                         "type": "string",
                                         "enum": [
-                                            "bank",
+                                            "fiat",
                                             "crypto"
                                         ],
-                                        "example": "crypto"
-                                    },
-                                    "bank_name": {
-                                        "type": "string"
-                                    },
-                                    "account_number": {
-                                        "type": "string"
-                                    },
-                                    "account_name": {
-                                        "type": "string"
+                                        "example": "fiat"
                                     },
                                     "crypto_currency": {
                                         "type": "string",
@@ -22795,41 +22766,23 @@
                                             "USDT"
                                         ],
                                         "example": "USDT"
-                                    },
-                                    "network": {
-                                        "type": "string",
-                                        "enum": [
-                                            "TRC20",
-                                            "ERC20",
-                                            "BEP20"
-                                        ],
-                                        "example": "TRC20"
-                                    },
-                                    "wallet_address": {
-                                        "type": "string",
-                                        "example": "TXyz..."
                                     }
                                 }
                             },
                             "examples": {
-                                "bank": {
-                                    "summary": "Bank withdrawal",
+                                "fiat": {
+                                    "summary": "Fiat withdrawal (Safe Haven & App Wallet)",
                                     "value": {
-                                        "method": "bank",
-                                        "amount": 2000,
-                                        "bank_name": "Access Bank",
-                                        "account_number": "0123456789",
-                                        "account_name": "Jane Doe"
+                                        "method": "fiat",
+                                        "amount": 2000
                                     }
                                 },
                                 "crypto": {
-                                    "summary": "Crypto withdrawal",
+                                    "summary": "Crypto withdrawal (Quidax Wallet)",
                                     "value": {
                                         "method": "crypto",
                                         "amount": 2000,
-                                        "crypto_currency": "USDT",
-                                        "network": "TRC20",
-                                        "wallet_address": "TXyzExampleAddress"
+                                        "crypto_currency": "USDT"
                                     }
                                 }
                             }
@@ -22850,7 +22803,7 @@
                                         },
                                         "message": {
                                             "type": "string",
-                                            "example": "Withdrawal request submitted successfully"
+                                            "example": "Withdrawal processed successfully"
                                         },
                                         "data": {
                                             "type": "object"
@@ -22859,18 +22812,18 @@
                                 },
                                 "example": {
                                     "status": true,
-                                    "message": "Withdrawal request submitted successfully",
+                                    "message": "Withdrawal processed successfully",
                                     "data": {
                                         "withdrawal": {
                                             "id": 12,
                                             "reference": "RWD-ABC",
                                             "amount": 2000.0,
                                             "currency": "NGN",
-                                            "status": "pending",
-                                            "method": "crypto",
-                                            "crypto_currency": "USDT",
-                                            "network": "TRC20",
-                                            "wallet_address": "TXyzExampleAddress"
+                                            "status": "completed",
+                                            "method": "fiat",
+                                            "bank_name": "Safe Haven",
+                                            "account_number": "0123456789",
+                                            "account_name": "Jane Doe"
                                         },
                                         "wallet": {
                                             "currency": "NGN",
@@ -22884,36 +22837,26 @@
                                             "max_withdrawal_amount": null,
                                             "withdrawal_methods": [
                                                 {
-                                                    "method": "bank",
-                                                    "label": "Bank Transfer",
+                                                    "method": "fiat",
+                                                    "label": "App Wallet & Safe Haven Account",
                                                     "enabled": true,
                                                     "currency": "NGN",
                                                     "required_fields": [
-                                                        "amount",
-                                                        "bank_name",
-                                                        "account_number",
-                                                        "account_name"
-                                                    ]
+                                                        "amount"
+                                                    ],
+                                                    "notes": "Instant transfer to your Safe Haven account and Bitmonie app wallet."
                                                 },
                                                 {
                                                     "method": "crypto",
-                                                    "label": "Crypto Wallet",
+                                                    "label": "Quidax Wallet",
                                                     "enabled": true,
                                                     "currencies": [
                                                         "USDT"
                                                     ],
-                                                    "networks": [
-                                                        "TRC20",
-                                                        "ERC20",
-                                                        "BEP20"
-                                                    ],
                                                     "required_fields": [
-                                                        "amount",
-                                                        "crypto_currency",
-                                                        "network",
-                                                        "wallet_address"
+                                                        "amount"
                                                     ],
-                                                    "notes": "Submitted for admin review, then paid out to the supplied address."
+                                                    "notes": "Instant credit to your Quidax USDT wallet."
                                                 }
                                             ]
                                         }

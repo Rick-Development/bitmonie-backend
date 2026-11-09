@@ -67,10 +67,15 @@
                                         <strong>{{ get_amount($withdrawal->amount) }} {{ $withdrawal->currency_code }}</strong>
                                     </td>
                                     <td data-label="@lang('Payout Details')">
-                                        @if(($withdrawal->method ?? 'bank') === 'crypto')
-                                            <span class="badge badge--info">@lang('Crypto')</span>
-                                            <br><strong>{{ $withdrawal->crypto_currency }} / {{ $withdrawal->network }}</strong>
+                                        @if(($withdrawal->method ?? '') === 'crypto')
+                                            <span class="badge badge--info">@lang('Crypto (Quidax)')</span>
+                                            <br><strong>{{ $withdrawal->crypto_currency ?? 'USDT' }}</strong>
                                             <br><small>{{ $withdrawal->wallet_address }}</small>
+                                        @elseif(($withdrawal->method ?? '') === 'fiat')
+                                            <span class="badge badge--success">@lang('Fiat (Safe Haven)')</span>
+                                            <br><strong>{{ $withdrawal->bank_name }}</strong>
+                                            <br>{{ $withdrawal->account_name }}
+                                            <br>{{ $withdrawal->account_number }}
                                         @else
                                             <span class="badge badge--dark">@lang('Bank')</span>
                                             <br><strong>{{ $withdrawal->bank_name }}</strong>

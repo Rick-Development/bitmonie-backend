@@ -49,20 +49,20 @@ class ReferralWalletService
     {
         return [
             [
-                'method' => 'bank',
-                'label' => 'Bank Transfer',
+                'method' => 'fiat',
+                'label' => 'App Wallet & Safe Haven Account',
                 'enabled' => true,
                 'currency' => $this->currency(),
-                'required_fields' => ['amount', 'bank_name', 'account_number', 'account_name'],
+                'required_fields' => ['amount'],
+                'notes' => 'Instant transfer to your Safe Haven account and Bitmonie app wallet.',
             ],
             [
                 'method' => 'crypto',
-                'label' => 'Crypto Wallet',
+                'label' => 'Quidax Wallet',
                 'enabled' => true,
                 'currencies' => ['USDT'],
-                'networks' => ['TRC20', 'ERC20', 'BEP20'],
-                'required_fields' => ['amount', 'crypto_currency', 'network', 'wallet_address'],
-                'notes' => 'Submitted for admin review, then paid out to the supplied address.',
+                'required_fields' => ['amount'],
+                'notes' => 'Instant credit to your Quidax USDT wallet.',
             ],
         ];
     }
@@ -194,9 +194,11 @@ class ReferralWalletService
     public function requestWithdrawal(User $user, array $payload): WalletWithdrawalRequest
     {
         return DB::transaction(function () use ($user, $payload) {
-            $method = strtolower((string) ($payload['method'] ?? 'bank'));
-            if (! in_array($method, ['bank', 'crypto'], true)) {
-                throw new RuntimeException('Unsupported withdrawal method. Use bank or crypto.');
+            $rawMethod = strtolower((string) ($payload['method'] ?? 'fiat'));
+            $method = in_array($rawMethod, ['fiat', 'bank'], true) ? 'fiat' : $rawMethod;
+
+            if (! in_array($method, ['fiat', 'crypto'], true)) {
+                throw new RuntimeException('Unsupported withdrawal method. Use fiat or crypto.');
             }
 
             $amount = $this->normalizeAmount((string) $payload['amount']);
@@ -205,14 +207,134 @@ class ReferralWalletService
 
             $this->validateWithdrawalAmount($amount, $metrics['available']);
 
-            $destination = $this->normalizeWithdrawalDestination($method, $payload);
-
             $reference = $this->generateReference('RWD');
 
-            WalletService::debitToReserve($wallet->id, $amount, $reference, [
-                'type' => 'referral_withdrawal_request',
-                'description' => 'Referral wallet withdrawal request created',
-                'method' => $method,
+            if ($method === 'fiat') {
+                // Perform direct SafeHaven transfer from Master account to user sub-account
+                $safeHavenService = app(\App\Services\SafeHavenService::class);
+                $userSubAccount = $safeHavenService->getUserSubAccount($user);
+
+                if (! $userSubAccount || empty($userSubAccount->account_number)) {
+                    throw new RuntimeException('You must have a SafeHaven sub-account to withdraw referral earnings.');
+                }
+
+                $settings = \App\Models\Admin\BasicSettings::first();
+                $masterAccount = $settings->safehaven_debit_account ?? config('services.safeHeaven.main_account');
+
+                if (! $masterAccount) {
+                    throw new RuntimeException('Master SafeHaven account is not configured.');
+                }
+
+                $safeHavenBankCode = config('services.safeHeaven.bank_code', '090281');
+
+                // Name Enquiry
+                $enquiry = $safeHavenService->nameEnquiry($safeHavenBankCode, $userSubAccount->account_number);
+                $sessionId = $enquiry['sessionId'] ?? ($enquiry['sessionID'] ?? null);
+
+                $transferReference = $this->generateReference('TRF');
+                $transferPayload = [
+                    'nameEnquirySessionId' => $sessionId,
+                    'paymentReference' => $transferReference,
+                    'amount' => $amount,
+                    'debitAccountNumber' => $masterAccount,
+                    'creditAccountNumber' => $userSubAccount->account_number,
+                    'creditBankCode' => $safeHavenBankCode,
+                    'narration' => 'Referral Bonus Withdrawal',
+                ];
+
+                // Execute SafeHaven transfer
+                $safeHavenService->transfer($transferPayload);
+
+                // Create ledger entry marked completed
+                $ledger = WalletLedger::create([
+                    'user_id' => $user->id,
+                    'amount' => $amount,
+                    'currency_code' => $this->currency(),
+                    'transaction_type' => 'withdraw',
+                    'status' => 'completed',
+                    'balance_before' => $metrics['available'],
+                    'balance_after' => $this->sub($metrics['available'], $amount),
+                    'pending_before' => $metrics['pending'],
+                    'pending_after' => $metrics['pending'],
+                    'reference' => $reference,
+                    'description' => 'Referral bonus withdrawn to Safe Haven account and app wallet',
+                    'metadata' => [
+                        'method' => 'fiat',
+                        'destination' => 'safehaven',
+                        'account_number' => $userSubAccount->account_number,
+                        'safehaven_transfer_reference' => $transferReference,
+                    ],
+                    'transaction_at' => now(),
+                ]);
+
+                // Debit local referral UserWallet now so SafeHaven incoming credit webhook balances it out
+                \App\Services\WalletService::debit($wallet->id, $amount, $reference . '-DEBIT', [
+                    'type' => 'referral_withdrawal_debit',
+                    'description' => 'Debit for referral bonus fiat withdrawal (awaiting SafeHaven settlement)',
+                ]);
+
+                return WalletWithdrawalRequest::create([
+                    'user_id' => $user->id,
+                    'wallet_ledger_id' => $ledger->id,
+                    'reference' => $reference,
+                    'amount' => $amount,
+                    'currency_code' => $this->currency(),
+                    'method' => 'fiat',
+                    'bank_name' => 'Safe Haven',
+                    'account_number' => $userSubAccount->account_number,
+                    'account_name' => $user->fullname ?? ($user->firstname . ' ' . $user->lastname),
+                    'status' => 'completed',
+                    'admin_note' => 'Auto-credited to Safe Haven sub-account',
+                    'reviewed_at' => now(),
+                ])->load(['ledger', 'user']);
+            }
+
+            // Crypto withdrawal: fund directly to user Quidax USDT sub-account
+            if (empty($user->quidax_id)) {
+                // Ensure sub-account is created/healed
+                $quidaxService = app(\App\Services\QuidaxService::class);
+                $quidaxId = $quidaxService->ensureUserSubAccount($user);
+                $user->refresh();
+
+                if (empty($user->quidax_id)) {
+                    throw new RuntimeException('Unable to locate or create your Quidax crypto sub-account.');
+                }
+            } else {
+                $quidaxService = app(\App\Services\QuidaxService::class);
+            }
+
+            $fundRef = $this->generateReference('QDX');
+            $fundResponse = $quidaxService->fundSubAccount(
+                $user->quidax_id,
+                $amount,
+                'usdt',
+                $fundRef,
+                'Referral Bonus USDT Withdrawal'
+            );
+
+            if (
+                ! is_array($fundResponse)
+                || ($fundResponse['status'] ?? null) !== 'success'
+                || ! is_array($fundResponse['data'] ?? null)
+                || empty($fundResponse['data']['id'])
+            ) {
+                \Illuminate\Support\Facades\Log::error('Quidax Referral Bonus Payout Failed', [
+                    'user_id' => $user->id,
+                    'quidax_id' => $user->quidax_id,
+                    'amount' => $amount,
+                    'response' => $fundResponse,
+                ]);
+
+                throw new RuntimeException(
+                    $fundResponse['message'] ?? 'Failed to send crypto to your Quidax wallet. Please try again.'
+                );
+            }
+
+            // Debit local referral UserWallet
+            WalletService::debit($wallet->id, $amount, $reference, [
+                'type' => 'referral_crypto_withdrawal',
+                'description' => 'Referral bonus withdrawn to Quidax USDT wallet',
+                'quidax_reference' => $fundRef,
             ]);
 
             $ledger = WalletLedger::create([
@@ -220,16 +342,20 @@ class ReferralWalletService
                 'amount' => $amount,
                 'currency_code' => $this->currency(),
                 'transaction_type' => 'withdraw',
-                'status' => 'pending',
+                'status' => 'completed',
                 'balance_before' => $metrics['available'],
                 'balance_after' => $this->sub($metrics['available'], $amount),
                 'pending_before' => $metrics['pending'],
-                'pending_after' => $this->add($metrics['pending'], $amount),
+                'pending_after' => $metrics['pending'],
                 'reference' => $reference,
-                'description' => $method === 'crypto'
-                    ? 'Crypto withdrawal request submitted'
-                    : 'Withdrawal request submitted',
-                'metadata' => $destination,
+                'description' => 'Referral bonus credited to Quidax USDT wallet',
+                'metadata' => [
+                    'method' => 'crypto',
+                    'crypto_currency' => 'USDT',
+                    'quidax_id' => $user->quidax_id,
+                    'quidax_fund_id' => $fundResponse['data']['id'] ?? null,
+                    'quidax_reference' => $fundRef,
+                ],
                 'transaction_at' => now(),
             ]);
 
@@ -239,15 +365,16 @@ class ReferralWalletService
                 'reference' => $reference,
                 'amount' => $amount,
                 'currency_code' => $this->currency(),
-                'method' => $method,
-                'crypto_currency' => $destination['crypto_currency'] ?? null,
-                'network' => $destination['network'] ?? null,
-                'wallet_address' => $destination['wallet_address'] ?? null,
-                // Keep legacy bank columns populated for admin UI / NOT NULL constraints.
-                'bank_name' => $destination['bank_name'],
-                'account_number' => $destination['account_number'],
-                'account_name' => $destination['account_name'],
-                'status' => 'pending',
+                'method' => 'crypto',
+                'crypto_currency' => 'USDT',
+                'network' => 'Quidax Internal',
+                'wallet_address' => $user->quidax_id,
+                'bank_name' => 'Quidax Wallet',
+                'account_number' => substr((string) $user->quidax_id, 0, 30),
+                'account_name' => 'USDT Internal',
+                'status' => 'completed',
+                'admin_note' => 'Auto-credited to Quidax USDT sub-account',
+                'reviewed_at' => now(),
             ])->load(['ledger', 'user']);
         });
     }
@@ -259,44 +386,22 @@ class ReferralWalletService
     protected function normalizeWithdrawalDestination(string $method, array $payload): array
     {
         if ($method === 'crypto') {
-            $crypto = strtoupper((string) ($payload['crypto_currency'] ?? 'USDT'));
-            $network = strtoupper((string) ($payload['network'] ?? ''));
-            $address = trim((string) ($payload['wallet_address'] ?? ''));
-
-            if (! in_array($crypto, ['USDT'], true)) {
-                throw new RuntimeException('Only USDT crypto withdrawals are supported for now.');
-            }
-            if (! in_array($network, ['TRC20', 'ERC20', 'BEP20'], true)) {
-                throw new RuntimeException('Network must be one of TRC20, ERC20, BEP20.');
-            }
-            if ($address === '' || strlen($address) < 10) {
-                throw new RuntimeException('A valid crypto wallet address is required.');
-            }
-
             return [
                 'method' => 'crypto',
-                'crypto_currency' => $crypto,
-                'network' => $network,
-                'wallet_address' => $address,
-                'bank_name' => 'CRYPTO',
-                'account_number' => substr($address, 0, 30),
-                'account_name' => "{$crypto}/{$network}",
+                'crypto_currency' => 'USDT',
+                'network' => 'Quidax Internal',
+                'wallet_address' => 'Quidax Sub-Account',
+                'bank_name' => 'Quidax Wallet',
+                'account_number' => 'Quidax Sub-Account',
+                'account_name' => 'USDT Internal',
             ];
         }
 
-        $bankName = trim((string) ($payload['bank_name'] ?? ''));
-        $accountNumber = trim((string) ($payload['account_number'] ?? ''));
-        $accountName = trim((string) ($payload['account_name'] ?? ''));
-
-        if ($bankName === '' || $accountNumber === '' || $accountName === '') {
-            throw new RuntimeException('bank_name, account_number and account_name are required for bank withdrawals.');
-        }
-
         return [
-            'method' => 'bank',
-            'bank_name' => $bankName,
-            'account_number' => $accountNumber,
-            'account_name' => $accountName,
+            'method' => 'fiat',
+            'bank_name' => 'Safe Haven',
+            'account_number' => 'Safe Haven Sub-Account',
+            'account_name' => 'Bitmonie App Wallet',
         ];
     }
 

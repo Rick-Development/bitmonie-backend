@@ -161,45 +161,38 @@ class ReferralController extends Controller
      * Create a withdrawal request from referral wallet
      * POST /api/user/referral/withdraw
      *
-     * Bank:   { method: "bank", amount, bank_name, account_number, account_name }
-     * Crypto: { method: "crypto", amount, crypto_currency, network, wallet_address }
+     * Fiat (Safe Haven / App Wallet): { method: "fiat", amount: 1000 }
+     * Crypto (Quidax USDT wallet):    { method: "crypto", amount: 10, crypto_currency: "USDT" }
      */
     public function requestWithdrawal(Request $request)
     {
-        $method = strtolower((string) $request->input('method', 'bank'));
+        $method = strtolower((string) $request->input('method', 'fiat'));
+        if ($method === 'bank') {
+            $method = 'fiat';
+        }
         $request->merge(['method' => $method]);
 
         $request->validate([
             'amount' => 'required|numeric|min:0.00000001',
-            'method' => 'required|string|in:bank,crypto',
-            'bank_name' => 'required_if:method,bank|nullable|string|max:150',
-            'account_number' => 'required_if:method,bank|nullable|string|min:10|max:30',
-            'account_name' => 'required_if:method,bank|nullable|string|max:150',
-            'crypto_currency' => 'required_if:method,crypto|nullable|string|in:USDT,usdt',
-            'network' => 'required_if:method,crypto|nullable|string|in:TRC20,ERC20,BEP20,trc20,erc20,bep20',
-            'wallet_address' => 'required_if:method,crypto|nullable|string|min:10|max:255',
+            'method' => 'required|string|in:fiat,crypto',
+            'crypto_currency' => 'nullable|string|in:USDT,usdt',
         ]);
 
         try {
             $withdrawal = $this->referralWalletService->requestWithdrawal(auth()->user(), $request->only([
                 'amount',
                 'method',
-                'bank_name',
-                'account_number',
-                'account_name',
                 'crypto_currency',
-                'network',
-                'wallet_address',
             ]));
 
-            return Response::successResponse('Withdrawal request submitted successfully', [
+            return Response::successResponse('Withdrawal processed successfully', [
                 'withdrawal' => [
                     'id' => $withdrawal->id,
                     'reference' => $withdrawal->reference,
                     'amount' => (float) $withdrawal->amount,
                     'currency' => $withdrawal->currency_code,
                     'status' => $withdrawal->status,
-                    'method' => $withdrawal->method ?? 'bank',
+                    'method' => $withdrawal->method ?? 'fiat',
                     'bank_name' => $withdrawal->bank_name,
                     'account_number' => $withdrawal->account_number,
                     'account_name' => $withdrawal->account_name,

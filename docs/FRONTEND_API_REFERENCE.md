@@ -488,11 +488,12 @@ Auth: Bearer token required.
 
 Base path: `/api/user/referral`
 
-- `GET /info` and `GET /balance` include `wallet.withdrawal_methods` (`bank` + `crypto`/USDT).
-- `POST /withdraw`:
-  - Bank: `{ "method": "bank", "amount": 2000, "bank_name": "...", "account_number": "...", "account_name": "..." }`
-  - Crypto: `{ "method": "crypto", "amount": 2000, "crypto_currency": "USDT", "network": "TRC20", "wallet_address": "..." }`  
-    (`network`: `TRC20` \| `ERC20` \| `BEP20`). Admin-approved, not auto-broadcast.
+- `GET /info` and `GET /balance` include `wallet.withdrawal_methods` (`fiat` + `crypto`/USDT).
+- `POST /withdraw` (withdrawals are automatically and instantly credited; external destinations are not accepted):
+  - Fiat (Direct to Safe Haven account & app wallet):
+    `{ "method": "fiat", "amount": 2000 }`
+  - Crypto (Direct to Quidax USDT wallet):
+    `{ "method": "crypto", "amount": 2000, "crypto_currency": "USDT" }`
 
 ### Balance response shape
 
