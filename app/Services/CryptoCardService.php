@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Jobs\InitiateQuidaxCardFundingJob;
+use App\Jobs\SendNotificationJob;
 use App\Models\CryptoCardEscrow;
 use App\Models\CryptoCardHolders;
 use App\Models\CryptoCardsModel;
@@ -18,6 +19,10 @@ use Illuminate\Support\Facades\Schema;
 
 class CryptoCardService
 {
+    public const REFUND_NOT_CHARGED = 'not_charged';
+    public const REFUND_REFUNDED = 'refunded';
+    public const REFUND_FAILED = 'refund_failed';
+
     /**
      * Supported card providers.
      */
@@ -166,38 +171,82 @@ class CryptoCardService
     |--------------------------------------------------------------------------
     */
 
+    /**
+     * Queue a user notification (mail + push + in-app) through the shared
+     * SendNotificationJob / Notify-trait pipeline used across the app.
+     *
+     * Previously this resolved a non-existent App\Services\NotificationService,
+     * so every card email failed silently inside the catch block below.
+     *
+     * The job is dispatched after the surrounding DB transaction commits, and
+     * any failure is logged and swallowed so it can never break, roll back or
+     * re-trigger the card flow.
+     *
+     * @param  array<string, mixed>  $data
+     * @param  array<string, mixed>  $options  Extra SendNotificationJob options (subject, requestMessage, referenceId…)
+     */
     protected function sendNotification(
         int $userId,
         string $templateKey,
-        array $data = []
-    ): void {
+        array $data = [],
+        array $options = []
+    ): bool {
         try {
             $user = User::find($userId);
 
-            if ($user && !isset($data['user'])) {
-                $data['user'] =
-                    $user->firstname
-                    ?? $user->name
-                    ?? 'User';
+            if (! $user) {
+                Log::warning('Crypto card notification skipped: user not found.', [
+                    'user_id' => $userId,
+                    'template_key' => $templateKey,
+                ]);
+
+                return false;
             }
 
-            $notificationService = app(NotificationService::class);
+            if (! isset($data['user'])) {
+                $data['user'] = $user->firstname ?? $user->name ?? 'User';
+            }
 
-            $notificationService->send(
-                userId: $userId,
-                templateKey: $templateKey,
-                data: $data
-            );
+            // Template placeholders are replaced with str_replace(): keep scalars only.
+            $params = [];
+            foreach ($data as $key => $value) {
+                if (is_scalar($value) || $value === null) {
+                    $params[$key] = (string) $value;
+                }
+            }
+
+            $options = array_merge([
+                'action' => [
+                    'link' => '#',
+                    'icon' => 'fa fa-credit-card text-white',
+                ],
+                'referenceId' => $templateKey . '_' . ($params['transaction_id'] ?? $params['card_id'] ?? $userId),
+                'referenceType' => 'crypto_card',
+                'type' => 'crypto_card',
+                'priority' => 'high',
+            ], $options);
+
+            SendNotificationJob::dispatch(
+                $user,
+                $templateKey,
+                $params,
+                ['mail', 'push', 'inapp'],
+                $options
+            )->afterCommit();
+
+            return true;
         } catch (Throwable $e) {
             /*
              * Notification failure must never break
-             * a successful card operation.
+             * a card operation.
              */
             Log::warning('Crypto card notification failed', [
                 'user_id' => $userId,
                 'template_key' => $templateKey,
                 'error' => $e->getMessage(),
             ]);
+
+            return false;
         }
     }
 
@@ -620,6 +669,91 @@ if (!$providerSuccess) {
      *
      * CryptoCardsModel is only the local synchronized copy.
      */
+    /** Card statuses that mean "creation still in flight". Failed/active/cancelled never appear. */
+    public const PENDING_CREATION_STATUSES = ['pending', 'processing'];
+
+    /**
+     * The user's virtual/physical card creations that are still in flight.
+     *
+     * Failed creations are filtered out (not deleted): the failed card row,
+     * its issuance transaction and escrow are the audit trail for the USDT
+     * charge/refund, so they must be kept.
+     *
+     * @return Collection<int, array<string, mixed>>
+     */
+    public function getPendingCardCreations(int $userId): Collection
+    {
+        $cards = CryptoCardsModel::where('user_id', $userId)
+            ->whereIn(DB::raw('LOWER(card_status)'), self::PENDING_CREATION_STATUSES)
+            ->orderByDesc('id')
+            ->get();
+
+        if ($cards->isEmpty()) {
+            return collect();
+        }
+
+        $transactions = CryptoCardTransactions::whereIn('crypto_card_id', $cards->pluck('id'))
+            ->where('user_id', $userId)
+            ->where('transaction_type', 'issuance')
+            ->orderByDesc('id')
+            ->get()
+            ->unique('crypto_card_id')
+            ->keyBy('crypto_card_id');
+
+        return $cards
+            ->map(function (CryptoCardsModel $card) use ($transactions) {
+                $transaction = $transactions->get($card->id);
+
+                // A failed issuance transaction means the card is on its way to failed: hide it.
+                if ($transaction && strtolower((string) $transaction->transaction_status) === 'failed') {
+                    return null;
+                }
+
+                $stage = $this->pendingCreationStage($card, $transaction);
+                $currency = strtoupper((string) $card->card_currency);
+
+                return [
+                    'id' => $card->id,
+                    'provider' => $card->card_provider,
+                    'type' => $card->card_type,
+                    'brand' => $card->card_brand,
+                    'currency' => $currency === 'USD' ? 'USDT' : $currency,
+                    'status' => strtolower((string) $card->card_status),
+                    'stage' => $stage,
+                    'stage_label' => self::PENDING_STAGE_LABELS[$stage],
+                    'transaction_id' => $transaction?->id,
+                    'transaction_status' => $transaction?->transaction_status,
+                    'charge_amount' => $transaction ? (float) $transaction->amount : null,
+                    'charge_currency' => $transaction?->currency,
+                    'created_at' => $card->created_at,
+                    'updated_at' => $card->updated_at,
+                ];
+            })
+            ->filter()
+            ->values();
+    }
+
+    public const PENDING_STAGE_LABELS = [
+        'queued' => 'Request received',
+        'converting_funds' => 'Converting USDT to fund your card',
+        'creating_card' => 'Creating your card',
+    ];
+
+    protected function pendingCreationStage(CryptoCardsModel $card, ?CryptoCardTransactions $transaction): string
+    {
+        if (strtolower((string) $card->card_status) === 'pending') {
+            return 'queued';
+        }
+
+        $meta = $transaction && is_array($transaction->metadata) ? $transaction->metadata : [];
+
+        if (data_get($meta, 'quidax.settled_at') || (float) ($transaction?->amount ?? 0) <= 0) {
+            return 'creating_card';
+        }
+
+        return 'converting_funds';
+    }
+
     public function getUserCards(
         int $userId,
         ?string $provider = null
@@ -3462,14 +3596,23 @@ protected function getSpendableBalance(
                     'charge' => $charge,
                     'create_payload' => $payload,
                 ]
-            );
+            )->afterCommit(); // never let a worker pick it up before these rows are committed
 
             $this->sendNotification($userId, 'CRYPTO_CARD_CREATION_PENDING', [
                 'card_id' => $card->id,
-                'type' => $cardType,
+                'transaction_id' => $transaction->id,
+                'reference' => (string) $transaction->id,
+                'type' => ucfirst((string) $cardType),
                 'brand' => $brand,
+                'currency' => $currency,
+                'amount' => $this->formatNotificationAmount($usdtAmount),
                 'status' => 'Pending',
                 'provider' => ucfirst($provider),
+            ], [
+                'subject' => 'Your Card Request Is Being Processed',
+                'requestMessage' => 'Your ' . ucfirst((string) $cardType) . ' ' . $brand
+                    . ' card request (Ref: ' . $transaction->id . ') has been received and is being processed.'
+                    . ' We will email you as soon as it is ready.',
             ]);
 
             return [
@@ -3617,13 +3760,24 @@ protected function getSpendableBalance(
             ]);
         }
 
+        $card->refresh();
+        $lastFour = $card->card_last_four ?? ($card->masked_pan ? substr((string) $card->masked_pan, -4) : '****');
+
         $this->sendNotification((int) $card->user_id, 'CRYPTO_CARD_CREATION_SUCCESS', [
             'card_id' => $card->id,
-            'card' => $card->card_last_four ?? $card->masked_pan ?? '****',
-            'type' => $card->card_type,
+            'transaction_id' => $transaction->id,
+            'reference' => (string) $transaction->id,
+            'card' => $lastFour,
+            'type' => ucfirst((string) $card->card_type),
             'brand' => $card->card_brand,
+            'currency' => strtoupper((string) $card->card_currency),
             'status' => 'Active',
             'provider' => ucfirst((string) $card->card_provider),
+        ], [
+            'subject' => 'Your Virtual Card Is Ready',
+            'requestMessage' => 'Your ' . ucfirst((string) $card->card_type) . ' ' . $card->card_brand
+                . ' card ending ****' . $lastFour . ' has been created successfully and is ready to use.'
+                . ' Ref: ' . $transaction->id . '.',
         ]);
 
         Log::info('Sudo card creation finalized.', [
@@ -3649,8 +3803,18 @@ protected function getSpendableBalance(
         string $reason,
         array $context = []
     ): void {
-        if (in_array(strtolower((string) $card->card_status), ['active', 'failed', 'cancelled'], true)
-            && strtolower((string) $transaction->transaction_status) === 'failed') {
+        $card->refresh();
+        $cardStatus = strtolower((string) $card->card_status);
+
+        // Never fail (or refund) a card that is already live, and never refund twice.
+        if ($cardStatus === 'active'
+            || (in_array($cardStatus, ['failed', 'cancelled', 'canceled'], true)
+                && data_get($card->metadata, 'failed_at'))) {
+            Log::info('failPendingCardCreation skipped; card already terminal.', [
+                'card_id' => $card->id,
+                'status' => $card->card_status,
+            ]);
+
             return;
         }
 
@@ -3658,9 +3822,9 @@ protected function getSpendableBalance(
             ?? data_get($transaction->metadata, 'charge')
             ?? data_get($card->metadata, 'charge')
             ?? [];
+        $charge = is_array($charge) ? $charge : [];
 
-        $this->refundIssuanceUsdt((int) $card->user_id, is_array($charge) ? $charge : []);
-
+        // Mark terminal first so a concurrent/retried caller cannot refund again.
         $cardMeta = is_array($card->metadata) ? $card->metadata : [];
         $card->update([
             'card_status' => 'failed',
@@ -3670,24 +3834,46 @@ protected function getSpendableBalance(
             ]),
         ]);
 
+        $refundStatus = $this->refundIssuanceUsdt((int) $card->user_id, $charge);
+
+        $card->update([
+            'metadata' => array_merge(is_array($card->metadata) ? $card->metadata : [], [
+                'refund_status' => $refundStatus,
+            ]),
+        ]);
+
         $txMeta = is_array($transaction->metadata) ? $transaction->metadata : [];
         $transaction->update([
             'transaction_status' => 'failed',
             'metadata' => array_merge($txMeta, [
                 'failure_reason' => $reason,
                 'failed_at' => now()->toIso8601String(),
+                'refund_status' => $refundStatus,
             ]),
         ]);
 
         if ($escrow) {
-            $escrow->update(['status' => 'failed']);
+            $escrow->update(['status' => $refundStatus === self::REFUND_REFUNDED ? 'reversed' : 'failed']);
         }
+
+        $refundMessage = $this->refundStatusMessage($refundStatus, $charge);
 
         $this->sendNotification((int) $card->user_id, 'CRYPTO_CARD_CREATION_FAILED', [
             'card_id' => $card->id,
+            'transaction_id' => $transaction->id,
+            'reference' => (string) $transaction->id,
+            'type' => ucfirst((string) $card->card_type),
+            'brand' => $card->card_brand,
             'status' => 'Failed',
-            'reason' => $reason,
+            'reason' => $this->userFacingFailureReason($reason),
+            'refund_status' => $refundStatus,
+            'refund_message' => $refundMessage,
+            'amount' => $this->formatNotificationAmount($charge['usdt_amount'] ?? 0),
             'provider' => ucfirst((string) $card->card_provider),
+        ], [
+            'subject' => 'Your Card Request Could Not Be Completed',
+            'requestMessage' => 'We could not create your ' . ucfirst((string) $card->card_type)
+                . ' card (Ref: ' . $transaction->id . '). ' . $refundMessage,
         ]);
 
         Log::warning('Sudo card creation failed and USDT refund attempted.', [
@@ -3702,15 +3888,15 @@ protected function getSpendableBalance(
      *
      * @param  array<string, mixed>  $charge
      */
-    public function refundIssuanceUsdt(int $userId, array $charge): void
+    public function refundIssuanceUsdt(int $userId, array $charge): string
     {
         if (empty($charge['charged']) || empty($charge['usdt_amount'])) {
-            return;
+            return self::REFUND_NOT_CHARGED;
         }
 
         $user = User::find($userId);
         if (! $user) {
-            return;
+            return self::REFUND_FAILED;
         }
 
         $usdtAmount = (string) $charge['usdt_amount'];
@@ -3750,12 +3936,62 @@ protected function getSpendableBalance(
                 $localWallet->balance = (float) bcadd((string) $localWallet->balance, $usdtAmount, 8);
                 $localWallet->save();
             }
+
+            if (isset($release) && ! $this->escrowReleaseSucceeded($release)) {
+                return self::REFUND_FAILED;
+            }
+
+            return self::REFUND_REFUNDED;
         } catch (Throwable $e) {
             Log::error('Card issuance USDT refund failed.', [
                 'user_id' => $userId,
                 'charge' => $charge,
                 'error' => $e->getMessage(),
             ]);
+
+            return self::REFUND_FAILED;
         }
+    }
+
+    /** @param mixed $release */
+    protected function escrowReleaseSucceeded($release): bool
+    {
+        if (! is_array($release)) {
+            return (bool) $release;
+        }
+
+        $status = strtolower((string) ($release['status'] ?? ''));
+
+        return in_array($status, ['success', 'successful', 'ok', 'true', '1'], true)
+            || ($release['success'] ?? false) === true;
+    }
+
+    protected function refundStatusMessage(string $refundStatus, array $charge): string
+    {
+        $amount = $this->formatNotificationAmount($charge['usdt_amount'] ?? 0);
+
+        return match ($refundStatus) {
+            self::REFUND_REFUNDED => "The {$amount} USDT charged for this card has been refunded to your USDT wallet.",
+            self::REFUND_FAILED => "We could not automatically refund the {$amount} USDT charged for this card. Our team has been alerted and will reverse it manually; please contact support if you do not see it within 24 hours.",
+            default => 'No funds were deducted from your wallet for this request.',
+        };
+    }
+
+    /** Keep raw provider/stack messages out of customer emails. */
+    protected function userFacingFailureReason(string $reason): string
+    {
+        $reason = trim(strip_tags($reason));
+
+        if ($reason === '' || strlen($reason) > 160 || preg_match('/(exception|sqlstate|stack|\\\\|\.php|curl error)/i', $reason)) {
+            return 'The card provider could not complete the request.';
+        }
+
+        return $reason;
+    }
+
+    /** @param mixed $amount */
+    protected function formatNotificationAmount($amount): string
+    {
+        return number_format((float) $amount, 2, '.', ',');
     }
 }

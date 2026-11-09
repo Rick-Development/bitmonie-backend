@@ -632,6 +632,7 @@ Route::prefix('/crypto-cards')->group(function () {
     */
 
     Route::get('/', [CryptoCards::class, 'index']);
+    Route::get('/pending', [CryptoCards::class, 'pendingCards']);
     Route::post('/create', [CryptoCards::class, 'createCard']);
     Route::get('/show/{id}', [CryptoCards::class, 'show']);
     Route::post('/update/{id}', [CryptoCards::class, 'update']);

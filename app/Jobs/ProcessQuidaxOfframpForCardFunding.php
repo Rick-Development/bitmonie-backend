@@ -299,14 +299,43 @@ class ProcessQuidaxOfframpForCardFunding implements ShouldQueue
 
         /** @var \App\Services\CryptoCardService $cards */
         $cards = app(\App\Services\CryptoCardService::class);
-        $result = $cards->finalizePendingCardCreation($card, $transaction->fresh(), $escrow, [
+        $context = [
             'create_payload' => data_get($metadata, 'create_payload', []),
             'charge' => $charge,
             'quidax' => $metadata['quidax'] ?? [],
-        ]);
+        ];
+
+        try {
+            $result = $cards->finalizePendingCardCreation($card, $transaction->fresh(), $escrow, $context);
+        } catch (Throwable $e) {
+            // Unexpected Sudo/HTTP error after fiat settled: fail + refund + email exactly once.
+            // Re-throwing would only re-run the webhook job against an already-failed card.
+            $this->log('error', 'Sudo card create threw after Quidax settlement.', [
+                'transaction_id' => $transaction->id,
+                'card_id' => $card->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            $cards->failPendingCardCreation(
+                $card->fresh(),
+                $transaction->fresh(),
+                $escrow,
+                'Card provider error: ' . $e->getMessage(),
+                $context
+            );
+
+            return;
+        }
 
         if (! ($result['success'] ?? false)) {
-            throw new \RuntimeException($result['message'] ?? 'Sudo card create failed after offramp.');
+            // finalizePendingCardCreation() already marked it failed, refunded and notified.
+            $this->log('warning', 'Card creation failed at provider after Quidax settlement.', [
+                'transaction_id' => $transaction->id,
+                'card_id' => $card->id,
+                'message' => $result['message'] ?? null,
+            ]);
+
+            return;
         }
 
         $this->log('info', 'Card creation completed after Quidax settlement.', [

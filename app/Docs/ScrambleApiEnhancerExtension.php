@@ -767,6 +767,44 @@ class ScrambleApiEnhancerExtension extends OperationExtension
             ],
 
             // Virtual Cards
+            '*crypto-cards/pending*' => [
+                'success' => true,
+                'count' => 2,
+                'data' => [
+                    [
+                        'id' => 41,
+                        'provider' => 'sudo',
+                        'type' => 'virtual',
+                        'brand' => 'Visa',
+                        'currency' => 'NGN',
+                        'status' => 'processing', // pending | processing (failed/active never listed)
+                        'stage' => 'converting_funds', // queued | converting_funds | creating_card
+                        'stage_label' => 'Converting USDT to fund your card',
+                        'transaction_id' => 977,
+                        'transaction_status' => 'processing',
+                        'charge_amount' => 3.5,
+                        'charge_currency' => 'USDT',
+                        'created_at' => '2026-11-09T11:02:10.000000Z',
+                        'updated_at' => '2026-11-09T11:02:14.000000Z'
+                    ],
+                    [
+                        'id' => 42,
+                        'provider' => 'sudo',
+                        'type' => 'virtual',
+                        'brand' => 'Visa',
+                        'currency' => 'NGN',
+                        'status' => 'pending',
+                        'stage' => 'queued',
+                        'stage_label' => 'Request received',
+                        'transaction_id' => 978,
+                        'transaction_status' => 'initiated',
+                        'charge_amount' => 3.5,
+                        'charge_currency' => 'USDT',
+                        'created_at' => '2026-11-09T11:05:00.000000Z',
+                        'updated_at' => '2026-11-09T11:05:00.000000Z'
+                    ]
+                ]
+            ],
             '*sudo/cards*' => [
                 'status' => 'success',
                 'message' => 'Virtual cards retrieved successfully.',

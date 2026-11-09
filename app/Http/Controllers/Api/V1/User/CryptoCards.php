@@ -574,6 +574,29 @@ protected function formatCard($card): array
 
 
     /**
+     * List the user's card creations that are still in progress.
+     * GET /api/user/crypto-cards/pending
+     *
+     * Only `pending` / `processing` creations are returned. Failed creations
+     * drop out of this list (the rows are kept for the refund audit trail).
+     */
+    public function pendingCards(): JsonResponse
+    {
+        $userId = $this->userId();
+        if (!$userId) {
+            return $this->unauthenticated();
+        }
+
+        $data = $this->cardService->getPendingCardCreations($userId);
+
+        return response()->json([
+            'success' => true,
+            'count'   => $data->count(),
+            'data'    => $data,
+        ]);
+    }
+
+    /**
      * Create card.
      * POST /api/v1/user/crypto-cards/create
      */

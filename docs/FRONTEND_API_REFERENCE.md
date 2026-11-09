@@ -1236,6 +1236,8 @@ Creates a new card **asynchronously**. The API returns immediately with `status:
 If the user does not yet have a Sudo Card Holder, the backend auto-creates one from verified KYC data.
 
 > **Frontend UX:** Show the same card object with `status: "pending"` (spinner / “Creating…”). Listen for push/in-app/email (`CRYPTO_CARD_CREATION_SUCCESS` / `CRYPTO_CARD_CREATION_FAILED`), or poll `GET /api/user/crypto-cards/show/{id}` until `status` is `active` or `failed`.
+>
+> **Emails / notifications (mail + push + in-app):** `CRYPTO_CARD_CREATION_PENDING` when the request is accepted, then exactly one of `CRYPTO_CARD_CREATION_SUCCESS` (card ready, last four digits) or `CRYPTO_CARD_CREATION_FAILED` (reason + refund outcome: refunded / not charged / refund failed and escalated). To show all in-flight requests use `GET /api/user/crypto-cards/pending` (§9.5a); failed requests drop out of that list.
 
 **Request Body:** (unchanged)
 
@@ -1404,6 +1406,109 @@ Funds an active crypto card. The user specifies the funding amount in USDT. The 
     ]
 }
 ```
+
+---
+
+### 9.5a List Pending Card Creations
+
+- **Method & Path:** `GET /api/user/crypto-cards/pending`
+- **Auth Required:** Yes (`Authorization: Bearer <token>`; Passport `auth:api` + verified email, same as every `/api/user/crypto-cards/*` route)
+- **Query / Body Params:** none
+
+Returns the authenticated user's card creations that are **still in progress**. A creation leaves this list as soon as it ends:
+
+- **Success** → the card becomes `active` and shows up in `GET /api/user/crypto-cards` (email `CRYPTO_CARD_CREATION_SUCCESS`).
+- **Failure** → the card becomes `failed` and is **filtered out** of this list (email `CRYPTO_CARD_CREATION_FAILED`, with refund outcome). Failed rows are kept server-side (not deleted) because they are the audit trail for the USDT charge/refund.
+
+Recommended polling: every 5–10 s while `count > 0`, stop when `count` is `0`.
+
+**Success Response (`200 OK`):**
+
+```json
+{
+    "success": true,
+    "count": 2,
+    "data": [
+        {
+            "id": 41,
+            "provider": "sudo",
+            "type": "virtual",
+            "brand": "Visa",
+            "currency": "NGN",
+            "status": "processing",
+            "stage": "converting_funds",
+            "stage_label": "Converting USDT to fund your card",
+            "transaction_id": 977,
+            "transaction_status": "processing",
+            "charge_amount": 3.5,
+            "charge_currency": "USDT",
+            "created_at": "2026-11-09T11:02:10.000000Z",
+            "updated_at": "2026-11-09T11:02:14.000000Z"
+        },
+        {
+            "id": 42,
+            "provider": "sudo",
+            "type": "virtual",
+            "brand": "Visa",
+            "currency": "NGN",
+            "status": "pending",
+            "stage": "queued",
+            "stage_label": "Request received",
+            "transaction_id": 978,
+            "transaction_status": "initiated",
+            "charge_amount": 3.5,
+            "charge_currency": "USDT",
+            "created_at": "2026-11-09T11:05:00.000000Z",
+            "updated_at": "2026-11-09T11:05:00.000000Z"
+        }
+    ]
+}
+```
+
+Empty list: `{"success": true, "count": 0, "data": []}`
+
+**Fields**
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | int | Card id. Same id used by `GET /api/user/crypto-cards/show/{id}`. |
+| `provider` | string | Always `sudo` today. |
+| `type` | string | `virtual` or `physical`. |
+| `brand` | string | e.g. `Visa`, `Verve`. |
+| `currency` | string | Card currency (`NGN`; `USD` is reported as `USDT`). |
+| `status` | string | Card status, see below. |
+| `stage` | string | Finer-grained progress, see below. |
+| `stage_label` | string | Ready-to-display English label for `stage`. |
+| `transaction_id` | int\|null | Issuance transaction id (use as the reference in support/UX). |
+| `transaction_status` | string\|null | `initiated` or `processing` (a `failed` transaction is never listed). |
+| `charge_amount` | number\|null | USDT issuance charge (`0` for zero-fee cards). |
+| `charge_currency` | string\|null | `USDT`. |
+| `created_at` / `updated_at` | ISO-8601 string | |
+
+**`status` values**
+
+| Value | Meaning |
+|---|---|
+| `pending` | Request accepted and queued; the worker has not started yet. |
+| `processing` | Worker is converting USDT → NGN for the card and/or creating it at Sudo. |
+
+(`active`, `failed`, `cancelled` are terminal and never appear in this endpoint.)
+
+**`stage` values**
+
+| Value | `stage_label` | Meaning |
+|---|---|---|
+| `queued` | Request received | `status = pending`. |
+| `converting_funds` | Converting USDT to fund your card | USDT → NGN offramp into the Sudo settlement account is in progress. |
+| `creating_card` | Creating your card | Funds settled (or zero-fee card); Sudo card creation is in progress. |
+
+**Error Responses**
+
+| HTTP | Body | When |
+|---|---|---|
+| `401` | `{"message": "Unauthenticated."}` | Missing/invalid/expired bearer token (`auth:api`). |
+| `200` | mail-verification payload from `mailVerificationTemplateApi()` | User email not verified (`verification.guard.api`, same as all user routes). |
+| `503` | maintenance payload | System maintenance mode (`system.maintenance.api`). |
 
 ---
 

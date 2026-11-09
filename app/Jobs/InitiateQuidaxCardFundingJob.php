@@ -812,6 +812,28 @@ class InitiateQuidaxCardFundingJob implements ShouldQueue
             ]
         );
 
+        /*
+        | Card creation (issuance) is not a top-up: fail the pending card,
+        | refund the issuance USDT and send the card-creation failure email.
+        */
+        if ($this->isCardCreation($transaction)) {
+            try {
+                app(\App\Services\CryptoCardService::class)->failPendingCardCreation(
+                    $card,
+                    $transaction,
+                    $escrow,
+                    'Unable to convert USDT for card funding: ' . $reason,
+                    $this->context
+                );
+            } catch (Throwable $e) {
+                $this->cryptoLog('error', 'Card creation failure handling errored.', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            return;
+        }
+
         DB::transaction(function () use (
             $transaction,
             $escrow,
@@ -913,6 +935,13 @@ class InitiateQuidaxCardFundingJob implements ShouldQueue
                 ]
             );
         }
+    }
+
+    protected function isCardCreation(CryptoCardTransactions $transaction): bool
+    {
+        return ($this->context['purpose'] ?? null) === 'card_creation'
+            || strtolower((string) $transaction->transaction_type) === 'issuance'
+            || data_get($transaction->metadata, 'purpose') === 'card_creation';
     }
 
     /**
