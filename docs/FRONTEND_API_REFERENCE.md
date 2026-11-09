@@ -493,6 +493,9 @@ Base path: `/api/user/referral`
 - `GET /info` (`data.wallet`) and `GET /balance` (`data`) return:
   - `currency: "NGN"`, `available_for_withdrawal`, `total_earned`, `min_withdrawal_amount`, … — all **NGN** (unchanged).
   - **New:** `available_for_withdrawal_usd` (USD, rounded down to cents) and `usd_ngn_rate` (NGN per 1 USD). Both `null` if the rate is unavailable.
+  - **New:** `rewards_breakdown` separating fiat and crypto rewards:
+    - `rewards_breakdown.fiat`: `currency: "NGN"`, `total_earned_ngn`, `withdrawn_ngn`, `pending_withdrawal_ngn`, `available_ngn`.
+    - `rewards_breakdown.crypto`: `currency: "USD"`, `total_earned_usd`, `withdrawn_usd`, `pending_withdrawal_usd`, `available_usd`, `usd_ngn_rate`, plus `*_ngn` equivalent figures.
   - `withdrawal_methods[]` — each method now carries its own `currency` / `amount_currency`, `available_balance`, `min_amount`, `max_amount` in that currency:
     - `fiat`: `currency: "NGN"`, amounts in NGN.
     - `crypto`: `currency: "USD"`, `payout_currency: "USDT"`, `usd_ngn_rate`, amounts in USD. `enabled: false` when the rate is unavailable.
@@ -503,7 +506,7 @@ Base path: `/api/user/referral`
     `{ "method": "crypto", "amount": 10, "crypto_currency": "USDT" }`
     The backend debits the NGN equivalent (`amount × usd_ngn_rate`, rounded up to the kobo) from the referral balance and credits `amount` USDT. Min/max limits are applied to the NGN equivalent; error messages quote both (e.g. `Minimum withdrawal amount is USD 0.66 (NGN 1000.00).`). If the rate cannot be fetched the request fails with `422` and nothing is debited.
   - Response `data.withdrawal`: `amount` + `currency` are **NGN** for fiat and the **USD** value for crypto. **New fields:** `amount_ngn` (always, NGN debited), `amount_usd`, `crypto_amount` (USDT paid) and `usd_ngn_rate` (crypto only; `null` for fiat).
-- `GET /history`: `withdrawal` objects for crypto withdrawals made after this change also include `amount_usd`, `crypto_amount`, `usd_ngn_rate` (ledger `amount`/`currency` stay NGN). Older crypto rows return these as `null`.
+- `GET /history`: each entry now includes `reward_type: "fiat" | "crypto"`. `withdrawal` objects for crypto withdrawals made after this change also include `amount_usd`, `crypto_amount`, `usd_ngn_rate` (ledger `amount`/`currency` stay NGN). Older crypto rows return these as `null`.
 - `GET /api/referral/commission`: **new** `totals_by_currency[]` (`currency_code`, `available`, `pending`, `withdrawn`). The old `totals` adds different currencies together and should not be displayed.
 
 ### Balance response shape

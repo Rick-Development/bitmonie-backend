@@ -22616,6 +22616,31 @@
                                             "wallet_balance": 3500.0,
                                             "min_withdrawal_amount": 1000.0,
                                             "max_withdrawal_amount": null,
+                                            "usd_ngn_rate": 1500.0,
+                                            "available_for_withdrawal_usd": 2.33,
+                                            "rewards_breakdown": {
+                                                "fiat": {
+                                                    "currency": "NGN",
+                                                    "label": "Fiat Rewards (NGN)",
+                                                    "total_earned_ngn": 5000.0,
+                                                    "withdrawn_ngn": 1000.0,
+                                                    "pending_withdrawal_ngn": 500.0,
+                                                    "available_ngn": 3500.0
+                                                },
+                                                "crypto": {
+                                                    "currency": "USD",
+                                                    "label": "Crypto Rewards (USDT)",
+                                                    "total_earned_ngn": 0.0,
+                                                    "total_earned_usd": 0.0,
+                                                    "withdrawn_ngn": 0.0,
+                                                    "withdrawn_usd": 0.0,
+                                                    "pending_withdrawal_ngn": 0.0,
+                                                    "pending_withdrawal_usd": 0.0,
+                                                    "available_ngn": 0.0,
+                                                    "available_usd": 0.0,
+                                                    "usd_ngn_rate": 1500.0
+                                                }
+                                            },
                                             "withdrawal_methods": [
                                                 {
                                                     "method": "fiat",
@@ -22835,6 +22860,31 @@
                                             "wallet_balance": 3500.0,
                                             "min_withdrawal_amount": 1000.0,
                                             "max_withdrawal_amount": null,
+                                            "usd_ngn_rate": 1500.0,
+                                            "available_for_withdrawal_usd": 2.33,
+                                            "rewards_breakdown": {
+                                                "fiat": {
+                                                    "currency": "NGN",
+                                                    "label": "Fiat Rewards (NGN)",
+                                                    "total_earned_ngn": 5000.0,
+                                                    "withdrawn_ngn": 1000.0,
+                                                    "pending_withdrawal_ngn": 500.0,
+                                                    "available_ngn": 3500.0
+                                                },
+                                                "crypto": {
+                                                    "currency": "USD",
+                                                    "label": "Crypto Rewards (USDT)",
+                                                    "total_earned_ngn": 0.0,
+                                                    "total_earned_usd": 0.0,
+                                                    "withdrawn_ngn": 0.0,
+                                                    "withdrawn_usd": 0.0,
+                                                    "pending_withdrawal_ngn": 0.0,
+                                                    "pending_withdrawal_usd": 0.0,
+                                                    "available_ngn": 0.0,
+                                                    "available_usd": 0.0,
+                                                    "usd_ngn_rate": 1500.0
+                                                }
+                                            },
                                             "withdrawal_methods": [
                                                 {
                                                     "method": "fiat",
@@ -22914,7 +22964,52 @@
                                     "status": true,
                                     "message": "Referral wallet transaction history retrieved successfully",
                                     "data": {
-                                        "data": []
+                                        "data": [
+                                            {
+                                                "reference": "REF-BONUS-ABCD1234EF",
+                                                "amount": 500.0,
+                                                "currency": "NGN",
+                                                "transaction_type": "earn",
+                                                "reward_type": "fiat",
+                                                "status": "completed",
+                                                "description": "Referral signup bonus for john_doe",
+                                                "balance_before": 0.0,
+                                                "balance_after": 500.0,
+                                                "pending_before": 0.0,
+                                                "pending_after": 0.0,
+                                                "transaction_at": "2026-11-09 14:00:00",
+                                                "referred_user": "john_doe",
+                                                "withdrawal": null
+                                            },
+                                            {
+                                                "reference": "RWD-9876543210ZY",
+                                                "amount": 3000.0,
+                                                "currency": "NGN",
+                                                "transaction_type": "withdraw",
+                                                "reward_type": "crypto",
+                                                "status": "completed",
+                                                "description": "Referral bonus credited to Quidax USDT wallet",
+                                                "balance_before": 5000.0,
+                                                "balance_after": 2000.0,
+                                                "pending_before": 0.0,
+                                                "pending_after": 0.0,
+                                                "transaction_at": "2026-11-09 14:15:00",
+                                                "referred_user": null,
+                                                "withdrawal": {
+                                                    "method": "crypto",
+                                                    "bank_name": "Quidax Wallet",
+                                                    "account_number": "Quidax Sub-Account",
+                                                    "account_name": "USDT Internal",
+                                                    "crypto_currency": "USDT",
+                                                    "network": "Quidax Internal",
+                                                    "wallet_address": "qdx_sub_user_id",
+                                                    "admin_note": "Auto-credited to Quidax USDT sub-account",
+                                                    "amount_usd": 2.0,
+                                                    "crypto_amount": 2.0,
+                                                    "usd_ngn_rate": 1500.0
+                                                }
+                                            }
+                                        ]
                                     }
                                 }
                             }

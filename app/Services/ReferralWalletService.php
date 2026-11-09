@@ -27,6 +27,25 @@ class ReferralWalletService
         $metrics = $this->getMetrics($user);
         $rate = $this->usdNgnRate();
 
+        // Fiat rewards breakdown (in NGN)
+        $fiatAvailable = $this->minAmount(
+            $this->sub($metrics['fiat_earned'], $this->add($metrics['fiat_withdrawn_ngn'], $metrics['fiat_pending_ngn'])),
+            $metrics['available']
+        );
+        if ($this->cmp($fiatAvailable, '0') < 0) {
+            $fiatAvailable = '0';
+        }
+
+        // Crypto rewards breakdown (in NGN equivalent, also shown as USD)
+        // Currently all earnings are fiat-sourced; crypto_earned is 0 by default.
+        $cryptoAvailableNgn = $this->minAmount(
+            $this->sub($metrics['crypto_earned'], $this->add($metrics['crypto_withdrawn_ngn'], $metrics['crypto_pending_ngn'])),
+            $metrics['available']
+        );
+        if ($this->cmp($cryptoAvailableNgn, '0') < 0) {
+            $cryptoAvailableNgn = '0';
+        }
+
         return [
             'currency' => $this->currency(),
             'total_earned' => (float) $metrics['total_earned'],
@@ -43,6 +62,37 @@ class ReferralWalletService
             // Crypto view of the same NGN balance, expressed in USD (1 USDT = 1 USD).
             'usd_ngn_rate' => $rate !== null ? (float) $rate : null,
             'available_for_withdrawal_usd' => $rate !== null ? (float) $this->ngnToUsd($metrics['available'], $rate) : null,
+
+            /**
+             * rewards_breakdown separates fiat rewards (NGN signup bonuses) from
+             * crypto-sourced rewards (future) and also shows each withdrawal type.
+             *
+             * All NGN amounts are in the wallet's base currency (NGN).
+             * USD amounts use the live USDT/NGN rate.
+             */
+            'rewards_breakdown' => [
+                'fiat' => [
+                    'currency' => $this->currency(),
+                    'label' => 'Fiat Rewards (NGN)',
+                    'total_earned_ngn' => (float) $metrics['fiat_earned'],
+                    'withdrawn_ngn' => (float) $metrics['fiat_withdrawn_ngn'],
+                    'pending_withdrawal_ngn' => (float) $metrics['fiat_pending_ngn'],
+                    'available_ngn' => (float) $fiatAvailable,
+                ],
+                'crypto' => [
+                    'currency' => 'USD',
+                    'label' => 'Crypto Rewards (USDT)',
+                    'total_earned_ngn' => (float) $metrics['crypto_earned'],
+                    'total_earned_usd' => $rate !== null ? (float) $this->ngnToUsd($metrics['crypto_earned'], $rate) : null,
+                    'withdrawn_ngn' => (float) $metrics['crypto_withdrawn_ngn'],
+                    'withdrawn_usd' => $rate !== null ? (float) $this->ngnToUsd($metrics['crypto_withdrawn_ngn'], $rate) : null,
+                    'pending_withdrawal_ngn' => (float) $metrics['crypto_pending_ngn'],
+                    'pending_withdrawal_usd' => $rate !== null ? (float) $this->ngnToUsd($metrics['crypto_pending_ngn'], $rate) : null,
+                    'available_ngn' => (float) $cryptoAvailableNgn,
+                    'available_usd' => $rate !== null ? (float) $this->ngnToUsd($cryptoAvailableNgn, $rate) : null,
+                    'usd_ngn_rate' => $rate !== null ? (float) $rate : null,
+                ],
+            ],
         ];
     }
 
@@ -583,11 +633,20 @@ class ReferralWalletService
             ->latest('transaction_at')
             ->paginate($perPage)
             ->through(function (WalletLedger $entry) {
+                $meta = is_array($entry->metadata) ? $entry->metadata : [];
+                $rewardType = 'fiat';
+                if ($entry->transaction_type === 'withdraw') {
+                    $rewardType = ($meta['method'] ?? null) === 'crypto' ? 'crypto' : 'fiat';
+                } elseif ($entry->transaction_type === 'earn') {
+                    $rewardType = ($meta['reward_source'] ?? 'fiat') === 'crypto' ? 'crypto' : 'fiat';
+                }
+
                 return [
                     'reference' => $entry->reference,
                     'amount' => (float) $entry->amount,
                     'currency' => $entry->currency_code,
                     'transaction_type' => $entry->transaction_type,
+                    'reward_type' => $rewardType, // 'fiat' | 'crypto'
                     'status' => $entry->status,
                     'description' => $entry->description,
                     'balance_before' => (float) $entry->balance_before,
@@ -597,7 +656,7 @@ class ReferralWalletService
                     'transaction_at' => optional($entry->transaction_at)->format('Y-m-d H:i:s'),
                     'referred_user' => $entry->referral?->referred?->username,
                     'withdrawal' => $entry->withdrawalRequest ? [
-                        'method' => $entry->withdrawalRequest->method ?? 'bank',
+                        'method' => $entry->withdrawalRequest->method ?? 'fiat',
                         'bank_name' => $entry->withdrawalRequest->bank_name,
                         'account_number' => $entry->withdrawalRequest->account_number,
                         'account_name' => $entry->withdrawalRequest->account_name,
@@ -666,17 +725,34 @@ class ReferralWalletService
             $query->lockForUpdate();
         }
 
-        $entries = $query->get(['amount', 'transaction_type', 'status']);
+        $entries = $query->get(['amount', 'transaction_type', 'status', 'metadata']);
 
         $totalEarned = '0';
         $completedWithdrawals = '0';
         $pendingWithdrawals = '0';
 
+        // Per-type reward breakdown (all amounts in NGN)
+        $fiatEarned = '0';
+        $cryptoEarned = '0'; // placeholder for future crypto-sourced earnings
+        $fiatWithdrawnNgn = '0';
+        $cryptoWithdrawnNgn = '0';
+        $fiatPendingNgn = '0';
+        $cryptoPendingNgn = '0';
+
         foreach ($entries as $entry) {
             $amount = $this->normalizeAmount((string) $entry->amount);
+            $meta = is_array($entry->metadata) ? $entry->metadata : [];
+            $entryMethod = $meta['method'] ?? 'fiat';
 
             if ($entry->transaction_type === 'earn' && $entry->status === 'completed') {
                 $totalEarned = $this->add($totalEarned, $amount);
+                // All current earn entries are fiat (NGN signup bonuses).
+                // A future crypto-sourced earn would carry metadata['reward_source'] = 'crypto'.
+                if (($meta['reward_source'] ?? 'fiat') === 'crypto') {
+                    $cryptoEarned = $this->add($cryptoEarned, $amount);
+                } else {
+                    $fiatEarned = $this->add($fiatEarned, $amount);
+                }
                 continue;
             }
 
@@ -686,8 +762,18 @@ class ReferralWalletService
 
             if ($entry->status === 'completed') {
                 $completedWithdrawals = $this->add($completedWithdrawals, $amount);
+                if ($entryMethod === 'crypto') {
+                    $cryptoWithdrawnNgn = $this->add($cryptoWithdrawnNgn, $amount);
+                } else {
+                    $fiatWithdrawnNgn = $this->add($fiatWithdrawnNgn, $amount);
+                }
             } elseif ($entry->status === 'pending') {
                 $pendingWithdrawals = $this->add($pendingWithdrawals, $amount);
+                if ($entryMethod === 'crypto') {
+                    $cryptoPendingNgn = $this->add($cryptoPendingNgn, $amount);
+                } else {
+                    $fiatPendingNgn = $this->add($fiatPendingNgn, $amount);
+                }
             }
         }
 
@@ -708,6 +794,13 @@ class ReferralWalletService
             'ledger_balance' => $ledgerBalance,
             'wallet_balance' => $walletBalance,
             'available' => $this->minAmount($ledgerAvailable, $walletBalance),
+            // Per-type breakdown (all in NGN)
+            'fiat_earned' => $fiatEarned,
+            'crypto_earned' => $cryptoEarned,
+            'fiat_withdrawn_ngn' => $fiatWithdrawnNgn,
+            'crypto_withdrawn_ngn' => $cryptoWithdrawnNgn,
+            'fiat_pending_ngn' => $fiatPendingNgn,
+            'crypto_pending_ngn' => $cryptoPendingNgn,
         ];
     }
 

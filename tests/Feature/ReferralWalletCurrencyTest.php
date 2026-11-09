@@ -202,4 +202,41 @@ class ReferralWalletCurrencyTest extends TestCase
         $this->assertEquals(2000, $res->json('data.withdrawal.amount'));
         $this->assertNull($res->json('data.withdrawal.amount_usd'));
     }
+
+    public function test_rewards_breakdown_separates_fiat_and_crypto(): void
+    {
+        $user = $this->makeUserWithBonus('15000');
+
+        $summary = app(ReferralWalletService::class)->getBalanceSummary($user);
+
+        $this->assertArrayHasKey('rewards_breakdown', $summary);
+        $this->assertArrayHasKey('fiat', $summary['rewards_breakdown']);
+        $this->assertArrayHasKey('crypto', $summary['rewards_breakdown']);
+
+        // Fiat section
+        $fiat = $summary['rewards_breakdown']['fiat'];
+        $this->assertSame('NGN', $fiat['currency']);
+        $this->assertEquals(15000.0, $fiat['total_earned_ngn']);
+        $this->assertEquals(0.0, $fiat['withdrawn_ngn']);
+        $this->assertEquals(15000.0, $fiat['available_ngn']);
+
+        // Crypto section
+        $crypto = $summary['rewards_breakdown']['crypto'];
+        $this->assertSame('USD', $crypto['currency']);
+        $this->assertEquals(1500.0, $crypto['usd_ngn_rate']);
+        $this->assertEquals(0.0, $crypto['withdrawn_ngn']);
+        $this->assertEquals(0.0, $crypto['withdrawn_usd']);
+    }
+
+    public function test_transaction_history_labels_reward_type(): void
+    {
+        $user = $this->makeUserWithBonus('15000');
+
+        $history = app(ReferralWalletService::class)->getTransactionHistory($user);
+        $items = $history->items();
+
+        $this->assertNotEmpty($items);
+        $this->assertSame('earn', $items[0]['transaction_type']);
+        $this->assertSame('fiat', $items[0]['reward_type']);
+    }
 }
