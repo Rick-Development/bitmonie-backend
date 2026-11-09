@@ -22,11 +22,19 @@ class ReferralCommissionController extends Controller
 
             return [
                 'wallets' => $wallets,
+                // Legacy cross-currency sum (mixes NGN with USD/crypto units); prefer totals_by_currency.
                 'totals' => [
                     'available' => $wallets->sum('available_balance'),
                     'pending' => $wallets->sum('pending_balance'),
                     'withdrawn' => $wallets->sum('withdrawn_balance'),
                 ],
+                'totals_by_currency' => $wallets->groupBy(fn ($w) => strtoupper((string) $w->currency_code))
+                    ->map(fn ($group, $code) => [
+                        'currency_code' => $code,
+                        'available' => (float) $group->sum('available_balance'),
+                        'pending' => (float) $group->sum('pending_balance'),
+                        'withdrawn' => (float) $group->sum('withdrawn_balance'),
+                    ])->values(),
                 'commission_rate_percent' => \App\Models\ReferralCommissionSetting::current()->commission_rate_percent,
                 'referrals_count' => ReferralCommission::where('referrer_user_id', $user->id)->distinct('referred_user_id')->count('referred_user_id'),
             ];

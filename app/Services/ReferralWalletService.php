@@ -9,7 +9,9 @@ use App\Models\User;
 use App\Models\UserWallet;
 use App\Models\WalletLedger;
 use App\Models\WalletWithdrawalRequest;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use RuntimeException;
 
@@ -23,6 +25,7 @@ class ReferralWalletService
     public function getBalanceSummary(User $user): array
     {
         $metrics = $this->getMetrics($user);
+        $rate = $this->usdNgnRate();
 
         return [
             'currency' => $this->currency(),
@@ -32,12 +35,55 @@ class ReferralWalletService
             'completed_withdrawals' => (float) $metrics['completed_withdrawals'],
             'ledger_balance' => (float) $metrics['ledger_balance'],
             'wallet_balance' => (float) $metrics['wallet_balance'],
-            'withdrawal_methods' => $this->withdrawalMethods(),
+            'withdrawal_methods' => $this->withdrawalMethods($metrics['available'], $rate),
             'min_withdrawal_amount' => (float) config('referral_wallet.min_withdrawal_amount', 1000),
             'max_withdrawal_amount' => config('referral_wallet.max_withdrawal_amount') !== null
                 ? (float) config('referral_wallet.max_withdrawal_amount')
                 : null,
+            // Crypto view of the same NGN balance, expressed in USD (1 USDT = 1 USD).
+            'usd_ngn_rate' => $rate !== null ? (float) $rate : null,
+            'available_for_withdrawal_usd' => $rate !== null ? (float) $this->ngnToUsd($metrics['available'], $rate) : null,
         ];
+    }
+
+    /**
+     * NGN per 1 USD(T). Same source/cache the wallet list uses (Quidax usdtngn ticker,
+     * QuidaxController::fetchUserWallets). Returns null when unavailable.
+     */
+    public function usdNgnRate(): ?string
+    {
+        try {
+            $rate = Cache::remember('quidax:usdtngn:last', 60, function () {
+                $ticker = app(QuidaxService::class)->getTicker('usdtngn');
+
+                return data_get($ticker, 'data.usdtngn.ticker.last');
+            });
+        } catch (\Throwable $e) {
+            Log::warning('Referral wallet: USD/NGN rate unavailable.', ['error' => $e->getMessage()]);
+
+            return null;
+        }
+
+        if (! is_numeric($rate) || (float) $rate <= 0) {
+            return null;
+        }
+
+        return $this->normalizeAmount((string) $rate);
+    }
+
+    /** USD value of an NGN amount, rounded DOWN to cents so we never over-promise. */
+    protected function ngnToUsd(string $ngn, string $rate): string
+    {
+        return bcdiv($ngn, $rate, 2);
+    }
+
+    /** NGN needed for a USD amount, rounded UP to the kobo so the wallet is never under-debited. */
+    protected function usdToNgn(string $usd, string $rate): string
+    {
+        $exact = bcmul($usd, $rate, 8);
+        $rounded = bcadd($exact, '0', 2);
+
+        return bccomp($exact, $rounded, 8) > 0 ? bcadd($rounded, '0.01', 2) : $rounded;
     }
 
     /**
@@ -45,24 +91,40 @@ class ReferralWalletService
      *
      * @return array<int, array<string, mixed>>
      */
-    public function withdrawalMethods(): array
+    public function withdrawalMethods(?string $availableNgn = null, ?string $rate = null): array
     {
+        $minNgn = $this->normalizeAmount((string) config('referral_wallet.min_withdrawal_amount', 0));
+        $maxConfig = config('referral_wallet.max_withdrawal_amount');
+        $maxNgn = ($maxConfig !== null && $maxConfig !== '') ? $this->normalizeAmount((string) $maxConfig) : null;
+
         return [
             [
                 'method' => 'fiat',
                 'label' => 'App Wallet & Safe Haven Account',
                 'enabled' => true,
                 'currency' => $this->currency(),
+                'amount_currency' => $this->currency(),
+                'available_balance' => $availableNgn !== null ? (float) $availableNgn : null,
+                'min_amount' => (float) $minNgn,
+                'max_amount' => $maxNgn !== null ? (float) $maxNgn : null,
                 'required_fields' => ['amount'],
-                'notes' => 'Instant transfer to your Safe Haven account and Bitmonie app wallet.',
+                'notes' => 'Amount is in NGN. Instant transfer to your Safe Haven account and Bitmonie app wallet.',
             ],
             [
                 'method' => 'crypto',
                 'label' => 'Quidax Wallet',
-                'enabled' => true,
+                'enabled' => $rate !== null,
                 'currencies' => ['USDT'],
+                // Crypto withdrawals are requested and shown in USD; paid out as USDT (1 USDT = 1 USD).
+                'currency' => 'USD',
+                'amount_currency' => 'USD',
+                'payout_currency' => 'USDT',
+                'usd_ngn_rate' => $rate !== null ? (float) $rate : null,
+                'available_balance' => ($availableNgn !== null && $rate !== null) ? (float) $this->ngnToUsd($availableNgn, $rate) : null,
+                'min_amount' => $rate !== null ? (float) $this->ngnToUsd($minNgn, $rate) : null,
+                'max_amount' => ($maxNgn !== null && $rate !== null) ? (float) $this->ngnToUsd($maxNgn, $rate) : null,
                 'required_fields' => ['amount'],
-                'notes' => 'Instant credit to your Quidax USDT wallet.',
+                'notes' => 'Amount is in USD. Your NGN referral balance is converted at the current USDT/NGN rate and credited to your Quidax USDT wallet.',
             ],
         ];
     }
@@ -201,11 +263,31 @@ class ReferralWalletService
                 throw new RuntimeException('Unsupported withdrawal method. Use fiat or crypto.');
             }
 
-            $amount = $this->normalizeAmount((string) $payload['amount']);
+            $requestedAmount = $this->normalizeAmount((string) $payload['amount']);
             $wallet = $this->getWallet($user, true);
             $metrics = $this->getMetrics($user, $wallet, true);
 
-            $this->validateWithdrawalAmount($amount, $metrics['available']);
+            // Fiat: amount is NGN. Crypto: amount is a USD value; the NGN referral
+            // balance is debited by its NGN equivalent and USDT (=USD) is paid out.
+            $usdAmount = null;
+            $rate = null;
+            if ($method === 'crypto') {
+                $usdAmount = bcadd($requestedAmount, '0', 2);
+                if ($this->cmp($usdAmount, '0') <= 0) {
+                    throw new RuntimeException('Withdrawal amount must be greater than zero.');
+                }
+
+                $rate = $this->usdNgnRate();
+                if ($rate === null) {
+                    throw new RuntimeException('Unable to fetch the current USD rate. Please try again shortly.');
+                }
+
+                $amount = $this->normalizeAmount($this->usdToNgn($usdAmount, $rate));
+            } else {
+                $amount = $requestedAmount;
+            }
+
+            $this->validateWithdrawalAmount($amount, $metrics['available'], $rate);
 
             $reference = $this->generateReference('RWD');
 
@@ -304,9 +386,10 @@ class ReferralWalletService
             }
 
             $fundRef = $this->generateReference('QDX');
+            $usdtAmount = $usdAmount; // 1 USDT = 1 USD
             $fundResponse = $quidaxService->fundSubAccount(
                 $user->quidax_id,
-                $amount,
+                $usdtAmount,
                 'usdt',
                 $fundRef,
                 'Referral Bonus USDT Withdrawal'
@@ -321,7 +404,8 @@ class ReferralWalletService
                 \Illuminate\Support\Facades\Log::error('Quidax Referral Bonus Payout Failed', [
                     'user_id' => $user->id,
                     'quidax_id' => $user->quidax_id,
-                    'amount' => $amount,
+                    'amount_ngn' => $amount,
+                    'amount_usdt' => $usdtAmount,
                     'response' => $fundResponse,
                 ]);
 
@@ -335,6 +419,8 @@ class ReferralWalletService
                 'type' => 'referral_crypto_withdrawal',
                 'description' => 'Referral bonus withdrawn to Quidax USDT wallet',
                 'quidax_reference' => $fundRef,
+                'usd_amount' => $usdAmount,
+                'usd_ngn_rate' => $rate,
             ]);
 
             $ledger = WalletLedger::create([
@@ -352,6 +438,9 @@ class ReferralWalletService
                 'metadata' => [
                     'method' => 'crypto',
                     'crypto_currency' => 'USDT',
+                    'usd_amount' => $usdAmount,
+                    'crypto_amount' => $usdtAmount,
+                    'usd_ngn_rate' => $rate,
                     'quidax_id' => $user->quidax_id,
                     'quidax_fund_id' => $fundResponse['data']['id'] ?? null,
                     'quidax_reference' => $fundRef,
@@ -516,7 +605,7 @@ class ReferralWalletService
                         'network' => $entry->withdrawalRequest->network,
                         'wallet_address' => $entry->withdrawalRequest->wallet_address,
                         'admin_note' => $entry->withdrawalRequest->admin_note,
-                    ] : null,
+                    ] + $this->cryptoAmountFields($entry) : null,
                 ];
             });
     }
@@ -622,25 +711,51 @@ class ReferralWalletService
         ];
     }
 
-    protected function validateWithdrawalAmount(string $amount, string $available): void
+    protected function validateWithdrawalAmount(string $amount, string $available, ?string $usdRate = null): void
     {
+        $label = function (string $ngn) use ($usdRate): string {
+            return $usdRate !== null
+                ? 'USD ' . $this->ngnToUsd($ngn, $usdRate) . ' (' . $this->currency() . ' ' . bcadd($ngn, '0', 2) . ')'
+                : $this->currency() . ' ' . $ngn;
+        };
+
         if ($this->cmp($amount, '0') <= 0) {
             throw new RuntimeException('Withdrawal amount must be greater than zero.');
         }
 
         $minimum = $this->normalizeAmount((string) config('referral_wallet.min_withdrawal_amount', 0));
         if ($this->cmp($amount, $minimum) < 0) {
-            throw new RuntimeException('Minimum withdrawal amount is ' . $this->currency() . ' ' . $minimum . '.');
+            throw new RuntimeException('Minimum withdrawal amount is ' . $label($minimum) . '.');
         }
 
         $maximum = config('referral_wallet.max_withdrawal_amount');
         if ($maximum !== null && $maximum !== '' && $this->cmp($amount, $this->normalizeAmount((string) $maximum)) > 0) {
-            throw new RuntimeException('Maximum withdrawal amount is ' . $this->currency() . ' ' . $maximum . '.');
+            throw new RuntimeException('Maximum withdrawal amount is ' . $label($this->normalizeAmount((string) $maximum)) . '.');
         }
 
         if ($this->cmp($amount, $available) > 0) {
             throw new RuntimeException('Insufficient available referral wallet balance.');
         }
+    }
+
+    /**
+     * USD/USDT figures for crypto withdrawals (recorded since this fix). Older rows
+     * have no recorded USD value and return nulls rather than a re-priced guess.
+     *
+     * @return array<string, mixed>
+     */
+    public function cryptoAmountFields(?WalletLedger $ledger): array
+    {
+        $meta = $ledger && is_array($ledger->metadata) ? $ledger->metadata : [];
+        if (($meta['method'] ?? null) !== 'crypto') {
+            return [];
+        }
+
+        return [
+            'amount_usd' => isset($meta['usd_amount']) ? (float) $meta['usd_amount'] : null,
+            'crypto_amount' => isset($meta['crypto_amount']) ? (float) $meta['crypto_amount'] : null,
+            'usd_ngn_rate' => isset($meta['usd_ngn_rate']) ? (float) $meta['usd_ngn_rate'] : null,
+        ];
     }
 
     protected function generateReference(string $prefix): string

@@ -432,6 +432,13 @@ class ScrambleApiEnhancerExtension extends OperationExtension
                 'funding_crypto' => 'USDT'
             ],
 
+            // Referral bonus withdrawal: fiat amount = NGN, crypto amount = USD value (paid as USDT)
+            '*referral/withdraw*' => [
+                'method' => 'crypto', // fiat | crypto
+                'amount' => 10.00, // fiat: NGN amount; crypto: USD amount
+                'crypto_currency' => 'USDT'
+            ],
+
             // Unified Savings: Flexi, AutoSave, TargetSavings, Transfers
             '*savings/flexi/deposit*' => [
                 'amount' => 25000.00,
@@ -764,6 +771,42 @@ class ScrambleApiEnhancerExtension extends OperationExtension
                     ]
                 ],
                 'type' => 'success'
+            ],
+
+            // Referral bonus wallet (stored in NGN; crypto view in USD)
+            '*referral/withdraw*' => [
+                'message' => 'Withdrawal processed successfully',
+                'data' => [
+                    'withdrawal' => [
+                        'id' => 55,
+                        'reference' => 'RWD-8K2LQ0ZP4M1X',
+                        'amount' => 10.00, // crypto: USD; fiat: NGN
+                        'currency' => 'USD', // crypto: USD; fiat: NGN
+                        'amount_ngn' => 15000.00,
+                        'amount_usd' => 10.00, // null for fiat
+                        'crypto_amount' => 10.00, // USDT paid; null for fiat
+                        'usd_ngn_rate' => 1500.00, // NGN per USD(T); null for fiat
+                        'status' => 'completed',
+                        'method' => 'crypto',
+                        'crypto_currency' => 'USDT'
+                    ]
+                ]
+            ],
+            '*referral/balance*' => [
+                'message' => 'Referral wallet balance retrieved successfully',
+                'data' => [
+                    'currency' => 'NGN',
+                    'total_earned' => 45000.00,
+                    'available_for_withdrawal' => 30000.00,
+                    'available_for_withdrawal_usd' => 20.00,
+                    'usd_ngn_rate' => 1500.00,
+                    'min_withdrawal_amount' => 1000.00,
+                    'max_withdrawal_amount' => null,
+                    'withdrawal_methods' => [
+                        ['method' => 'fiat', 'currency' => 'NGN', 'amount_currency' => 'NGN', 'available_balance' => 30000.00, 'min_amount' => 1000.00, 'max_amount' => null, 'enabled' => true],
+                        ['method' => 'crypto', 'currency' => 'USD', 'amount_currency' => 'USD', 'payout_currency' => 'USDT', 'currencies' => ['USDT'], 'usd_ngn_rate' => 1500.00, 'available_balance' => 20.00, 'min_amount' => 0.66, 'max_amount' => null, 'enabled' => true]
+                    ]
+                ]
             ],
 
             // Virtual Cards

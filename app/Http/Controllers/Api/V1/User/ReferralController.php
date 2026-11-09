@@ -161,8 +161,8 @@ class ReferralController extends Controller
      * Create a withdrawal request from referral wallet
      * POST /api/user/referral/withdraw
      *
-     * Fiat (Safe Haven / App Wallet): { method: "fiat", amount: 1000 }
-     * Crypto (Quidax USDT wallet):    { method: "crypto", amount: 10, crypto_currency: "USDT" }
+     * Fiat (Safe Haven / App Wallet): { method: "fiat", amount: 1000 }            amount in NGN
+     * Crypto (Quidax USDT wallet):    { method: "crypto", amount: 10, crypto_currency: "USDT" }  amount in USD
      */
     public function requestWithdrawal(Request $request)
     {
@@ -185,12 +185,21 @@ class ReferralController extends Controller
                 'crypto_currency',
             ]));
 
+            // Fiat: amount/currency are NGN. Crypto: amount/currency are the USD value the
+            // user asked for; amount_ngn is what left the NGN referral balance.
+            $crypto = $this->referralWalletService->cryptoAmountFields($withdrawal->ledger);
+            $isCrypto = ($withdrawal->method ?? 'fiat') === 'crypto';
+
             return Response::successResponse('Withdrawal processed successfully', [
                 'withdrawal' => [
                     'id' => $withdrawal->id,
                     'reference' => $withdrawal->reference,
-                    'amount' => (float) $withdrawal->amount,
-                    'currency' => $withdrawal->currency_code,
+                    'amount' => $isCrypto ? ($crypto['amount_usd'] ?? null) : (float) $withdrawal->amount,
+                    'currency' => $isCrypto ? 'USD' : $withdrawal->currency_code,
+                    'amount_ngn' => (float) $withdrawal->amount,
+                    'amount_usd' => $crypto['amount_usd'] ?? null,
+                    'crypto_amount' => $crypto['crypto_amount'] ?? null,
+                    'usd_ngn_rate' => $crypto['usd_ngn_rate'] ?? null,
                     'status' => $withdrawal->status,
                     'method' => $withdrawal->method ?? 'fiat',
                     'bank_name' => $withdrawal->bank_name,

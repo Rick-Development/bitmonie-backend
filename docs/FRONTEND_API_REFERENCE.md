@@ -488,12 +488,23 @@ Auth: Bearer token required.
 
 Base path: `/api/user/referral`
 
-- `GET /info` and `GET /balance` include `wallet.withdrawal_methods` (`fiat` + `crypto`/USDT).
+**Currency rule:** the referral bonus is stored in **NGN**. Fiat amounts are **NGN**. Crypto amounts are a **USD value** (paid out as USDT, 1 USDT = 1 USD) — never NGN and never raw crypto units. The USD↔NGN rate is the live Quidax `usdtngn` ticker (cached 60 s, same as the wallet list).
+
+- `GET /info` (`data.wallet`) and `GET /balance` (`data`) return:
+  - `currency: "NGN"`, `available_for_withdrawal`, `total_earned`, `min_withdrawal_amount`, … — all **NGN** (unchanged).
+  - **New:** `available_for_withdrawal_usd` (USD, rounded down to cents) and `usd_ngn_rate` (NGN per 1 USD). Both `null` if the rate is unavailable.
+  - `withdrawal_methods[]` — each method now carries its own `currency` / `amount_currency`, `available_balance`, `min_amount`, `max_amount` in that currency:
+    - `fiat`: `currency: "NGN"`, amounts in NGN.
+    - `crypto`: `currency: "USD"`, `payout_currency: "USDT"`, `usd_ngn_rate`, amounts in USD. `enabled: false` when the rate is unavailable.
 - `POST /withdraw` (withdrawals are automatically and instantly credited; external destinations are not accepted):
-  - Fiat (Direct to Safe Haven account & app wallet):
+  - Fiat (Direct to Safe Haven account & app wallet) — `amount` is **NGN**:
     `{ "method": "fiat", "amount": 2000 }`
-  - Crypto (Direct to Quidax USDT wallet):
-    `{ "method": "crypto", "amount": 2000, "crypto_currency": "USDT" }`
+  - Crypto (Direct to Quidax USDT wallet) — `amount` is **USD**:
+    `{ "method": "crypto", "amount": 10, "crypto_currency": "USDT" }`
+    The backend debits the NGN equivalent (`amount × usd_ngn_rate`, rounded up to the kobo) from the referral balance and credits `amount` USDT. Min/max limits are applied to the NGN equivalent; error messages quote both (e.g. `Minimum withdrawal amount is USD 0.66 (NGN 1000.00).`). If the rate cannot be fetched the request fails with `422` and nothing is debited.
+  - Response `data.withdrawal`: `amount` + `currency` are **NGN** for fiat and the **USD** value for crypto. **New fields:** `amount_ngn` (always, NGN debited), `amount_usd`, `crypto_amount` (USDT paid) and `usd_ngn_rate` (crypto only; `null` for fiat).
+- `GET /history`: `withdrawal` objects for crypto withdrawals made after this change also include `amount_usd`, `crypto_amount`, `usd_ngn_rate` (ledger `amount`/`currency` stay NGN). Older crypto rows return these as `null`.
+- `GET /api/referral/commission`: **new** `totals_by_currency[]` (`currency_code`, `available`, `pending`, `withdrawn`). The old `totals` adds different currencies together and should not be displayed.
 
 ### Balance response shape
 
