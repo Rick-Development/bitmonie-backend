@@ -342,6 +342,8 @@ class BuyAndSellControllerTest extends TestCase
             'account_name' => 'John Michael Doe',
         ]);
 
+        $depositAddress = '0x1234567890abcdef1234567890abcdef12345678';
+
         $this->mockRampService(function ($mock) {
             $mock->shouldReceive('initiateOnRamp')
                 ->once()
@@ -367,7 +369,16 @@ class BuyAndSellControllerTest extends TestCase
         });
 
         $this->mockSafeHavenService();
-        $this->mockQuidaxService();
+        $this->mockQuidaxService(function ($mock) use ($depositAddress) {
+            $mock->shouldReceive('fetchPaymentAddressses')
+                ->once()
+                ->andReturn([
+                    'status' => 'success',
+                    'data' => [
+                        ['address' => $depositAddress, 'network' => 'bep20'],
+                    ],
+                ]);
+        });
 
         $response = $this->actingAs($user, 'api')->postJson('/api/user/buy-sell/on-ramp/initiate', [
             'from_currency' => 'NGN',
@@ -381,6 +392,99 @@ class BuyAndSellControllerTest extends TestCase
             ->assertJsonPath('type', 'success')
             ->assertJsonPath('data.status', 'pending')
             ->assertJsonPath('data.trade.to_currency', 'USDT');
+    }
+
+    public function test_initiate_on_ramp_uses_resolved_address_when_wallet_address_omitted(): void
+    {
+        $user = $this->makeUser();
+        $this->createSafeHavenAccount($user);
+        $depositAddress = '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd';
+
+        $this->mockRampService(function ($mock) use ($depositAddress) {
+            $mock->shouldReceive('initiateOnRamp')
+                ->once()
+                ->with(Mockery::on(function (array $payload) use ($depositAddress) {
+                    return ($payload['wallet_address']['address'] ?? null) === $depositAddress
+                        && ($payload['wallet_address']['network'] ?? null) === 'bep20';
+                }))
+                ->andReturn([
+                    'ok' => true,
+                    'status' => 'ok',
+                    'message' => 'Initiated',
+                    'data' => [
+                        'public_id' => 'on-public-id',
+                        'reference' => 'ON-REF-RESOLVED',
+                        'from_currency' => 'ngn',
+                        'to_currency' => 'usdt',
+                        'from_amount' => '5000',
+                        'to_amount' => '3.20',
+                    ],
+                    'http_status' => 200,
+                ]);
+        });
+
+        $this->mockSafeHavenService();
+        $this->mockQuidaxService(function ($mock) use ($depositAddress) {
+            $mock->shouldReceive('fetchPaymentAddressses')
+                ->once()
+                ->andReturn([
+                    'status' => 'success',
+                    'data' => [
+                        ['address' => $depositAddress, 'network' => 'bep20'],
+                    ],
+                ]);
+            $mock->shouldReceive('createCryptoPaymentAddress')->never();
+        });
+
+        $response = $this->actingAs($user, 'api')->postJson('/api/user/buy-sell/on-ramp/initiate', [
+            'from_currency' => 'NGN',
+            'to_currency' => 'USDT',
+            'from_amount' => 5000,
+            'network' => 'BEP20',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('type', 'success')
+            ->assertJsonPath('data.internal_status', 'pending')
+            ->assertJsonPath('data.trade.wallet_address', $depositAddress);
+
+        $this->assertSame($depositAddress, \App\Models\RampTransaction::first()->wallet_address);
+    }
+
+    public function test_initiate_on_ramp_rejects_wallet_address_that_is_not_the_users_quidax_address(): void
+    {
+        $user = $this->makeUser();
+        $this->createSafeHavenAccount($user);
+        $depositAddress = '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd';
+
+        $this->mockRampService(function ($mock) {
+            $mock->shouldReceive('initiateOnRamp')->never();
+        });
+        $this->mockSafeHavenService();
+        $this->mockQuidaxService(function ($mock) use ($depositAddress) {
+            $mock->shouldReceive('fetchPaymentAddressses')
+                ->once()
+                ->andReturn([
+                    'status' => 'success',
+                    'data' => [
+                        ['address' => $depositAddress, 'network' => 'bep20'],
+                    ],
+                ]);
+        });
+
+        $response = $this->actingAs($user, 'api')->postJson('/api/user/buy-sell/on-ramp/initiate', [
+            'from_currency' => 'NGN',
+            'to_currency' => 'USDT',
+            'from_amount' => 5000,
+            'network' => 'BEP20',
+            'wallet_address' => '0x1111111111111111111111111111111111111111',
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonPath('type', 'error')
+            ->assertJsonPath('data.error_code', 'WALLET_ADDRESS_MISMATCH');
+
+        $this->assertSame(0, \App\Models\RampTransaction::count());
     }
 
     public function test_confirm_off_ramp_reverts_transaction_to_pending_when_wallet_lookup_fails(): void

@@ -112,6 +112,7 @@ class QuidaxService
 
             if (isset($quidax_response['data']['id'])) {
                 $qd = $quidax_response['data'];
+                $oldQuidaxId = $user->quidax_id;
                 $user->update([
                     'quidax_id'           => $qd['id'],
                     'quidax_sn'           => $qd['sn'] ?? null,
@@ -121,7 +122,8 @@ class QuidaxService
 
                 Log::info('Recreated Quidax sub-account for user', [
                     'user_id' => $user->id,
-                    'quidax_id' => $qd['id'],
+                    'old_quidax_id' => $oldQuidaxId,
+                    'new_quidax_id' => $qd['id'],
                 ]);
 
                 return $qd['id'];
@@ -141,8 +143,31 @@ class QuidaxService
      */
     public function isSubAccountMissingResponse(array $response): bool
     {
-        $message = strtolower((string) ($response['message'] ?? ''));
-        return str_contains($message, "doesn't exist") || str_contains($message, 'not found') || str_contains($message, 'sub-account with id');
+        $haystack = strtolower(trim(implode(' ', array_filter([
+            is_string($response['message'] ?? null) ? $response['message'] : '',
+            is_string($response['error'] ?? null) ? $response['error'] : '',
+            is_scalar($response['code'] ?? null) ? (string) $response['code'] : '',
+            is_scalar($response['error_code'] ?? null) ? (string) $response['error_code'] : '',
+        ]))));
+
+        if ($haystack === '') {
+            return false;
+        }
+
+        // Only Quidax's specific missing-sub-account errors. A generic wallet
+        // "not found" must never trigger quidax_id replacement.
+        $mentionsSubAccount = str_contains($haystack, 'sub-account')
+            || str_contains($haystack, 'sub_account')
+            || str_contains($haystack, 'subaccount');
+
+        if (!$mentionsSubAccount) {
+            return false;
+        }
+
+        return str_contains($haystack, "doesn't exist")
+            || str_contains($haystack, 'does not exist')
+            || str_contains($haystack, 'not found')
+            || str_contains($haystack, 'deleted');
     }
 
     /**

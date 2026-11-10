@@ -64,6 +64,13 @@ class Kernel extends ConsoleKernel
                  ->withoutOverlapping(10)
                  ->appendOutputTo(storage_path('logs/ramp-recovery.log'));
 
+        // On-ramp (buy) status refresh only — no money movement.
+        $schedule->command('ramp:reconcile --type=on_ramp')
+                 ->everyFiveMinutes()
+                 ->timezone('Africa/Lagos')
+                 ->withoutOverlapping()
+                 ->appendOutputTo(storage_path('logs/ramp-reconcile-onramp.log'));
+
         // Legacy AutoSave scheduled deductions (autosave_plans table).
         $schedule->command('autosave:process-scheduled --limit=100')
                  ->everyMinute()

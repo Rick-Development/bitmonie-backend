@@ -340,6 +340,13 @@ class ScrambleApiEnhancerExtension extends OperationExtension
                 'from_amount' => 150000.00,
                 'side' => 'buy'
             ],
+            '*buy-sell/on-ramp/initiate*' => [
+                'from_currency' => 'NGN',
+                'to_currency' => 'USDT',
+                'from_amount' => 5000.00,
+                'network' => 'BEP20',
+                'wallet_address' => '0x1111111111111111111111111111111111111111'
+            ],
             '*buy-sell/initiate-buy*' => [
                 'from_currency' => 'NGN',
                 'to_currency' => 'USDT',
@@ -644,6 +651,45 @@ class ScrambleApiEnhancerExtension extends OperationExtension
                 'type' => 'success'
             ],
 
+            // Quidax crypto wallets
+            '*quidax/fetch-user-wallets*' => [
+                'message' => ['Wallets fetch successfully!'],
+                'type' => 'success',
+                'data' => [
+                    [
+                        'currency' => 'usdt',
+                        'balance' => '3.00',
+                        'available_balance' => '3.00',
+                        'provider_balance' => '6.00',
+                        'provider_locked_balance' => '0.00',
+                        'locked_balance' => '3.00',
+                        'total_balance' => '6.00',
+                        'reserved_outgoing_balance' => '3.00',
+                        'converted_balance' => '4500.00',
+                        'available_converted_balance' => '4500.00',
+                        'locked_converted_balance' => '4500.00',
+                        'provider_converted_balance' => '9000.00',
+                        'reference_currency' => 'NGN',
+                    ],
+                ],
+            ],
+            '*quidax/fetch-user-wallet*' => [
+                'message' => ['Wallet fetch successfully!'],
+                'type' => 'success',
+                'data' => [
+                    [
+                        'currency' => 'usdt',
+                        'balance' => '3.00',
+                        'available_balance' => '3.00',
+                        'provider_balance' => '6.00',
+                        'total_balance' => '6.00',
+                        'reserved_outgoing_balance' => '3.00',
+                        'locked_balance' => '3.00',
+                        'reference_currency' => 'NGN',
+                    ],
+                ],
+            ],
+
             // Crypto Buy & Sell / Ramp
             '*buy-sell/supported-assets*' => [
                 'status' => 'success',
@@ -689,6 +735,24 @@ class ScrambleApiEnhancerExtension extends OperationExtension
                     'fee' => 0.50,
                     'expires_in_seconds' => 120,
                     'expires_at' => '2026-10-06T18:05:00.000000Z'
+                ],
+                'type' => 'success'
+            ],
+            '*buy-sell/on-ramp/initiate*' => [
+                'status' => 'success',
+                'message' => 'On-ramp transaction initiated successfully',
+                'data' => [
+                    'merchant_reference' => 'ONRAMP_12_ABCdef1234',
+                    'internal_status' => 'pending',
+                    'status' => 'processing',
+                    'trade' => [
+                        'from_currency' => 'NGN',
+                        'to_currency' => 'USDT',
+                        'from_amount' => '5000',
+                        'network' => 'bep20',
+                        'wallet_address' => '0x1111111111111111111111111111111111111111'
+                    ],
+                    'note' => 'wallet_address is optional. If omitted, the user\'s Quidax deposit address for this coin/network is used. A different address is rejected with 422 WALLET_ADDRESS_MISMATCH.'
                 ],
                 'type' => 'success'
             ],

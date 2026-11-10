@@ -1093,6 +1093,49 @@ SafeLock interest accrues daily onto `interest_accrued` (not the NGN wallet) unt
 
 ## 8. Crypto Trading & Ramp Module (Quidax / Busha)
 
+### Quidax wallet balances
+
+Crypto USD/USDT balances are live from Quidax (`GET /api/user/quidax/fetch-user-wallets` and `GET /api/user/quidax/fetch-user-wallet?currency=usdt`). They are not the Graph USD wallet and not `/api/user/wallets` (local fiat wallets).
+
+| Field | Meaning |
+| --- | --- |
+| `balance` | **Spendable** amount after local outgoing reservations. Legacy field — older app builds should keep reading this for what the user can sell or send. This is not the full holding if funds are reserved. |
+| `available_balance` | Same as `balance` (spendable). Prefer this in new clients. |
+| `provider_balance` | Fresh unlocked balance on Quidax, before local reservations. |
+| `reserved_outgoing_balance` | Amount reserved for pending crypto withdrawals and off-ramps still in `processing` (24h TTL). These funds still exist. |
+| `total_balance` | Full holding: `provider_balance` + `provider_locked_balance`. Use this (or `provider_balance`) when showing “everything I have”. |
+| `locked_balance` | Quidax-locked amount plus `reserved_outgoing_balance`. |
+
+Do not treat a `balance` of `0` as “the wallet is empty” without also checking `total_balance` / `provider_balance` / `reserved_outgoing_balance`.
+
+### On-ramp (buy crypto with NGN)
+
+- **Method & Path:** `POST /api/user/buy-sell/on-ramp/initiate`
+- **Auth Required:** Yes
+
+The backend always pays out to the authenticated user's own Quidax deposit address for the requested `to_currency` and `network` (the address is created if it does not exist yet).
+
+**Request body:**
+
+```json
+{
+    "from_currency": "NGN",
+    "to_currency": "USDT",
+    "from_amount": 5000,
+    "network": "BEP20",
+    "wallet_address": "0x1111111111111111111111111111111111111111"
+}
+```
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `from_currency`, `to_currency`, `from_amount`, `network` | Yes | Fiat source, crypto destination, NGN amount, and network. |
+| `wallet_address` | No | Optional for backward compatibility. If omitted, the server-resolved Quidax deposit address is used. If sent, it must match that address or the API returns `422` with `error_code: WALLET_ADDRESS_MISMATCH`. External or stale addresses are rejected. |
+
+A successful initiate only creates a pending quote. Crypto appears in the Quidax wallet after `POST /api/user/buy-sell/on-ramp/{merchant_reference}/confirm`, the SafeHaven NGN transfer, and the Quidax payout. Local buy status `confirmed` is still shown as `processing` until the provider marks the payout successful. Stuck buys are status-reconciled every 5 minutes (`ramp:reconcile --type=on_ramp`); that job does not move money.
+
+Quidax Ramp webhooks (`POST /api/webhook/quidax-ramp` and `POST /api/quidax/ramp/webhook`) must be signed with `x-ramp-signature` using `QUIDAX_RAMP_WEBHOOK_SECRET`. Invalid signatures, or a missing server secret, are rejected with **HTTP 401** and an audit row. Verification is never skipped.
+
 ### Endpoints
 
 #### 1. Fetch Crypto Deposit Address

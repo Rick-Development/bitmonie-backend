@@ -11227,7 +11227,7 @@
                 "tags": [
                     "Crypto Trading (Quidax)"
                 ],
-                "summary": "Get Quidax Crypto Wallets & Balances",
+                "summary": "Get Quidax crypto wallets and spendable balances",
                 "security": [
                     {
                         "bearerAuth": []
@@ -11235,56 +11235,112 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Successful response",
+                        "description": "List of the user's Quidax crypto wallets. `balance` and `available_balance` are spendable (provider balance minus reserved outgoing). `total_balance` / `provider_balance` show full holdings including reserved funds.",
                         "content": {
                             "application/json": {
                                 "schema": {
                                     "type": "object",
                                     "properties": {
                                         "message": {
-                                            "type": "object",
-                                            "properties": {
-                                                "success": {
-                                                    "type": "array",
-                                                    "items": {
-                                                        "type": "string"
-                                                    },
-                                                    "example": [
-                                                        "Operation completed successfully."
-                                                    ]
-                                                }
-                                            }
+                                            "type": "string",
+                                            "example": "Wallets fetch successfully!"
                                         },
                                         "type": {
                                             "type": "string",
                                             "example": "success"
                                         },
                                         "data": {
-                                            "type": "object",
-                                            "properties": {
-                                                "wallets": {
-                                                    "type": "array",
-                                                    "items": {
-                                                        "type": "object",
-                                                        "properties": {
-                                                            "currency": {
-                                                                "type": "string",
-                                                                "example": "usdt"
-                                                            },
-                                                            "balance": {
-                                                                "type": "string",
-                                                                "example": "1500.25"
-                                                            },
-                                                            "locked": {
-                                                                "type": "string",
-                                                                "example": "0.00"
-                                                            }
-                                                        }
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "currency": {
+                                                        "type": "string",
+                                                        "example": "usdt"
+                                                    },
+                                                    "balance": {
+                                                        "type": "string",
+                                                        "example": "3.00",
+                                                        "description": "Spendable/sellable balance after subtracting reserved_outgoing_balance. Legacy field for older mobile builds. This is not the full provider total."
+                                                    },
+                                                    "available_balance": {
+                                                        "type": "string",
+                                                        "example": "3.00",
+                                                        "description": "Same as balance: spendable amount after pending crypto withdrawals and processing off-ramps are reserved."
+                                                    },
+                                                    "provider_balance": {
+                                                        "type": "string",
+                                                        "example": "6.00",
+                                                        "description": "Fresh Quidax available (unlocked) wallet balance, before local outgoing reservations."
+                                                    },
+                                                    "provider_locked_balance": {
+                                                        "type": "string",
+                                                        "example": "0.00",
+                                                        "description": "Amount already locked on Quidax itself."
+                                                    },
+                                                    "locked_balance": {
+                                                        "type": "string",
+                                                        "example": "3.00",
+                                                        "description": "Provider locked balance plus local reserved_outgoing_balance."
+                                                    },
+                                                    "total_balance": {
+                                                        "type": "string",
+                                                        "example": "6.00",
+                                                        "description": "Full holdings: provider_balance + provider_locked_balance. Use this (or provider_balance) when showing the user everything they have, including reserved funds."
+                                                    },
+                                                    "reserved_outgoing_balance": {
+                                                        "type": "string",
+                                                        "example": "3.00",
+                                                        "description": "Local reservations for pending crypto withdrawals and processing off-ramps (TTL 24h). These funds still exist but are not spendable."
+                                                    },
+                                                    "converted_balance": {
+                                                        "type": "string",
+                                                        "example": "4500.00",
+                                                        "description": "Spendable balance converted to NGN (reference_currency)."
+                                                    },
+                                                    "available_converted_balance": {
+                                                        "type": "string",
+                                                        "example": "4500.00"
+                                                    },
+                                                    "locked_converted_balance": {
+                                                        "type": "string",
+                                                        "example": "4500.00"
+                                                    },
+                                                    "provider_converted_balance": {
+                                                        "type": "string",
+                                                        "example": "9000.00"
+                                                    },
+                                                    "reference_currency": {
+                                                        "type": "string",
+                                                        "example": "NGN"
                                                     }
                                                 }
                                             }
                                         }
                                     }
+                                },
+                                "example": {
+                                    "message": [
+                                        "Wallets fetch successfully!"
+                                    ],
+                                    "type": "success",
+                                    "data": [
+                                        {
+                                            "currency": "usdt",
+                                            "balance": "3.00",
+                                            "available_balance": "3.00",
+                                            "provider_balance": "6.00",
+                                            "provider_locked_balance": "0.00",
+                                            "locked_balance": "3.00",
+                                            "total_balance": "6.00",
+                                            "reserved_outgoing_balance": "3.00",
+                                            "converted_balance": "4500.00",
+                                            "available_converted_balance": "4500.00",
+                                            "locked_converted_balance": "4500.00",
+                                            "provider_converted_balance": "9000.00",
+                                            "reference_currency": "NGN"
+                                        }
+                                    ]
                                 }
                             }
                         }
@@ -11425,7 +11481,8 @@
                             }
                         }
                     }
-                }
+                },
+                "description": "Live balances from the user's Quidax sub-account. `balance` (legacy) and `available_balance` are spendable after local reservations. `provider_balance` is the fresh Quidax unlocked balance. `reserved_outgoing_balance` is pending withdrawals / processing off-ramps. `total_balance` is provider_balance + provider_locked_balance. Older app builds that only read `balance` will not show reserved funds."
             }
         },
         "/api/user/quidax/fetch-payment-address": {
@@ -23474,6 +23531,311 @@
                                     "data": {
                                         "lock_id": 1
                                     }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/user/quidax/fetch-user-wallet": {
+            "get": {
+                "tags": [
+                    "Crypto Trading (Quidax)"
+                ],
+                "summary": "Get a single Quidax wallet and spendable balance",
+                "description": "Same spendable-balance contract as fetch-user-wallets. Pass `currency` (e.g. usdt). The payload is still a list in `data` for legacy mobile clients.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "currency",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "example": "usdt"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of the user's Quidax crypto wallets. `balance` and `available_balance` are spendable (provider balance minus reserved outgoing). `total_balance` / `provider_balance` show full holdings including reserved funds.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Wallets fetch successfully!"
+                                        },
+                                        "type": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "currency": {
+                                                        "type": "string",
+                                                        "example": "usdt"
+                                                    },
+                                                    "balance": {
+                                                        "type": "string",
+                                                        "example": "3.00",
+                                                        "description": "Spendable/sellable balance after subtracting reserved_outgoing_balance. Legacy field for older mobile builds. This is not the full provider total."
+                                                    },
+                                                    "available_balance": {
+                                                        "type": "string",
+                                                        "example": "3.00",
+                                                        "description": "Same as balance: spendable amount after pending crypto withdrawals and processing off-ramps are reserved."
+                                                    },
+                                                    "provider_balance": {
+                                                        "type": "string",
+                                                        "example": "6.00",
+                                                        "description": "Fresh Quidax available (unlocked) wallet balance, before local outgoing reservations."
+                                                    },
+                                                    "provider_locked_balance": {
+                                                        "type": "string",
+                                                        "example": "0.00",
+                                                        "description": "Amount already locked on Quidax itself."
+                                                    },
+                                                    "locked_balance": {
+                                                        "type": "string",
+                                                        "example": "3.00",
+                                                        "description": "Provider locked balance plus local reserved_outgoing_balance."
+                                                    },
+                                                    "total_balance": {
+                                                        "type": "string",
+                                                        "example": "6.00",
+                                                        "description": "Full holdings: provider_balance + provider_locked_balance. Use this (or provider_balance) when showing the user everything they have, including reserved funds."
+                                                    },
+                                                    "reserved_outgoing_balance": {
+                                                        "type": "string",
+                                                        "example": "3.00",
+                                                        "description": "Local reservations for pending crypto withdrawals and processing off-ramps (TTL 24h). These funds still exist but are not spendable."
+                                                    },
+                                                    "converted_balance": {
+                                                        "type": "string",
+                                                        "example": "4500.00",
+                                                        "description": "Spendable balance converted to NGN (reference_currency)."
+                                                    },
+                                                    "available_converted_balance": {
+                                                        "type": "string",
+                                                        "example": "4500.00"
+                                                    },
+                                                    "locked_converted_balance": {
+                                                        "type": "string",
+                                                        "example": "4500.00"
+                                                    },
+                                                    "provider_converted_balance": {
+                                                        "type": "string",
+                                                        "example": "9000.00"
+                                                    },
+                                                    "reference_currency": {
+                                                        "type": "string",
+                                                        "example": "NGN"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "message": [
+                                        "Wallets fetch successfully!"
+                                    ],
+                                    "type": "success",
+                                    "data": [
+                                        {
+                                            "currency": "usdt",
+                                            "balance": "3.00",
+                                            "available_balance": "3.00",
+                                            "provider_balance": "6.00",
+                                            "provider_locked_balance": "0.00",
+                                            "locked_balance": "3.00",
+                                            "total_balance": "6.00",
+                                            "reserved_outgoing_balance": "3.00",
+                                            "converted_balance": "4500.00",
+                                            "available_converted_balance": "4500.00",
+                                            "locked_converted_balance": "4500.00",
+                                            "provider_converted_balance": "9000.00",
+                                            "reference_currency": "NGN"
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/user/buy-sell/on-ramp/initiate": {
+            "post": {
+                "tags": [
+                    "Crypto Buy & Sell"
+                ],
+                "summary": "Initiate an on-ramp (NGN to crypto) buy",
+                "description": "Starts a buy of crypto with NGN. The payout address is always the authenticated user's Quidax deposit address for the requested coin and network (created if missing). `wallet_address` is optional for backward compatibility. If omitted, the resolved address is used. If a different address is sent, the request is rejected with 422 WALLET_ADDRESS_MISMATCH. A successful initiate only creates a pending quote; crypto is credited later after confirmation, the SafeHaven NGN transfer, and Quidax payout.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "from_currency",
+                                    "to_currency",
+                                    "from_amount",
+                                    "network"
+                                ],
+                                "properties": {
+                                    "from_currency": {
+                                        "type": "string",
+                                        "example": "NGN"
+                                    },
+                                    "to_currency": {
+                                        "type": "string",
+                                        "example": "USDT"
+                                    },
+                                    "from_amount": {
+                                        "type": "number",
+                                        "example": 5000
+                                    },
+                                    "network": {
+                                        "type": "string",
+                                        "example": "BEP20"
+                                    },
+                                    "wallet_address": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "description": "Optional. If sent, must match the user's Quidax deposit address for this coin/network. If omitted, the server-resolved address is used."
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "On-ramp quote created. Status is pending until confirm + provider payout.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                },
+                                "example": {
+                                    "message": "On-ramp transaction initiated successfully",
+                                    "type": "success",
+                                    "data": {
+                                        "merchant_reference": "ONRAMP_12_ABCdef1234",
+                                        "internal_status": "pending",
+                                        "status": "processing",
+                                        "trade": {
+                                            "from_currency": "NGN",
+                                            "to_currency": "USDT",
+                                            "from_amount": "5000",
+                                            "network": "bep20",
+                                            "wallet_address": "0x1111111111111111111111111111111111111111"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Address could not be resolved, or the client-supplied address is not the user's Quidax deposit address.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                },
+                                "example": {
+                                    "message": "The wallet address must be your Bitmonie Quidax deposit address for USDT on BEP20. External or stale addresses are not allowed.",
+                                    "data": {
+                                        "error_code": "WALLET_ADDRESS_MISMATCH",
+                                        "network": "bep20"
+                                    },
+                                    "type": "error"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/webhook/quidax-ramp": {
+            "post": {
+                "tags": [
+                    "Webhooks"
+                ],
+                "summary": "Quidax Ramp webhook",
+                "description": "Provider callback for on-ramp and off-ramp status updates. Requires header x-ramp-signature (HMAC SHA-256 of the raw body, or of the data object, using QUIDAX_RAMP_WEBHOOK_SECRET). An invalid signature, or a missing webhook secret on the server, is rejected with HTTP 401 and an audit row. Verification is never skipped. This endpoint only refreshes local transaction status; it does not credit wallets itself.",
+                "parameters": [
+                    {
+                        "name": "x-ramp-signature",
+                        "in": "header",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Accepted, duplicate, ignored, or logged processing error."
+                    },
+                    "401": {
+                        "description": "Missing server webhook secret or invalid signature.",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "status": "invalid_signature"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/quidax/ramp/webhook": {
+            "post": {
+                "tags": [
+                    "Webhooks"
+                ],
+                "summary": "Quidax Ramp webhook",
+                "description": "Provider callback for on-ramp and off-ramp status updates. Requires header x-ramp-signature (HMAC SHA-256 of the raw body, or of the data object, using QUIDAX_RAMP_WEBHOOK_SECRET). An invalid signature, or a missing webhook secret on the server, is rejected with HTTP 401 and an audit row. Verification is never skipped. This endpoint only refreshes local transaction status; it does not credit wallets itself.",
+                "parameters": [
+                    {
+                        "name": "x-ramp-signature",
+                        "in": "header",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Accepted, duplicate, ignored, or logged processing error."
+                    },
+                    "401": {
+                        "description": "Missing server webhook secret or invalid signature.",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "status": "invalid_signature"
                                 }
                             }
                         }

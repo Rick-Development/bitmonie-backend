@@ -199,7 +199,7 @@ class BuyAndSellController extends Controller
             'to_currency' => 'required|string',
             'from_amount' => 'required|numeric|min:1',
             'network' => 'required|string',
-            'wallet_address' => 'required|string',
+            'wallet_address' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
@@ -208,6 +208,38 @@ class BuyAndSellController extends Controller
 
         try {
             $user = auth()->user();
+
+            try {
+                $resolvedAddress = $this->resolveUserQuidaxDepositAddress(
+                    $user,
+                    strtolower((string) $request->to_currency),
+                    strtolower((string) $request->network)
+                );
+            } catch (Exception $addressException) {
+                return Response::errorResponse(
+                    $addressException->getMessage(),
+                    ['error_code' => 'WALLET_ADDRESS_UNAVAILABLE'],
+                    422
+                );
+            }
+
+            $requestedAddress = trim((string) $request->input('wallet_address', ''));
+            if ($requestedAddress !== '' && !$this->walletAddressesMatch($requestedAddress, $resolvedAddress, (string) $request->network)) {
+                return Response::errorResponse(
+                    'The wallet address must be your Bitmonie Quidax deposit address for '
+                    . strtoupper((string) $request->to_currency)
+                    . ' on '
+                    . strtoupper((string) $request->network)
+                    . '. External or stale addresses are not allowed.',
+                    [
+                        'error_code' => 'WALLET_ADDRESS_MISMATCH',
+                        'network' => strtolower((string) $request->network),
+                    ],
+                    422
+                );
+            }
+
+            $walletAddress = $resolvedAddress;
             $customerProfile = $this->resolveRampCustomerProfile($user);
             $payload = [
                 'from_currency' => strtolower($request->from_currency),
@@ -216,7 +248,7 @@ class BuyAndSellController extends Controller
                 'merchant_reference' => 'ONRAMP_' . $user->id . '_' . Str::random(10),
                 'customer' => $customerProfile['payload'],
                 'wallet_address' => [
-                    'address' => $request->wallet_address,
+                    'address' => $walletAddress,
                     'network' => strtolower($request->network),
                 ],
             ];
@@ -240,7 +272,7 @@ class BuyAndSellController extends Controller
                 'from_amount' => $data['from_amount'] ?? $request->from_amount,
                 'to_amount' => $data['to_amount'] ?? null,
                 'network' => strtolower($request->network),
-                'wallet_address' => $request->wallet_address,
+                'wallet_address' => $walletAddress,
                 'blockchain_fee' => $data['blockchain_fee'] ?? null,
                 'stamp_charge' => $data['stamp_charge'] ?? null,
                 'status' => 'pending',
@@ -2026,6 +2058,144 @@ class BuyAndSellController extends Controller
                     });
             })
             ->first();
+    }
+
+
+    /**
+     * Resolve the authenticated user's Quidax deposit address for a coin/network.
+     * Creates the address with Quidax when the user does not yet have one.
+     */
+    protected function resolveUserQuidaxDepositAddress($user, string $currency, string $network): string
+    {
+        $currency = strtolower(trim($currency));
+        $requestedNetwork = strtolower(trim($network));
+        $normalizedNetwork = $this->normalizeRampNetworkKey($requestedNetwork);
+
+        if (empty($user->quidax_id)) {
+            $this->quidaxService->ensureUserSubAccount($user);
+            $user->refresh();
+        }
+
+        if (empty($user->quidax_id)) {
+            throw new Exception('Crypto account not configured. Please try again after your Quidax wallet is ready.');
+        }
+
+        $existing = $this->quidaxService->fetchPaymentAddressses($user->quidax_id, $currency);
+        $address = $this->extractMatchingDepositAddress($existing, $normalizedNetwork, $requestedNetwork);
+
+        if ($address) {
+            return $address;
+        }
+
+        $createNetwork = $normalizedNetwork !== '' ? $normalizedNetwork : $requestedNetwork;
+        $created = $this->quidaxService->createCryptoPaymentAddress($user->quidax_id, $currency, $createNetwork);
+        $address = $this->extractMatchingDepositAddress($created, $normalizedNetwork, $requestedNetwork)
+            ?? trim((string) (data_get($created, 'data.address') ?? data_get($created, 'address') ?? ''));
+
+        if ($address === '') {
+            throw new Exception(
+                'Unable to resolve your Bitmonie Quidax deposit address for '
+                . strtoupper($currency)
+                . ' on '
+                . strtoupper($network)
+                . '.'
+            );
+        }
+
+        return $address;
+    }
+
+    protected function extractMatchingDepositAddress($response, string $normalizedNetwork, string $requestedNetwork): ?string
+    {
+        if (!is_array($response)) {
+            return null;
+        }
+
+        $items = data_get($response, 'data');
+        if (is_array($items) && isset($items['address']) && is_string($items['address'])) {
+            $items = [$items];
+        } elseif (!is_array($items)) {
+            $items = isset($response['address']) ? [$response] : [];
+        }
+
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $address = trim((string) ($item['address'] ?? ''));
+            if ($address === '') {
+                continue;
+            }
+
+            $itemNetwork = strtolower(trim((string) ($item['network'] ?? $item['network_name'] ?? '')));
+            if ($itemNetwork === '') {
+                continue;
+            }
+
+            if (
+                $this->normalizeRampNetworkKey($itemNetwork) === $normalizedNetwork
+                || strcasecmp($itemNetwork, $requestedNetwork) === 0
+            ) {
+                return $address;
+            }
+        }
+
+        return null;
+    }
+
+    protected function walletAddressesMatch(string $left, string $right, string $network): bool
+    {
+        $left = trim($left);
+        $right = trim($right);
+
+        if ($left === '' || $right === '') {
+            return false;
+        }
+
+        if (strcasecmp($left, $right) === 0) {
+            return true;
+        }
+
+        $normalize = function (string $address): string {
+            $address = strtolower(trim($address));
+
+            if (preg_match('/\A[0-9a-f]{40}\z/', $address) === 1) {
+                $address = '0x' . $address;
+            }
+
+            return $address;
+        };
+
+        return $normalize($left) === $normalize($right);
+    }
+
+    protected function normalizeRampNetworkKey(string $network): string
+    {
+        $key = preg_replace('/[^a-z0-9]+/', '_', strtolower(trim($network))) ?? '';
+        $key = trim($key, '_');
+
+        $aliases = [
+            'binance_smart_chain' => 'bep20',
+            'binance_smart_chain_bep20' => 'bep20',
+            'bnb_smart_chain_bep20' => 'bep20',
+            'bnb_smart_chain' => 'bep20',
+            'bep_20' => 'bep20',
+            'bsc' => 'bep20',
+            'ethereum' => 'erc20',
+            'ethereum_erc20' => 'erc20',
+            'ethereum_mainnet' => 'erc20',
+            'ethereum_network' => 'erc20',
+            'erc_20' => 'erc20',
+            'eth' => 'erc20',
+            'tron_trc20' => 'trc20',
+            'tron_network' => 'trc20',
+            'trc_20' => 'trc20',
+            'tron' => 'trc20',
+            'polygon_network' => 'polygon',
+        ];
+
+        return $aliases[$key] ?? $key;
     }
 
     // =========================================================================

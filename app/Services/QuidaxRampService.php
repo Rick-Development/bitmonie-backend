@@ -258,16 +258,30 @@ class QuidaxRampService
 
     public function verifyWebhookSignature(string $payload, ?string $signature): bool
     {
+        return (bool) ($this->inspectWebhookSignature($payload, $signature)['ok'] ?? false);
+    }
+
+    /**
+     * @return array{ok: bool, reason: string|null}
+     */
+    public function inspectWebhookSignature(string $payload, ?string $signature): array
+    {
         $secret = config('services.quidax_ramp.webhook_secret');
 
-        if (empty($secret)) {
-            Log::warning('Quidax Ramp webhook signature verification skipped because no signing secret is configured.');
+        if ($secret === null || $secret === '') {
+            Log::error('Quidax Ramp webhook rejected because no signing secret is configured.');
 
-            return true;
+            return [
+                'ok' => false,
+                'reason' => 'missing_secret',
+            ];
         }
 
-        if (empty($signature)) {
-            return false;
+        if ($signature === null || $signature === '') {
+            return [
+                'ok' => false,
+                'reason' => 'invalid_signature',
+            ];
         }
 
         $candidates = [
@@ -285,11 +299,17 @@ class QuidaxRampService
 
         foreach ($candidates as $candidate) {
             if (hash_equals($candidate, $signature) || hash_equals("sha256={$candidate}", $signature)) {
-                return true;
+                return [
+                    'ok' => true,
+                    'reason' => null,
+                ];
             }
         }
 
-        return false;
+        return [
+            'ok' => false,
+            'reason' => 'invalid_signature',
+        ];
     }
 
     protected function extractMessage($value): ?string

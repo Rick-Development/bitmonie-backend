@@ -37,20 +37,24 @@ class QuidaxRampWebhookController extends Controller
             return response()->json(['status' => 'error_logged'], 200);
         }
 
-      if (!$rampService->verifyWebhookSignature($rawPayload, $signature)) {
-    $audit->markFailed(
-        $eventLog,
-        'Quidax Ramp webhook signature verification failed.'
-    );
+      $verification = $rampService->inspectWebhookSignature($rawPayload, $signature);
+      if (!($verification['ok'] ?? false)) {
+    $reason = $verification['reason'] ?? 'invalid_signature';
+    $message = $reason === 'missing_secret'
+        ? 'Quidax Ramp webhook rejected because no signing secret is configured.'
+        : 'Quidax Ramp webhook signature verification failed.';
 
-    Log::warning('Quidax Ramp webhook signature verification failed.', [
+    $audit->markFailed($eventLog, $message, 401);
+
+    Log::warning($message, [
         'event' => $payload['event'] ?? $payload['type'] ?? null,
         'ip' => $request->ip(),
+        'reason' => $reason,
     ]);
 
     return response()->json([
-        'status' => 'invalid_signature',
-    ], 200);
+        'status' => $reason,
+    ], 401);
 }
 
        $eventName = $this->normalizeStatus(
