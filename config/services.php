@@ -21,12 +21,16 @@ return [
         'ramp_url' => env('QUIDAX_RAMP_URL'),
         'webhook_secret' => env('QUIDAX_WEBHOOK_SECRET'),
         'withdrawal_reservation_ttl_hours' => env('QUIDAX_WITHDRAWAL_RESERVATION_TTL_HOURS', 24),
+        // Off-ramps stuck on non-terminal provider errors (e.g. too_many_requests) stop reserving after this many hours from created_at, even if updated_at is later refreshed.
+        'ramp_reservation_max_age_hours' => env('QUIDAX_RAMP_RESERVATION_MAX_AGE_HOURS', 24),
     ],
 
     'quidax_ramp' => [
         'base_url'    => env('QUIDAX_RAMP_BASE_URL', 'https://ramp-be.quidax.io/api/v1'),
         'private_key' => env('QUIDAX_RAMP_SECRET'),
         'webhook_secret' => env('QUIDAX_RAMP_WEBHOOK_SECRET', env('QUIDAX_RAMP_SECRET')),
+        'webhook_forward_url' => env('QUIDAX_RAMP_WEBHOOK_FORWARD_URL'),
+        'webhook_forward_timeout' => env('QUIDAX_RAMP_WEBHOOK_FORWARD_TIMEOUT', 8),
     ],
 
 'fcm'=>[

@@ -312,7 +312,7 @@ if ($exchangeRate !== null && $this->compare($exchangeRate, '0') > 0) {
                 );
 
                 if (!$decision['active']) {
-                    if (in_array($decision['reason'], ['awaiting_payout_released', 'reservation_released', 'stale_active_reservation', 'terminal_status', 'terminal_provider_status', 'invalid_reservation_amount'], true)) {
+                    if (in_array($decision['reason'], ['awaiting_payout_released', 'reservation_released', 'stale_active_reservation', 'stale_created_at_max_age', 'terminal_status', 'terminal_provider_status', 'invalid_reservation_amount'], true)) {
                         Log::warning('Off-ramp reservation excluded from spendable balance.', $this->offRampReservationLogContext($transaction, $decision));
                     }
 
@@ -393,6 +393,10 @@ if ($exchangeRate !== null && $this->compare($exchangeRate, '0') > 0) {
             return array_merge($base, ['reason' => 'stale_active_reservation']);
         }
 
+        if ($this->isPastCreatedAtMaxAge($transaction, $providerStatuses)) {
+            return array_merge($base, ['reason' => 'stale_created_at_max_age']);
+        }
+
         return array_merge($base, [
             'active' => true,
             'reason' => 'active',
@@ -433,6 +437,10 @@ if ($exchangeRate !== null && $this->compare($exchangeRate, '0') > 0) {
         ];
 
         $statuses = [];
+        $columnStatus = $this->normalizeStatus($transaction->provider_status ?? null);
+        if ($columnStatus !== '') {
+            $statuses[$columnStatus] = true;
+        }
         foreach ($paths as $path) {
             $status = $this->normalizeStatus(data_get($metadata, $path));
             if ($status !== '') {
@@ -452,6 +460,57 @@ if ($exchangeRate !== null && $this->compare($exchangeRate, '0') > 0) {
         }
 
         return $timestamp->lt(now()->subHours($this->reservationTtlHours()));
+    }
+
+    public function reservationMaxAgeHours(): int
+    {
+        $configured = (int) config('services.quidax.ramp_reservation_max_age_hours', 24);
+
+        return $configured;
+    }
+
+    protected function isNonTerminalProviderError(?string $status): bool
+    {
+        return in_array($this->normalizeStatus($status), [
+            'too_many_requests',
+            'too_many_request',
+            'rate_limited',
+            'rate_limit',
+            '429',
+            'timeout',
+            'timed_out',
+            'service_unavailable',
+            'unavailable',
+            'bad_gateway',
+            'gateway_timeout',
+        ], true);
+    }
+
+    protected function isPastCreatedAtMaxAge(RampTransaction $transaction, array $providerStatuses = []): bool
+    {
+        $maxAgeHours = $this->reservationMaxAgeHours();
+        if ($maxAgeHours <= 0) {
+            return false;
+        }
+
+        $hasNonTerminalError = false;
+        foreach ($providerStatuses as $providerStatus) {
+            if ($this->isNonTerminalProviderError($providerStatus)) {
+                $hasNonTerminalError = true;
+                break;
+            }
+        }
+
+        if (!$hasNonTerminalError) {
+            return false;
+        }
+
+        $timestamp = $transaction->created_at ?? $transaction->updated_at;
+        if (!$timestamp) {
+            return false;
+        }
+
+        return $timestamp->lt(now()->subHours($maxAgeHours));
     }
 
     protected function offRampReservationLogContext(RampTransaction $transaction, array $decision): array

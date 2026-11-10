@@ -8,6 +8,7 @@ use App\Services\QuidaxRampService;
 use App\Services\RampTransactionSyncService;
 use App\Services\WebhookAuditService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Jobs\ProcessQuidaxOfframpForCardFunding;
 use App\Models\CryptoCardTransactions;
@@ -149,6 +150,19 @@ if ($this->isCardFundingOfframp($data, $merchantReference)) {
         }
 
         if (!$transaction) {
+            $forwarded = $this->maybeForwardUnmatchedWebhook(
+                $request,
+                $rawPayload,
+                $signature,
+                $merchantReference,
+                $eventLog,
+                $audit
+            );
+
+            if ($forwarded !== null) {
+                return $forwarded;
+            }
+
             $audit->markIgnored($eventLog, 'No matching local ramp transaction found.');
 
             return response()->json(['status' => 'ignored'], 200);
@@ -494,5 +508,85 @@ protected function isFailedCardFundingStatus(
         true
     );
 }
+
+
+    /**
+     * When this app has no matching ramp row (typical if api and sandbox share
+     * one Quidax merchant), optionally forward the already-verified webhook to
+     * another environment. Disabled unless QUIDAX_RAMP_WEBHOOK_FORWARD_URL is set.
+     * The loop-guard header prevents a sandbox-to-api bounce.
+     */
+    protected function maybeForwardUnmatchedWebhook(
+        Request $request,
+        string $rawPayload,
+        ?string $signature,
+        string $merchantReference,
+        $eventLog,
+        WebhookAuditService $audit
+    ) {
+        $forwardUrl = trim((string) config('services.quidax_ramp.webhook_forward_url'));
+        if ($forwardUrl === '') {
+            return null;
+        }
+
+        if ($request->headers->has('X-Bitmonie-Webhook-Forward')) {
+            Log::info('Quidax Ramp webhook forward skipped because the loop-guard header is present.', [
+                'merchant_reference' => $merchantReference,
+            ]);
+
+            return null;
+        }
+
+        $timeout = (int) config('services.quidax_ramp.webhook_forward_timeout', 8);
+        if ($timeout <= 0) {
+            $timeout = 8;
+        }
+
+        $host = parse_url($forwardUrl, PHP_URL_HOST) ?: 'unknown-host';
+
+        try {
+            $response = Http::withHeaders([
+                'Content-Type' => $request->header('Content-Type', 'application/json'),
+                'Accept' => $request->header('Accept', 'application/json'),
+                'X-Ramp-Signature' => (string) $signature,
+                'X-Bitmonie-Webhook-Forward' => '1',
+            ])->timeout($timeout)
+                ->withBody($rawPayload, $request->header('Content-Type', 'application/json'))
+                ->post($forwardUrl);
+        } catch (\Throwable $exception) {
+            Log::error('Quidax Ramp webhook forward failed.', [
+                'merchant_reference' => $merchantReference,
+                'forward_host' => $host,
+                'message' => $exception->getMessage(),
+            ]);
+            $audit->markIgnored(
+                $eventLog,
+                'No matching local ramp transaction found; forward to sandbox failed: '.$exception->getMessage()
+            );
+
+            return response()->json([
+                'status' => 'forward_failed',
+            ], 504);
+        }
+
+        Log::info('Quidax Ramp webhook forwarded to sandbox.', [
+            'merchant_reference' => $merchantReference,
+            'forward_host' => $host,
+            'http_status' => $response->status(),
+        ]);
+
+        $audit->markIgnored(
+            $eventLog,
+            'No matching local ramp transaction found; forwarded to '.$host.' (HTTP '.$response->status().').'
+        );
+
+        $body = $response->json();
+        if (!is_array($body)) {
+            $body = ['status' => 'forwarded', 'body' => $response->body()];
+        }
+
+        return response()->json($body, $response->status());
+    }
+
 
 }

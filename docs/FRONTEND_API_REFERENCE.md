@@ -1102,7 +1102,7 @@ Crypto USD/USDT balances are live from Quidax (`GET /api/user/quidax/fetch-user-
 | `balance` | **Spendable** amount after local outgoing reservations. Legacy field — older app builds should keep reading this for what the user can sell or send. This is not the full holding if funds are reserved. |
 | `available_balance` | Same as `balance` (spendable). Prefer this in new clients. |
 | `provider_balance` | Fresh unlocked balance on Quidax, before local reservations. |
-| `reserved_outgoing_balance` | Amount reserved for pending crypto withdrawals and off-ramps still in `processing` (24h TTL). These funds still exist. |
+| `reserved_outgoing_balance` | Amount reserved for pending crypto withdrawals and off-ramps still in `processing`. Reservations expire after 24h of inactivity (`updated_at` TTL) and, for off-ramps stuck on non-terminal provider errors such as `too_many_requests`, after 24h from `created_at` (even if a later sync bumps `updated_at`). These funds still exist. |
 | `total_balance` | Full holding: `provider_balance` + `provider_locked_balance`. Use this (or `provider_balance`) when showing “everything I have”. |
 | `locked_balance` | Quidax-locked amount plus `reserved_outgoing_balance`. |
 

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\RampTransaction;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class RampTransactionSyncService
@@ -232,6 +233,63 @@ class RampTransactionSyncService
                     )
                 )
             );
+
+            return $lockedTransaction->fresh();
+        });
+    }
+
+    /**
+     * Mark a stuck off-ramp as failed and release its spendable reservation.
+     * Does not contact the provider or move money. Callers must already confirm
+     * that no crypto was debited and no fiat was paid.
+     */
+    public function markOffRampFailedAndRelease(RampTransaction $transaction, string $reason): RampTransaction
+    {
+        return DB::transaction(function () use ($transaction, $reason) {
+            /** @var RampTransaction $lockedTransaction */
+            $lockedTransaction = RampTransaction::whereKey($transaction->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ((string) $lockedTransaction->type !== 'off_ramp') {
+                return $lockedTransaction;
+            }
+
+            $currentStatus = strtolower((string) $lockedTransaction->status);
+            if (in_array($currentStatus, ['successful', 'failed', 'cancelled', 'canceled'], true)) {
+                $metadata = $lockedTransaction->metadata ?? [];
+                if (empty($metadata['reservation_released_at'])) {
+                    $lockedTransaction->update([
+                        'metadata' => $this->mergeMetadata($metadata, [
+                            'reservation_released_at' => now()->toDateTimeString(),
+                            'reservation_release_reason' => $metadata['reservation_release_reason'] ?? $reason,
+                        ]),
+                    ]);
+
+                    return $lockedTransaction->fresh();
+                }
+
+                return $lockedTransaction;
+            }
+
+            $metadata = $lockedTransaction->metadata ?? [];
+            $lockedTransaction->update([
+                'status' => 'failed',
+                'metadata' => $this->mergeMetadata($metadata, [
+                    'reservation_released_at' => $metadata['reservation_released_at'] ?? now()->toDateTimeString(),
+                    'reservation_release_reason' => $metadata['reservation_release_reason'] ?? $reason,
+                    'manually_marked_failed_at' => now()->toIso8601String(),
+                    'manually_marked_failed_reason' => $reason,
+                ]),
+            ]);
+
+            Log::info('Off-ramp marked failed and reservation released.', [
+                'ramp_transaction_id' => $lockedTransaction->id,
+                'user_id' => $lockedTransaction->user_id,
+                'merchant_reference' => $lockedTransaction->merchant_reference,
+                'reason' => $reason,
+                'previous_status' => $currentStatus,
+            ]);
 
             return $lockedTransaction->fresh();
         });
