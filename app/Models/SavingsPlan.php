@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class SavingsPlan extends Model
 {
+    protected $appends = ['apy'];
+
     protected $fillable = [
         'name',
         'slug',
@@ -23,4 +25,9 @@ class SavingsPlan extends Model
         'max_amount' => 'decimal:2',
         'status' => 'boolean',
     ];
+
+    public function getApyAttribute(): string
+    {
+        return number_format((float) ($this->interest_rate ?? 0), 2, '.', '');
+    }
 }

@@ -71,6 +71,7 @@ class SavingsProductsController extends Controller
                 'status' => $flexi->status,
                 'enabled' => (bool) $settings->flexi_enabled,
                 'annual_rate' => $settings->flexiApr() . '%',
+                'apy' => $settings->unifiedApy(),
                 'actions' => [
                     'save' => [
                         'allowed' => $flexiSaveAllowed,
@@ -116,6 +117,7 @@ class SavingsProductsController extends Controller
                     'interest_earned' => '0.00',
                     'status' => 'INACTIVE',
                     'enabled' => (bool) $settings->auto_enabled,
+                    'apy' => $settings->unifiedApy(),
                     'actions' => [
                         'save' => [
                             'allowed' => (bool) $settings->auto_enabled,
@@ -159,6 +161,7 @@ class SavingsProductsController extends Controller
                         'interest_earned' => Money::norm($auto->interest_earned),
                         'status' => $auto->status,
                         'enabled' => (bool) $settings->auto_enabled,
+                        'apy' => $settings->unifiedApy(),
                         'actions' => [
                             'save' => [
                                 'allowed' => $settings->auto_enabled && $isActive,
@@ -216,6 +219,7 @@ class SavingsProductsController extends Controller
                     'interest_earned' => Money::norm($target->interest_earned),
                     'status' => $target->status,
                     'enabled' => (bool) $settings->target_enabled,
+                    'apy' => $settings->unifiedApy(),
                     'actions' => [
                         'save' => [
                             'allowed' => $settings->target_enabled && $isTargetActive && Money::cmp($remainingToGoal, '0.00') > 0,
@@ -269,6 +273,7 @@ class SavingsProductsController extends Controller
                         'balance' => number_format((float) $lock->amount, 2, '.', ''),
                         'available_balance' => '0.00',
                         'interest_earned' => number_format((float) ($lock->interest_accrued ?? 0), 2, '.', ''),
+                        'apy' => number_format((float) ($lock->interest_rate ?? 0), 2, '.', ''),
                         'status' => 'ACTIVE',
                         'actions' => [
                             'save' => [
@@ -312,6 +317,7 @@ class SavingsProductsController extends Controller
                         'balance' => '0.00000000',
                         'available_balance' => '0.00000000',
                         'interest_earned' => '0.00000000',
+                        'apy' => number_format((float) ($usdtSettings->base_apy ?? 15), 2, '.', ''),
                         'status' => 'INACTIVE',
                         'actions' => [
                             'save' => [
@@ -352,6 +358,7 @@ class SavingsProductsController extends Controller
                             'interest_earned' => (string) $summary['total_interest_earned'],
                             'status' => $inv->status,
                             'rate_label' => $summary['rate_label'],
+                            'apy' => (string) $summary['apy'],
                             'actions' => [
                                 'save' => [
                                     'allowed' => (bool) $usdtSettings->is_active,

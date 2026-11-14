@@ -993,6 +993,7 @@ public function withdrawInterest(
             'amount' => $investment->amount,
             'interest_rate' => $investment->interest_rate,
             'base_apy' => $baseApy,
+            'apy' => $baseApy,
             'power_bonus_applies' => $powerBonusApplies,
             'power_bonus_multiplier' => $powerBonusMultiplier,
             'auto_compound' => $investment->auto_compound,

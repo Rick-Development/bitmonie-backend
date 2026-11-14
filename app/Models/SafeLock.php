@@ -38,6 +38,7 @@ class SafeLock extends Model
         'total_payout',
         'interest_earned_today',
         'daily_interest',
+        'apy',
     ];
 
     public function user()
@@ -115,5 +116,10 @@ class SafeLock extends Model
         $today = now($tz)->toDateString();
 
         return $last === $today ? $this->daily_interest : '0.00';
+    }
+
+    public function getApyAttribute(): string
+    {
+        return number_format((float) ($this->interest_rate ?? 0), 2, '.', '');
     }
 }

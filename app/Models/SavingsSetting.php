@@ -130,6 +130,15 @@ class SavingsSetting extends Model
         return number_format((float) $this->flexi_interest_apr_percent, 2, '.', '');
     }
 
+    /**
+     * The admin-configured annual yield used by unified Flexi, Auto and Target
+     * accounts. Interest accrual currently uses this same rate for all three.
+     */
+    public function unifiedApy(): string
+    {
+        return $this->flexiApr();
+    }
+
     public function targetEarlyClosureFeePercent(): string
     {
         return number_format((float) $this->target_early_closure_fee_percent, 2, '.', '');

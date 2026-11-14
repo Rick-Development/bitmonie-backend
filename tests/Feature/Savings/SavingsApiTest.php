@@ -36,7 +36,8 @@ class SavingsApiTest extends SavingsTestCase
         $get = $this->actingAs($user, 'api')->getJson('/api/v1/savings/flexi');
         $get->assertStatus(200)
             ->assertJsonPath('data.balance', '500.00')
-            ->assertJsonPath('data.available_balance', '500.00');
+            ->assertJsonPath('data.available_balance', '500.00')
+            ->assertJsonPath('data.apy', '60.00');
 
         // Withdraw
         $wdr = $this->actingAs($user, 'api')->postJson('/api/v1/savings/flexi/withdraw', [
@@ -53,6 +54,36 @@ class SavingsApiTest extends SavingsTestCase
         $tx = $this->actingAs($user, 'api')->getJson('/api/v1/savings/flexi/transactions');
         $tx->assertStatus(200)
             ->assertJsonCount(2, 'data.items');
+    }
+
+    public function test_unified_savings_fetches_return_the_admin_configured_apy(): void
+    {
+        config(['savings.flexi.interest_apr_percent' => '42.75']);
+        $user = $this->makeUser('5000.00');
+
+        $auto = app(\App\Services\Savings\SavingsManager::class)->createAuto($user, [
+            'title' => 'Weekly plan',
+            'amount' => '100.00',
+            'frequency' => 'weekly',
+            'day_of_week' => 1,
+        ])['account'];
+        $target = app(\App\Services\Savings\SavingsManager::class)->createTarget($user, [
+            'title' => 'New laptop',
+            'target_amount' => '2000.00',
+        ])['account'];
+
+        $this->actingAs($user, 'api')->getJson('/api/v1/savings/flexi')
+            ->assertOk()
+            ->assertJsonPath('data.apy', '42.75');
+
+        $this->actingAs($user, 'api')->getJson('/api/v1/savings/auto')
+            ->assertOk()
+            ->assertJsonPath('data.items.0.id', $auto->id)
+            ->assertJsonPath('data.items.0.apy', '42.75');
+
+        $this->actingAs($user, 'api')->getJson("/api/v1/savings/targets/{$target->id}")
+            ->assertOk()
+            ->assertJsonPath('data.apy', '42.75');
     }
 
     public function test_reject_access_to_another_users_savings(): void

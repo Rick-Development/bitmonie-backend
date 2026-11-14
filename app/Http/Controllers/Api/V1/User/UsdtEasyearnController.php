@@ -52,6 +52,7 @@ class UsdtEasyearnController extends Controller
                 'data' => [
                     'current_monthly_rate' => $settings->current_monthly_rate,
                     'base_apy' => $baseApy,
+                    'apy' => $baseApy,
                     'power_bonus_multiplier' => $powerBonusMultiplier,
                     'min_investment' => $settings->min_investment,
                     'max_investment' => $settings->max_investment,

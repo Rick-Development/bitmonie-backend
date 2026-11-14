@@ -6,12 +6,14 @@ use App\Models\RecurringSavingsPlan;
 use App\Models\SavingsAccount;
 use App\Models\SavingsEntry;
 use App\Models\SavingsExecution;
+use App\Models\SavingsSetting;
 
 /** API representations. Never exposes internal columns (request hashes, legacy refs). */
 final class SavingsPresenter
 {
     public static function account(SavingsAccount $a, ?SavingsManager $manager = null): array
     {
+        $apy = SavingsSetting::current()->unifiedApy();
         $base = [
             'id' => $a->id,
             'product' => $a->product,
@@ -25,6 +27,7 @@ final class SavingsPresenter
             'total_deposited' => Money::norm($a->total_deposited),
             'total_withdrawn' => Money::norm($a->total_withdrawn),
             'interest_earned' => Money::norm($a->interest_earned),
+            'apy' => $apy,
             'created_at' => $a->created_at?->toIso8601String(),
         ];
 
