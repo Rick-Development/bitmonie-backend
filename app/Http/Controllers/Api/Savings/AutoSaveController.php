@@ -42,7 +42,7 @@ class AutoSaveController extends Controller
     {
     }
 
-    /** List the user's Auto Save plans (paginated, filter by `status`). */
+    /** List the user's Auto Save plans, including admin-configured `apy` (paginated, filter by `status`). */
     public function index(Request $request)
     {
         $request->validate(['per_page' => ['sometimes', 'integer', 'min:1', 'max:100'], 'status' => ['sometimes', 'in:ACTIVE,PAUSED,CANCELLED,active,paused,cancelled']]);
@@ -86,7 +86,7 @@ class AutoSaveController extends Controller
         });
     }
 
-    /** Get a plan with its next scheduled run and last successful run. */
+    /** Get a plan with its APY, next scheduled run and last successful run. */
     public function show(Request $request, int $id)
     {
         return $this->guarded(function () use ($request, $id) {

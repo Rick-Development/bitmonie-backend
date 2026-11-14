@@ -29,7 +29,8 @@ class FlexiSaveController extends Controller
      * Get Flexi Save account
      *
      * Returns the authenticated user's Flexi Save account (created on first use),
-     * with available balance, total deposited and total withdrawn.
+     * with available balance, total deposited, total withdrawn, and the
+     * admin-configured `apy` percentage (for example, `"60.00"`).
      */
     public function show()
     {

@@ -42,7 +42,7 @@ class TargetSavingsController extends Controller
     {
     }
 
-    /** List targets (paginated). Filters: `status`, `category`. */
+    /** List targets with admin-configured `apy` (paginated). Filters: `status`, `category`. */
     public function index(Request $request)
     {
         $request->validate(['per_page' => ['sometimes', 'integer', 'min:1', 'max:100'], 'status' => ['sometimes', 'string'], 'category' => ['sometimes', 'string']]);
@@ -123,7 +123,7 @@ class TargetSavingsController extends Controller
         });
     }
 
-    /** Get a target with progress, remaining amount and percentage completed. */
+    /** Get a target with APY, progress, remaining amount and percentage completed. */
     public function show(Request $request, int $id)
     {
         return $this->guarded(function () use ($request, $id) {

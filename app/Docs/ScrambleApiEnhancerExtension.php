@@ -952,63 +952,122 @@ class ScrambleApiEnhancerExtension extends OperationExtension
                 'type' => 'success'
             ],
 
-            // Unified Savings (Flexi, AutoSave, TargetSavings)
-            '*savings/flexi*' => [
-                'status' => 'success',
-                'message' => 'Operation successful.',
+            // Unified Savings (all APY values are percentage strings, without "%")
+            '*savings/products*' => [
+                'message' => 'Savings products retrieved successfully.',
                 'data' => [
-                    'account' => [
-                        'id' => 1,
-                        'product_type' => 'flexi',
-                        'name' => 'Flexi Save',
-                        'balance' => '75000.00',
-                        'currency' => 'NGN',
-                        'status' => 'active',
-                        'interest_rate_pa' => '10.00',
-                        'total_interest_earned' => '245.50'
-                    ]
+                    'products' => [
+                        [
+                            'id' => 1,
+                            'product_key' => 'FLEXI',
+                            'name' => 'Flexi Save',
+                            'type' => 'flexible',
+                            'currency' => 'NGN',
+                            'balance' => '75000.00',
+                            'available_balance' => '75000.00',
+                            'interest_earned' => '245.50',
+                            'status' => 'ACTIVE',
+                            'enabled' => true,
+                            'annual_rate' => '60.00%',
+                            'apy' => '60.00',
+                        ],
+                    ],
                 ],
-                'type' => 'success'
+                'type' => 'success',
+            ],
+            '*savings/flexi*' => [
+                'message' => 'Flexi Save retrieved.',
+                'data' => [
+                    'id' => 1,
+                    'product' => 'FLEXI',
+                    'title' => 'Flexi Save',
+                    'currency' => 'NGN',
+                    'status' => 'ACTIVE',
+                    'balance' => '75000.00',
+                    'available_balance' => '75000.00',
+                    'interest_earned' => '245.50',
+                    'apy' => '60.00',
+                ],
+                'type' => 'success',
             ],
             '*savings/auto*' => [
-                'status' => 'success',
-                'message' => 'Operation successful.',
+                'message' => 'Auto Save plans retrieved.',
                 'data' => [
-                    'account' => [
+                    'items' => [[
                         'id' => 2,
-                        'product_type' => 'auto',
-                        'name' => 'Emergency Fund',
+                        'product' => 'AUTO',
+                        'title' => 'Emergency Fund',
+                        'currency' => 'NGN',
+                        'status' => 'ACTIVE',
                         'balance' => '50000.00',
-                        'target_amount' => '200000.00',
-                        'status' => 'active',
-                        'schedule' => [
+                        'available_balance' => '50000.00',
+                        'interest_earned' => '125.25',
+                        'apy' => '60.00',
+                        'plan' => [
                             'frequency' => 'monthly',
                             'amount' => '10000.00',
                             'next_run_at' => '2026-11-01T08:00:00Z',
-                            'status' => 'active'
-                        ]
-                    ]
+                            'status' => 'ACTIVE',
+                        ],
+                    ]],
+                    'pagination' => ['current_page' => 1, 'last_page' => 1, 'per_page' => 20, 'total' => 1],
                 ],
-                'type' => 'success'
+                'type' => 'success',
             ],
             '*savings/targets*' => [
-                'status' => 'success',
-                'message' => 'Operation successful.',
+                'message' => 'Targets retrieved.',
                 'data' => [
-                    'account' => [
+                    'items' => [[
                         'id' => 3,
-                        'product_type' => 'target',
-                        'name' => 'Vacation in Zanzibar',
+                        'product' => 'TARGET',
+                        'title' => 'Vacation in Zanzibar',
+                        'currency' => 'NGN',
+                        'status' => 'ACTIVE',
                         'balance' => '150000.00',
+                        'available_balance' => '0.00',
+                        'interest_earned' => '420.00',
+                        'apy' => '60.00',
                         'target_amount' => '500000.00',
-                        'target_date' => '2026-12-15',
-                        'status' => 'active',
-                        'progress_percentage' => 30.0,
-                        'is_locked' => true,
-                        'early_closure_fee_rate' => 0.02
-                    ]
+                        'deadline' => '2026-12-15',
+                        'progress' => ['percentage' => '30.00', 'remaining' => '350000.00'],
+                    ]],
+                    'pagination' => ['current_page' => 1, 'last_page' => 1, 'per_page' => 20, 'total' => 1],
                 ],
-                'type' => 'success'
+                'type' => 'success',
+            ],
+            '*savings/safelock/plans*' => [
+                'message' => ['success' => 'Operation successful'],
+                'data' => [
+                    'plans' => [[
+                        'id' => 3,
+                        'name' => '90 Days',
+                        'duration_days' => 90,
+                        'interest_rate' => '15.00',
+                        'apy' => '15.00',
+                        'min_amount' => '10000.00',
+                        'max_amount' => '5000000.00',
+                        'status' => true,
+                    ]],
+                    'enabled' => true,
+                    'early_break_penalty_percent' => '1.00',
+                ],
+                'type' => 'success',
+            ],
+            '*savings/safelock*' => [
+                'message' => ['success' => 'Operation successful'],
+                'data' => [
+                    'safe_locks' => [[
+                        'id' => 8,
+                        'title' => 'Emergency Lock',
+                        'amount' => '100000.00',
+                        'interest_rate' => '15.00',
+                        'apy' => '15.00',
+                        'interest_accrued' => '1250.00',
+                        'status' => 'active',
+                    ]],
+                    'total_locked_balance' => '101250.00',
+                ],
+                'type' => 'success',
             ],
             '*savings/transfers*' => [
                 'status' => 'success',
@@ -1025,16 +1084,84 @@ class ScrambleApiEnhancerExtension extends OperationExtension
 
             // Savings & EasyEarn
             '*savings/summary*' => [
-                'status' => 'success',
-                'message' => 'Savings summary fetched.',
+                'message' => 'Savings products retrieved successfully.',
                 'data' => [
-                    'flex_balance' => 850000.00,
-                    'locked_balance' => 2500000.00,
-                    'total_interest_earned' => 145200.50,
-                    'current_flex_apy' => 12.5,
-                    'currency' => 'NGN'
+                    'products' => [[
+                        'id' => 1,
+                        'product_key' => 'FLEXI',
+                        'name' => 'Flexi Save',
+                        'currency' => 'NGN',
+                        'balance' => '850000.00',
+                        'interest_earned' => '145200.50',
+                        'apy' => '60.00',
+                    ]],
                 ],
-                'type' => 'success'
+                'type' => 'success',
+            ],
+            '*usdt-easyearn/info*' => [
+                'success' => true,
+                'message' => 'Product information retrieved successfully',
+                'data' => [
+                    'current_monthly_rate' => '1.25',
+                    'base_apy' => '15.00',
+                    'apy' => '15.00',
+                    'power_bonus_multiplier' => '2.00',
+                    'min_investment' => '10.00000000',
+                    'max_investment' => '50000.00000000',
+                    'is_active' => true,
+                ],
+            ],
+            '*usdt-easyearn/my-savings*' => [
+                'success' => true,
+                'message' => 'Savings retrieved successfully',
+                'data' => [[
+                    'id' => 24,
+                    'amount' => '500.00000000',
+                    'interest_rate' => '1.25',
+                    'base_apy' => '15.00',
+                    'apy' => '15.00',
+                    'status' => 'active',
+                    'total_interest_earned' => '12.50000000',
+                ]],
+                'pagination' => ['current_page' => 1, 'last_page' => 1, 'per_page' => 20, 'total' => 1],
+            ],
+            '*usdt-easyearn/my-investments*' => [
+                'success' => true,
+                'message' => 'Savings retrieved successfully',
+                'data' => [[
+                    'id' => 24,
+                    'amount' => '500.00000000',
+                    'interest_rate' => '1.25',
+                    'base_apy' => '15.00',
+                    'apy' => '15.00',
+                    'status' => 'active',
+                    'total_interest_earned' => '12.50000000',
+                ]],
+                'pagination' => ['current_page' => 1, 'last_page' => 1, 'per_page' => 20, 'total' => 1],
+            ],
+            '*usdt-easyearn/savings/*' => [
+                'success' => true,
+                'message' => 'Investment retrieved successfully',
+                'data' => [
+                    'id' => 24,
+                    'amount' => '500.00000000',
+                    'interest_rate' => '1.25',
+                    'base_apy' => '15.00',
+                    'apy' => '15.00',
+                    'status' => 'active',
+                ],
+            ],
+            '*usdt-easyearn/investment/*' => [
+                'success' => true,
+                'message' => 'Investment retrieved successfully',
+                'data' => [
+                    'id' => 24,
+                    'amount' => '500.00000000',
+                    'interest_rate' => '1.25',
+                    'base_apy' => '15.00',
+                    'apy' => '15.00',
+                    'status' => 'active',
+                ],
             ],
             '*usdt-easyearn/plans*' => [
                 'status' => 'success',

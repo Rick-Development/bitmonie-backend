@@ -35,7 +35,9 @@ class SavingsProductsController extends Controller
     }
 
     /**
-     * Get all savings products for the authenticated user with balances and allowed actions.
+     * Get all savings products with balances, allowed actions, and `apy`.
+     * APY is a percentage string without the percent sign, sourced from the
+     * savings admin setting or the selected product plan.
      *
      * GET /api/v1/savings/products
      * GET /api/v1/savings/summary
