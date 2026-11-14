@@ -10,11 +10,13 @@
                     <div class="row mb-10-none">
 
                         <div class="col-xl-12 col-lg-12 form-group mt-2">
-                            <label>{{ __("Select from SafeHaven Bank List (Optional)") }}</label>
-                            <select class="form--control nice-select" id="safehaven-bank-selector">
-                                <option value="" selected disabled>{{ __("Select Bank from SafeHaven") }}</option>
+                            <label>{{ __("Select Bank from SafeHaven") }}*</label>
+                            <select class="form--control select2-basic" id="safehaven-bank-add-select" style="width: 100%;">
+                                <option value="" selected disabled>{{ __("Search & Select Bank") }}</option>
                                 @foreach($safeHavenBanks ?? [] as $shBank)
-                                    <option value="{{ $shBank->code }}" data-name="{{ $shBank->name }}">{{ $shBank->name }} ({{ $shBank->code }})</option>
+                                    <option value="{{ $shBank->code }}" data-name="{{ $shBank->name }}" {{ old('bank_code') == $shBank->code ? 'selected' : '' }}>
+                                        {{ $shBank->name }} ({{ $shBank->code }})
+                                    </option>
                                 @endforeach
                             </select>
                         </div>
@@ -25,15 +27,17 @@
                                 'name'          => "name",
                                 'required'      => 'required',
                                 'value'         => old("name"),
+                                'placeholder'   => __("Auto-filled on bank selection (or enter custom)"),
                             ])
                         </div>
 
                         <div class="col-xl-12 col-lg-12 form-group mt-2">
                             @include('admin.components.form.input',[
-                                'label'         => __("Bank Code"),
+                                'label'         => __("Bank Code").'*',
                                 'name'          => "bank_code",
                                 'value'         => old("bank_code"),
-                                'placeholder'   => __("e.g. 058 or 090286"),
+                                'placeholder'   => __("Auto-filled on bank selection (or enter custom)"),
+                                'attribute'     => "readonly",
                             ])
                         </div>
 
@@ -50,16 +54,22 @@
     @push('script')
         <script>
             openModalWhenError("bank-list-add","#bank-list-add");
-            $(document).on('change', '#safehaven-bank-selector', function() {
-                var selectedOption = $(this).find('option:selected');
-                var bankName = selectedOption.data('name');
-                var bankCode = $(this).val();
-                if (bankName) {
-                    $('#bank-list-add input[name=name]').val(bankName);
-                }
-                if (bankCode) {
-                    $('#bank-list-add input[name=bank_code]').val(bankCode);
-                }
+            $(document).ready(function() {
+                $('#safehaven-bank-add-select').select2({
+                    dropdownParent: $('#bank-list-add')
+                });
+
+                $(document).on('change', '#safehaven-bank-add-select', function() {
+                    var selectedOption = $(this).find('option:selected');
+                    var bankName = selectedOption.data('name');
+                    var bankCode = $(this).val();
+                    if (bankName) {
+                        $('#bank-list-add input[name=name]').val(bankName);
+                    }
+                    if (bankCode) {
+                        $('#bank-list-add input[name=bank_code]').val(bankCode);
+                    }
+                });
             });
         </script>
     @endpush

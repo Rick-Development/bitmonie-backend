@@ -25,9 +25,11 @@ class WebSettingsController extends Controller
     {
         $page_title         = "Basic Settings";
         $basic_settings     = BasicSettings::first();
+        $safeHavenBanks     = \App\Models\Bank::where('is_active', true)->orderBy('name')->get();
         return view('admin.sections.web-settings.basic-settings', compact(
             'page_title',
             'basic_settings',
+            'safeHavenBanks',
         ));
     }
 

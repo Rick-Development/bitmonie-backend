@@ -207,14 +207,15 @@
                             ])
                         </div>
                         <div class="col-xl-4 col-lg-4 form-group">
-                            @include('admin.components.form.input',[
-                                'label'         => __("Sudo Settlement Bank Code"),
-                                'type'          => "text",
-                                'class'         => "form--control",
-                                'placeholder'   => __("e.g. 058 or 090286"),
-                                'name'          => "sudo_settlement_bank_code",
-                                'value'         => old('sudo_settlement_bank_code',$basic_settings->sudo_settlement_bank_code),
-                            ])
+                            <label>{{ __("Sudo Settlement Bank") }}</label>
+                            <select name="sudo_settlement_bank_code" class="form--control select2-basic" id="sudo_settlement_bank_select">
+                                <option value="">{{ __("Select / Search Bank from SafeHaven (or Keep Env)") }}</option>
+                                @foreach($safeHavenBanks ?? [] as $shBank)
+                                    <option value="{{ $shBank->code }}" {{ old('sudo_settlement_bank_code', $basic_settings->sudo_settlement_bank_code) == $shBank->code ? 'selected' : '' }}>
+                                        {{ $shBank->name }} ({{ $shBank->code }})
+                                    </option>
+                                @endforeach
+                            </select>
                         </div>
                         <div class="col-xl-4 col-lg-4 form-group">
                             @include('admin.components.form.input',[
