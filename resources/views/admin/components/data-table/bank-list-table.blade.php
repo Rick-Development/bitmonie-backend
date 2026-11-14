@@ -2,6 +2,7 @@
     <thead>
         <tr>
             <th>{{ __("Bank Name") }}</th>
+            <th>{{ __("Bank Code") }}</th>
             <th>{{ __("Status") }}</th>
             <th></th>
         </tr>
@@ -11,6 +12,7 @@
         @forelse ($banks ?? [] as $item)
             <tr data-item="{{ $item->editData }}">
                 <td>{{ $item->name }}</td>
+                <td>{{ $item->bank_code ?? 'N/A' }}</td>
                 <td>
                     @include('admin.components.form.switcher',[
                         'name'          => 'bank_status',
@@ -45,7 +47,7 @@
                 </td>
             </tr>
         @empty
-            @include('admin.components.alerts.empty',['colspan' => 3])
+            @include('admin.components.alerts.empty',['colspan' => 4])
         @endforelse
     </tbody>
 </table>

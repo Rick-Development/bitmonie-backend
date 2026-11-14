@@ -74,27 +74,30 @@ class FincraService implements CurrencyProviderInterface
 
     public function __construct()
     {
-        $this->baseUrl = rtrim(
-            (string) config(
-                'services.fincra.base_url',
-                'https://sandboxapi.fincra.com'
-            ),
-            '/'
-        );
+        $basicSettings = null;
+        try {
+            $basicSettings = \App\Models\Admin\BasicSettings::first();
+        } catch (\Throwable $e) {
+            // DB unreachable
+        }
 
-        $this->privateKey = (string) config(
-            'services.fincra.secret_key',
-            config('services.fincra.private_key', '')
-        );
+        $baseUrl = !empty($basicSettings?->fincra_base_url)
+            ? $basicSettings->fincra_base_url
+            : config('services.fincra.base_url', 'https://sandboxapi.fincra.com');
 
-        $this->publicKey = (string) config(
-            'services.fincra.public_key',
-            ''
-        );
+        $this->baseUrl = rtrim((string) $baseUrl, '/');
 
-        $this->businessId = config(
-            'services.fincra.business_id'
-        );
+        $this->privateKey = (string) (!empty($basicSettings?->fincra_secret_key)
+            ? $basicSettings->fincra_secret_key
+            : config('services.fincra.secret_key', config('services.fincra.private_key', '')));
+
+        $this->publicKey = (string) (!empty($basicSettings?->fincra_public_key)
+            ? $basicSettings->fincra_public_key
+            : config('services.fincra.public_key', ''));
+
+        $this->businessId = !empty($basicSettings?->fincra_business_id)
+            ? $basicSettings->fincra_business_id
+            : config('services.fincra.business_id');
 
         $this->timeout = (int) config(
             'services.fincra.timeout',
@@ -796,9 +799,15 @@ public function initiatePayin(
         }
     }
 
-    $settlementDestination = config(
-        'services.fincra.settlement_destination'
-    );
+    $basicSettings = null;
+    try {
+        $basicSettings = \App\Models\Admin\BasicSettings::first();
+    } catch (\Throwable $e) {
+    }
+
+    $settlementDestination = !empty($basicSettings?->fincra_settlement_destination)
+        ? $basicSettings->fincra_settlement_destination
+        : config('services.fincra.settlement_destination');
 
     if (
         is_string($settlementDestination)

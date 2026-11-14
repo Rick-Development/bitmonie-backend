@@ -34,6 +34,12 @@
                     @include('admin.components.search-input',[
                         'name'  => 'bank_search',
                     ])
+                    <form action="{{ setRoute('admin.fund-transfer.bank.list.sync.safehaven') }}" method="POST" class="d-inline-block">
+                        @csrf
+                        <button type="submit" class="btn--base btn-loading" title="{{ __('Fetch & Sync banks from SafeHaven') }}">
+                            <i class="las la-sync-alt me-1"></i> {{ __("Sync SafeHaven Banks") }}
+                        </button>
+                    </form>
                     @include('admin.components.link.add-default',[
                         'text'          => __("Add Bank"),
                         'href'          => "#bank-list-add",

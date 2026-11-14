@@ -1408,8 +1408,15 @@ class BuyAndSellController extends Controller
             return null;
         }
 
+        $settings = null;
+        try {
+            $settings = \App\Models\Admin\BasicSettings::first();
+        } catch (\Throwable $e) {}
+
+        $fallbackBankCode = $settings?->safehaven_bank_code ?: (string) config('services.safeHeaven.bank_code', '090286');
+
         return [
-            'bank_code' => $account->bank_code ?: (string) config('services.safeHeaven.bank_code', '090286'),
+            'bank_code' => $account->bank_code ?: $fallbackBankCode,
             'account_number' => $account->account_number,
             'currency_code' => 'ngn',
             'bank_name' => $account->bank_name,

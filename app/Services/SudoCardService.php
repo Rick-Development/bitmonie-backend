@@ -11,16 +11,31 @@ class SudoCardService
 {
     protected ?string $baseUrl = null;
     protected ?string $apiKey = null;
+    protected ?string $settlementDebitAccountId = null;
     protected int $timeout = 30;
 
     public function __construct()
     {
-        $this->baseUrl = rtrim(
-            (string) config('services.sudo.base_url', 'https://api.sudo.africa'),
-            '/'
-        );
+        $basicSettings = null;
+        try {
+            $basicSettings = \App\Models\Admin\BasicSettings::first();
+        } catch (\Throwable $e) {
+            // DB unreachable (e.g. CLI or migrations)
+        }
 
-        $this->apiKey = (string) (config('services.sudo.api_key') ?? '');
+        $baseUrl = !empty($basicSettings?->sudo_base_url)
+            ? $basicSettings->sudo_base_url
+            : config('services.sudo.base_url', 'https://api.sudo.africa');
+
+        $this->baseUrl = rtrim((string) $baseUrl, '/');
+
+        $this->apiKey = (string) (!empty($basicSettings?->sudo_api_key)
+            ? $basicSettings->sudo_api_key
+            : (config('services.sudo.api_key') ?? ''));
+
+        $this->settlementDebitAccountId = !empty($basicSettings?->sudo_settlement_debit_account_id)
+            ? $basicSettings->sudo_settlement_debit_account_id
+            : config('services.sudo.settlement_debit_account_id');
     }
 
     /*
@@ -976,7 +991,8 @@ public function createCard(array $payload): array
          * Always use the configured Sudo settlement debit account.
          */
         $payload['debitAccountId'] =
-            config('services.sudo.settlement_debit_account_id');
+            $this->settlementDebitAccountId
+            ?? config('services.sudo.settlement_debit_account_id');
 
         /*
          * Virtual cards require debitAccountId.
@@ -1425,9 +1441,8 @@ public function orderCard(array $payload): array
          * Sudo uses the configured settlement debit account
          * for card issuance. Do not allow the client to override it.
          */
-        $debitAccountId = config(
-            'services.sudo.settlement_debit_account_id'
-        );
+        $debitAccountId = $this->settlementDebitAccountId
+            ?? config('services.sudo.settlement_debit_account_id');
 
         if (empty($debitAccountId)) {
             return [

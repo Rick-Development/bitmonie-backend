@@ -134,7 +134,7 @@
                     </div>
 
                     <div class="row kyc-provider-fields" id="safehaven_fields" style="{{ old('kyc_provider', $basic_settings->kyc_provider) == 'safehaven' ? '' : 'display:none;' }}">
-                        <div class="col-xl-4 col-lg-4 form-group">
+                        <div class="col-xl-3 col-lg-3 form-group">
                             @include('admin.components.form.input',[
                                 'label'         => __("SafeHaven Client ID")."*",
                                 'type'          => "text",
@@ -144,7 +144,7 @@
                                 'value'         => old('safehaven_client_id',$basic_settings->safehaven_client_id),
                             ])
                         </div>
-                        <div class="col-xl-4 col-lg-4 form-group">
+                        <div class="col-xl-3 col-lg-3 form-group">
                             @include('admin.components.form.input',[
                                 'label'         => __("SafeHaven API URL")."*",
                                 'type'          => "text",
@@ -154,7 +154,7 @@
                                 'value'         => old('safehaven_api_url',$basic_settings->safehaven_api_url),
                             ])
                         </div>
-                        <div class="col-xl-4 col-lg-4 form-group">
+                        <div class="col-xl-3 col-lg-3 form-group">
                             @include('admin.components.form.input',[
                                 'label'         => __("SafeHaven Debit Account Number")."*",
                                 'type'          => "text",
@@ -164,9 +164,155 @@
                                 'value'         => old('safehaven_debit_account',$basic_settings->safehaven_debit_account),
                             ])
                         </div>
+                        <div class="col-xl-3 col-lg-3 form-group">
+                            @include('admin.components.form.input',[
+                                'label'         => __("SafeHaven Bank Code")."*",
+                                'type'          => "text",
+                                'class'         => "form--control",
+                                'placeholder'   => __("090286")."...",
+                                'name'          => "safehaven_bank_code",
+                                'value'         => old('safehaven_bank_code',$basic_settings->safehaven_bank_code),
+                            ])
+                        </div>
                         <div class="col-xl-12 col-lg-12 form-group">
                             <label>{{ __("SafeHaven Client Assertion") }}*</label>
                             <textarea name="safehaven_client_assertion" class="form--control" placeholder="{{ __("Write Here") }}...">{{ old('safehaven_client_assertion',$basic_settings->safehaven_client_assertion) }}</textarea>
+                        </div>
+                    </div>
+
+                    <div class="col-xl-12 col-lg-12 mt-4 mb-2">
+                        <h5 class="title border-bottom pb-2">{{ __("Sudo Account Configuration") }}</h5>
+                        <p class="text-muted fs-6">{{ __("Configure Sudo card issuance and settlement account information. If left blank, values fallback to environment variables.") }}</p>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-xl-6 col-lg-6 form-group">
+                            @include('admin.components.form.input',[
+                                'label'         => __("Sudo Base URL"),
+                                'type'          => "text",
+                                'class'         => "form--control",
+                                'placeholder'   => __("https://api.sudo.africa"),
+                                'name'          => "sudo_base_url",
+                                'value'         => old('sudo_base_url',$basic_settings->sudo_base_url),
+                            ])
+                        </div>
+                        <div class="col-xl-6 col-lg-6 form-group">
+                            @include('admin.components.form.input',[
+                                'label'         => __("Sudo API Key"),
+                                'type'          => "password",
+                                'class'         => "form--control",
+                                'placeholder'   => __("Enter Sudo API Key"),
+                                'name'          => "sudo_api_key",
+                                'value'         => old('sudo_api_key',$basic_settings->sudo_api_key),
+                            ])
+                        </div>
+                        <div class="col-xl-4 col-lg-4 form-group">
+                            @include('admin.components.form.input',[
+                                'label'         => __("Sudo Settlement Bank Code"),
+                                'type'          => "text",
+                                'class'         => "form--control",
+                                'placeholder'   => __("e.g. 058 or 090286"),
+                                'name'          => "sudo_settlement_bank_code",
+                                'value'         => old('sudo_settlement_bank_code',$basic_settings->sudo_settlement_bank_code),
+                            ])
+                        </div>
+                        <div class="col-xl-4 col-lg-4 form-group">
+                            @include('admin.components.form.input',[
+                                'label'         => __("Sudo Settlement Account Number"),
+                                'type'          => "text",
+                                'class'         => "form--control",
+                                'placeholder'   => __("e.g. 0123456789"),
+                                'name'          => "sudo_settlement_account_number",
+                                'value'         => old('sudo_settlement_account_number',$basic_settings->sudo_settlement_account_number),
+                            ])
+                        </div>
+                        <div class="col-xl-4 col-lg-4 form-group">
+                            @include('admin.components.form.input',[
+                                'label'         => __("Sudo Settlement Account Name"),
+                                'type'          => "text",
+                                'class'         => "form--control",
+                                'placeholder'   => __("Account Name"),
+                                'name'          => "sudo_settlement_account_name",
+                                'value'         => old('sudo_settlement_account_name',$basic_settings->sudo_settlement_account_name),
+                            ])
+                        </div>
+                        <div class="col-xl-12 col-lg-12 form-group">
+                            @include('admin.components.form.input',[
+                                'label'         => __("Sudo Settlement Debit Account ID"),
+                                'type'          => "text",
+                                'class'         => "form--control",
+                                'placeholder'   => __("e.g. 64a1..."),
+                                'name'          => "sudo_settlement_debit_account_id",
+                                'value'         => old('sudo_settlement_debit_account_id',$basic_settings->sudo_settlement_debit_account_id),
+                            ])
+                        </div>
+                    </div>
+
+                    <div class="col-xl-12 col-lg-12 mt-4 mb-2">
+                        <h5 class="title border-bottom pb-2">{{ __("Fincra Configuration") }}</h5>
+                        <p class="text-muted fs-6">{{ __("Configure Fincra endpoint and credentials. If left blank, values fallback to environment variables.") }}</p>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-xl-6 col-lg-6 form-group">
+                            @include('admin.components.form.input',[
+                                'label'         => __("Fincra Base URL"),
+                                'type'          => "text",
+                                'class'         => "form--control",
+                                'placeholder'   => __("https://sandboxapi.fincra.com"),
+                                'name'          => "fincra_base_url",
+                                'value'         => old('fincra_base_url',$basic_settings->fincra_base_url),
+                            ])
+                        </div>
+                        <div class="col-xl-6 col-lg-6 form-group">
+                            @include('admin.components.form.input',[
+                                'label'         => __("Fincra Business ID"),
+                                'type'          => "text",
+                                'class'         => "form--control",
+                                'placeholder'   => __("Fincra Business ID"),
+                                'name'          => "fincra_business_id",
+                                'value'         => old('fincra_business_id',$basic_settings->fincra_business_id),
+                            ])
+                        </div>
+                        <div class="col-xl-6 col-lg-6 form-group">
+                            @include('admin.components.form.input',[
+                                'label'         => __("Fincra Secret Key"),
+                                'type'          => "password",
+                                'class'         => "form--control",
+                                'placeholder'   => __("Enter Fincra Secret Key"),
+                                'name'          => "fincra_secret_key",
+                                'value'         => old('fincra_secret_key',$basic_settings->fincra_secret_key),
+                            ])
+                        </div>
+                        <div class="col-xl-6 col-lg-6 form-group">
+                            @include('admin.components.form.input',[
+                                'label'         => __("Fincra Public Key"),
+                                'type'          => "text",
+                                'class'         => "form--control",
+                                'placeholder'   => __("Enter Fincra Public Key"),
+                                'name'          => "fincra_public_key",
+                                'value'         => old('fincra_public_key',$basic_settings->fincra_public_key),
+                            ])
+                        </div>
+                        <div class="col-xl-6 col-lg-6 form-group">
+                            @include('admin.components.form.input',[
+                                'label'         => __("Fincra Webhook Encryption Key"),
+                                'type'          => "password",
+                                'class'         => "form--control",
+                                'placeholder'   => __("Enter Webhook Encryption Key"),
+                                'name'          => "fincra_webhook_encryption_key",
+                                'value'         => old('fincra_webhook_encryption_key',$basic_settings->fincra_webhook_encryption_key),
+                            ])
+                        </div>
+                        <div class="col-xl-6 col-lg-6 form-group">
+                            @include('admin.components.form.input',[
+                                'label'         => __("Fincra Settlement Destination"),
+                                'type'          => "text",
+                                'class'         => "form--control",
+                                'placeholder'   => __("Optional settlement destination"),
+                                'name'          => "fincra_settlement_destination",
+                                'value'         => old('fincra_settlement_destination',$basic_settings->fincra_settlement_destination),
+                            ])
                         </div>
                     </div>
                 </div>

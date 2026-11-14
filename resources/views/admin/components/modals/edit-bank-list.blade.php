@@ -22,6 +22,15 @@
                             ])
                         </div>
 
+                        <div class="col-xl-12 col-lg-12 form-group mt-2">
+                            @include('admin.components.form.input',[
+                                'label'         => __("Bank Code"),
+                                'name'          => "bank_code",
+                                'value'         => old("bank_code"),
+                                'placeholder'   => __("e.g. 058 or 090286"),
+                            ])
+                        </div>
+
                         <div class="col-xl-12 col-lg-12 form-group d-flex align-items-center justify-content-between mt-4">
                             <button type="button" class="btn btn--danger modal-close">{{ __("Cancel") }}</button>
                             <button type="submit" class="btn btn--base">{{ __("Update") }}</button>
@@ -40,7 +49,8 @@
                     var oldData = JSON.parse($(this).parents("tr").attr("data-item"));
                     var editModal = $("#edit-bank-list");
                     editModal.find("form").first().find("input[name=target]").val(oldData.id);
-                    editModal.find("input[name=name]").val(oldData.name)
+                    editModal.find("input[name=name]").val(oldData.name);
+                    editModal.find("input[name=bank_code]").val(oldData.bank_code || '');
                     openModalBySelector("#edit-bank-list");
                 });
             });

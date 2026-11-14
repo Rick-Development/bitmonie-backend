@@ -49,8 +49,25 @@ class WebSettingsController extends Controller
             'safehaven_client_assertion' => 'nullable|string',
             'safehaven_api_url' => 'nullable|string',
             'safehaven_debit_account' => 'nullable|string',
+            'safehaven_bank_code' => 'nullable|string',
             'referral_bonus' => 'nullable|numeric|min:0',
             'referral_min_deposit' => 'nullable|numeric|min:0',
+
+            // Sudo API credentials & settlement
+            'sudo_base_url' => 'nullable|string',
+            'sudo_api_key' => 'nullable|string',
+            'sudo_settlement_bank_code' => 'nullable|string',
+            'sudo_settlement_account_number' => 'nullable|string',
+            'sudo_settlement_account_name' => 'nullable|string',
+            'sudo_settlement_debit_account_id' => 'nullable|string',
+
+            // Fincra API credentials & configuration
+            'fincra_base_url' => 'nullable|string',
+            'fincra_secret_key' => 'nullable|string',
+            'fincra_public_key' => 'nullable|string',
+            'fincra_webhook_encryption_key' => 'nullable|string',
+            'fincra_business_id' => 'nullable|string',
+            'fincra_settlement_destination' => 'nullable|string',
         ]);
 
         $validated = $validator->validate();

@@ -11,10 +11,11 @@ class BankList extends Model
 
     protected $guarded = ['id'];
     protected $casts = [
-        'admin_id' => 'integer',
-        'name'     => 'string',
-        'alias'    => 'string',
-        'status'   => 'integer',
+        'admin_id'  => 'integer',
+        'name'      => 'string',
+        'alias'     => 'string',
+        'bank_code' => 'string',
+        'status'    => 'integer',
     ];
     protected $appends = [
         'editData',
@@ -22,10 +23,11 @@ class BankList extends Model
     public function getEditDataAttribute() {
 
         $data = [
-            'id'     => $this->id,
-            'name'   => $this->name,
-            'alias'  => $this->alias,
-            'status' => $this->status,
+            'id'        => $this->id,
+            'name'      => $this->name,
+            'alias'     => $this->alias,
+            'bank_code' => $this->bank_code,
+            'status'    => $this->status,
         ];
 
         return json_encode($data);

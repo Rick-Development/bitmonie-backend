@@ -219,7 +219,7 @@ class ReferralWalletService
                 throw new RuntimeException('Master SafeHaven account is not configured.');
             }
 
-            $safeHavenBankCode = config('services.safeHeaven.bank_code', '090281');
+            $safeHavenBankCode = $settings->safehaven_bank_code ?? config('services.safeHeaven.bank_code', '090281');
 
             // Name Enquiry
             $enquiry = $safeHavenService->nameEnquiry($safeHavenBankCode, $userSubAccount->account_number);
@@ -357,7 +357,7 @@ class ReferralWalletService
                     throw new RuntimeException('Master SafeHaven account is not configured.');
                 }
 
-                $safeHavenBankCode = config('services.safeHeaven.bank_code', '090281');
+                $safeHavenBankCode = $settings->safehaven_bank_code ?? config('services.safeHeaven.bank_code', '090281');
 
                 // Name Enquiry
                 $enquiry = $safeHavenService->nameEnquiry($safeHavenBankCode, $userSubAccount->account_number);

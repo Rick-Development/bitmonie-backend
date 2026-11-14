@@ -286,23 +286,29 @@ class InitiateQuidaxCardFundingJob implements ShouldQueue
             | Settlement account
             |--------------------------------------------------------------------------
             |
-            | These values come from config/sudo.php:
-            config('services.sudo.settlement_bank_code')
-            config('services.sudo.settlement_account_number')
-            config('services.sudo.settlement_account_name')
+            | Priority: job context -> metadata -> basic_settings (admin UI) -> config/env
             |
             */
+
+            $basicSettings = null;
+            try {
+                $basicSettings = \App\Models\Admin\BasicSettings::first();
+            } catch (\Throwable $e) {
+                // DB unreachable
+            }
 
             $bankCode = (string) (
                 $this->context['bank_code']
                 ?? data_get($metadata, 'bank_code')
-                ??    config('services.sudo.settlement_bank_code')
+                ?? (!empty($basicSettings?->sudo_settlement_bank_code) ? $basicSettings->sudo_settlement_bank_code : null)
+                ?? config('services.sudo.settlement_bank_code')
                 ?? ''
             );
 
             $accountNumber = (string) (
                 $this->context['account_number']
                 ?? data_get($metadata, 'account_number')
+                ?? (!empty($basicSettings?->sudo_settlement_account_number) ? $basicSettings->sudo_settlement_account_number : null)
                 ?? config('services.sudo.settlement_account_number')
                 ?? ''
             );
@@ -310,6 +316,7 @@ class InitiateQuidaxCardFundingJob implements ShouldQueue
             $accountName = (string) (
                 $this->context['account_name']
                 ?? data_get($metadata, 'account_name')
+                ?? (!empty($basicSettings?->sudo_settlement_account_name) ? $basicSettings->sudo_settlement_account_name : null)
                 ?? config('services.sudo.settlement_account_name')
                 ?? ''
             );

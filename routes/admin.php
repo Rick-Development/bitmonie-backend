@@ -98,6 +98,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::controller(BankListController::class)->prefix('bank-list')->name('bank.list.')->group(function () {
             Route::get('/', 'index')->name('index');
             Route::post('store', 'store')->name('store');
+            Route::post('sync-safehaven', 'syncSafeHaven')->name('sync.safehaven');
             Route::put('status/update','statusUpdate')->name('status.update');
             Route::put('update', 'update')->name('update');
             Route::delete('delete','delete')->name('delete');
